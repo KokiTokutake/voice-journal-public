@@ -65,11 +65,17 @@
 |---|---|
 | LM Studio | 0.4.27+2（winget `ElementLabs.LMStudio`） |
 | API | `http://127.0.0.1:1234/v1`（ループバックのみ） |
-| モデル | （未導入: Gemma 3 4B Instruct GGUF Q4 系） |
-| モデル ID / GGUF ファイル / SHA-256 | （未記入） |
-| コンテキスト長 C / 出力予約 O | （未記入。初期案 C=8192 / O=4096） |
-| Structured Output（json_schema） | （未確認） |
-| GPU オフロード | （未記入） |
+| CLI | `lms`（`%USERPROFILE%\.lmstudio\bin\lms.exe`、CLI commit `43d4b26`） |
+| モデル | Gemma 3 4B Instruct（`lmstudio-community/gemma-3-4b-it-GGUF`、Gemma ライセンス、gated なし） |
+| 配布元 | https://huggingface.co/lmstudio-community/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf |
+| モデル ID | `gemma-3-4b-it`（`lms load --identifier` で固定） |
+| GGUF ファイル | `%USERPROFILE%\.lmstudio\models\lmstudio-community\gemma-3-4b-it-GGUF\gemma-3-4b-it-Q4_K_M.gguf`（2,489,757,856 bytes） |
+| GGUF SHA-256 | `be49949e48422e4547b00af14179a193d3777eea7fbbd7d6e1b0861304628a01`（HF 公開値と一致） |
+| 取得方法 | `lms get` が低速で中断したため `curl -C - --retry 5` で取得。mmproj（画像入力用）は不要のため未取得 |
+| コンテキスト長 C / 出力予約 O | C=8192（`lms load --context-length 8192`、モデル上限 131072）/ O=4096（初期案のまま。Phase D で調整） |
+| Structured Output（json_schema） | **対応を確認**。`response_format: json_schema`（strict）で日本語要約・タスク・課題を取得し、解析成功 |
+| 推論エンジン | `llama.cpp-win-x86_64-vulkan-avx2@2.67.0`（LM Studio 既定選択）。GPU オフロード量は既定値のまま、未調整 |
+| 並列数 | 4（LM Studio 既定） |
 
 ## 7. 保存先
 
@@ -84,5 +90,6 @@
 | 項目 | 結果 |
 |---|---|
 | テスト音声 | Windows TTS（Microsoft Haruka Desktop）生成、16kHz/16bit/mono、約 20 秒 |
-| whisper small CPU 所要時間 / CER | 3.4 秒（20 秒音声、12 スレッド）/ CER 0（句読点除外の簡易計算）。**TTS 音声のため実音声より楽観的**。実音声での再計測が必要 |
-| Gemma 応答時間 / JSON 解析 | （未記入） |
+| whisper small CPU 所要時間 / CER | 3.4〜3.8 秒（20 秒音声、12 スレッド）/ CER 0（句読点除外の簡易計算）。**TTS 音声のため実音声より楽観的**。実音声での再計測が必要 |
+| Gemma 応答時間 / JSON 解析 | 7.9 秒（prompt 108 / completion 135 tokens、`finish_reason: stop`）/ 解析成功。担当者「田中さん」・期限「来週の金曜日」・課題「既存のパソコンの性能不足」を正しく抽出 |
+| 結果ファイル | `%LOCALAPPDATA%\VoiceJournal\verify\stage-a-result.json` |
