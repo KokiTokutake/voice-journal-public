@@ -100,7 +100,7 @@ JSON Schema 検証器の比較（2026-10-31）:
 | 遠隔機能 | LM Link は未ログインのため動いていない（`lms link status`）。MCP サーバーの登録なし（`mcp.json` が空）。NFR-01 を満たす |
 | 自動起動 | `autoStartOnLaunch: false`。アプリ起動時に LM Studio のサーバーが動いていない場合の案内が必要（Phase D） |
 | JIT ロード | `justInTimeModelLoading: true`。API でモデル ID を指定すると未ロードでも読み込まれる。詳細仕様書 24.2「モデル設定を無断変更しない」に合わせ、アプリは `GET /v1/models` でロード済みか確認してから使う |
-| **ログ** | `logSensitiveData: true` のため、**サーバーログ `%USERPROFILE%\.lmstudio\server-logs\` にプロンプト本文（文字起こし）が残る**ことを確認した。詳細仕様書 21 章の「全文を含むデバッグ記録は明示 ON・期間限定」に合わないので、LM Studio 側で OFF にすることを推奨 |
+| ログ | 当初 `logSensitiveData: true` で、サーバーログ `%USERPROFILE%\.lmstudio\server-logs\` にプロンプト本文（文字起こし）が残っていた。詳細仕様書 21 章の「全文を含むデバッグ記録は明示 ON・期間限定」に合わせ、2026-11-01 に **`false` へ変更**（`.internal\http-server-config.json`、変更前の控えは `.bak-20261101`）。合言葉入りの試験リクエストで、本文がログに出ず `[Sensitive]` と伏せられることを確認した |
 | API 予測履歴 | `developer.apiPredictionHistoryEviction`: 30 日で削除 |
 
 ## 7. 保存先
