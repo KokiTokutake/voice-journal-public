@@ -34,7 +34,15 @@
 | Microsoft.Data.Sqlite | 10.0.14 | SQLitePCLRaw 2.1.13 / エンジン **3.53.3**。FTS5 trigram で日本語部分一致を確認済み（`SqliteCapabilityTests`） |
 | xunit / runner | 2.9.3 / 3.1.4 | |
 | Microsoft.NET.Test.Sdk | 17.14.1 | |
-| JSON Schema 検証器 | **未選定** | 詳細仕様書 3 章「Draft 2020-12 検証能力を確認して固定」。Phase A の残課題 |
+| Corvus.Json.Validator | 5.7.9 | JSON Schema 検証器（Apache-2.0）。Draft 2020-12 の `$defs`/`$ref`・`prefixItems`・`unevaluatedProperties` と不正出力の拒否を確認済み（`JsonSchemaValidatorTests`）。実行時に Roslyn でコード生成するため依存 DLL が約 11.8MB 増える。`HttpClientDocumentResolver` を含むので、**外部 `$ref` を使わない埋め込みスキーマに限定**し、オフライン動作は Phase G で確認する |
+
+JSON Schema 検証器の比較（2026-10-31）:
+
+| 候補 | 版 | 判断 |
+|---|---|---|
+| Corvus.Json.Validator | 5.7.9 | **採用**。Apache-2.0、Draft 2020-12 対応 |
+| JsonSchema.Net | 9.6.0 | 不採用。ソースは MIT だが、NuGet のバイナリは Open Source Maintenance Fee 契約（収益を伴う利用に料金）の対象 |
+| NJsonSchema | 11.6.1 | 不採用。MIT だが Draft 4/6/7 が中心で 2020-12 の検証に向かない |
 
 ## 4. whisper.cpp
 
@@ -92,4 +100,5 @@
 | テスト音声 | Windows TTS（Microsoft Haruka Desktop）生成、16kHz/16bit/mono、約 20 秒 |
 | whisper small CPU 所要時間 / CER | 3.4〜3.8 秒（20 秒音声、12 スレッド）/ CER 0（句読点除外の簡易計算）。**TTS 音声のため実音声より楽観的**。実音声での再計測が必要 |
 | Gemma 応答時間 / JSON 解析 | 7.9 秒（prompt 108 / completion 135 tokens、`finish_reason: stop`）/ 解析成功。担当者「田中さん」・期限「来週の金曜日」・課題「既存のパソコンの性能不足」を正しく抽出 |
+| JSON Schema 検証 | Gemma の実出力が Draft 2020-12 スキーマに合格（`JsonSchemaValidatorTests.GemmaOutput_IsValid`） |
 | 結果ファイル | `%LOCALAPPDATA%\VoiceJournal\verify\stage-a-result.json` |
