@@ -31,7 +31,18 @@
 | パッケージ | 版 | 備考 |
 |---|---|---|
 | NAudio | 3.3.0 | **3.x では `WasapiCapture` / `WasapiLoopbackCapture` が非推奨**。後継は `WasapiRecorderBuilder` → `WasapiRecorder`（パケットごとに無音・不連続フラグとデバイス位置を受け取れる、`WithRawMode()` でシステムの音声処理を回避できる）。`ISampleProvider.Read` は `Span<float>` 版。詳細仕様書は 2.x の資料を参照しているので、Phase B は 3.x の API で設計する |
-| Microsoft.Data.Sqlite | 10.0.14 | SQLitePCLRaw 2.1.13 / エンジン **3.53.3**。FTS5 trigram で日本語部分一致を確認済み（`SqliteCapabilityTests`） |
+| Microsoft.Data.Sqlite | 10.0.14 | SQLitePCLRaw 2.1.13 / エンジン **3.53.3**。FTS5 trigram で日本語部分一致を確認済み（`SqliteCapabilityTests`）。WAL まわりは `SqliteWalTests` で確認済み（下記） |
+
+SQLite の WAL まわりの確認結果（詳細仕様書 14.2 / 15、`SqliteWalTests`、%TEMP% 上のローカル NTFS のファイル DB）:
+
+| 項目 | 結果 |
+|---|---|
+| `journal_mode=WAL` | 設定でき、DB ファイルに保存される（接続し直しても WAL のまま）。`-wal` ファイルが作られる |
+| 反映用接続の設定 | `foreign_keys=ON`、`synchronous=FULL`（2）、`busy_timeout=5000` を設定・読み戻しできる |
+| 読み取りと書き込みの並行 | 書き込みトランザクション中でも、別接続の読み取りは止まらず、確定済みの値を読める |
+| 書き込み同士の競合 | 先の接続が書き込みロック（`BEGIN IMMEDIATE`）を持つ間、後の書き込みは `SQLITE_BUSY`（5）になり、解放後は成功する |
+| バックアップ | Online Backup API（`SqliteConnection.BackupDatabase`）は、チェックポイント前の `-wal` の内容も含めて整合したコピーを作る（`integrity_check` ok）。**`.db` だけを単純コピーすると、`-wal` にある表もデータも失われる**ことを確認 |
+| 既定値の注意 | Microsoft.Data.Sqlite の接続は `busy_timeout` が既定で **0**。SQLite 側では待たずに、ライブラリが `CommandTimeout`（既定 30 秒）まで自前で再試行する。仕様の 5000ms にそろえるには、`PRAGMA busy_timeout=5000` と接続文字列の `Default Timeout` を合わせて設定する |
 | xunit / runner | 2.9.3 / 3.1.4 | |
 | Microsoft.NET.Test.Sdk | 17.14.1 | |
 | Corvus.Json.Validator | 5.7.9 | JSON Schema 検証器（Apache-2.0）。Draft 2020-12 の `$defs`/`$ref`・`prefixItems`・`unevaluatedProperties` と不正出力の拒否を確認済み（`JsonSchemaValidatorTests`）。実行時に Roslyn でコード生成するため依存 DLL が約 11.8MB 増える。`HttpClientDocumentResolver` を含むので、**外部 `$ref` を使わない埋め込みスキーマに限定**し、オフライン動作は Phase G で確認する |
