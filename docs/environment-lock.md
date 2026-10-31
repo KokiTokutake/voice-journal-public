@@ -95,6 +95,13 @@ JSON Schema 検証器の比較（2026-10-31）:
 | Structured Output（json_schema） | **対応を確認**。`response_format: json_schema`（strict）で日本語要約・タスク・課題を取得し、解析成功 |
 | 推論エンジン | `llama.cpp-win-x86_64-vulkan-avx2@2.67.0`（LM Studio 既定選択）。GPU オフロード量は既定値のまま、未調整 |
 | 並列数 | 4（LM Studio 既定） |
+| 認証 | **なし**（トークンなし・でたらめなトークンのどちらでも HTTP 200）。詳細仕様書 9 章のとおり任意。使う場合はトークンを Windows 資格情報ストアから読み、ログに書かない |
+| 待ち受け | `127.0.0.1:1234`（API）、`127.0.0.1:41343`・`127.0.0.1:61142`（`lms` CLI 等の内部用）。**LAN 向けの待ち受けなし**（`networkInterface: 127.0.0.1`、`cors: false`） |
+| 遠隔機能 | LM Link は未ログインのため動いていない（`lms link status`）。MCP サーバーの登録なし（`mcp.json` が空）。NFR-01 を満たす |
+| 自動起動 | `autoStartOnLaunch: false`。アプリ起動時に LM Studio のサーバーが動いていない場合の案内が必要（Phase D） |
+| JIT ロード | `justInTimeModelLoading: true`。API でモデル ID を指定すると未ロードでも読み込まれる。詳細仕様書 24.2「モデル設定を無断変更しない」に合わせ、アプリは `GET /v1/models` でロード済みか確認してから使う |
+| **ログ** | `logSensitiveData: true` のため、**サーバーログ `%USERPROFILE%\.lmstudio\server-logs\` にプロンプト本文（文字起こし）が残る**ことを確認した。詳細仕様書 21 章の「全文を含むデバッグ記録は明示 ON・期間限定」に合わないので、LM Studio 側で OFF にすることを推奨 |
+| API 予測履歴 | `developer.apiPredictionHistoryEviction`: 30 日で削除 |
 
 ## 7. 保存先
 

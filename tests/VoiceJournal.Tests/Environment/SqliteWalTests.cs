@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 namespace VoiceJournal.Tests.Environment;
 
 /// <summary>
-/// Phase A: verifies the WAL-related behaviour the detail spec relies on (14.2 / 15):
+/// Phase A: verifies the WAL-related behaviour the detail spec relies on (14 / 15):
 /// journal_mode=WAL, synchronous=FULL, busy_timeout=5000, readers not blocked by a writer,
 /// a second writer getting SQLITE_BUSY, and Online Backup capturing un-checkpointed WAL content
 /// where a plain copy of the .db file does not.
@@ -107,7 +107,7 @@ public sealed class SqliteWalTests : IDisposable
             Assert.Equal(100L, Scalar(restored, "SELECT COUNT(*) FROM t;"));
         }
 
-        // Copying only the .db while the WAL holds un-checkpointed data loses it (spec 15: do not do this).
+        // Copying only the .db while the WAL holds un-checkpointed data loses it (spec 14: do not do this).
         var copyPath = Path.Combine(_dir, "plain-copy.db");
         File.Copy(_dbPath, copyPath);
         using var copy = new SqliteConnection($"Data Source={copyPath};Pooling=False");
