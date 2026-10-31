@@ -141,3 +141,28 @@ JSON Schema 検証器の比較（2026-10-31）:
 - 録音開始の直後に話し始めると冒頭（「本日」）が欠けた。開始前の待ち時間か録音中表示が必要。通常モードでは開始要求から最初のパケットまで約 1.1 秒の差があった
 - 人名などの固有名詞（「田中さん」→「田舎さん」「花子さん」「パナコさん」）は small モデルで誤りやすい。Phase C で medium と比較する
 - `device_position_jumps` はマイクでほぼ全パケットに出ており、デバイス位置の単位がフレーム数と一致していない可能性がある。時刻合わせには使わず、Phase B で単位を調べる
+
+## 10. 詳細仕様書 26 章との照合（Phase A の採用値）
+
+| 項目 | 詳細仕様書の前提 | 採用値（本書の該当章） | 状態 |
+|---|---|---|---|
+| OS | Windows 11 x64 | Windows 11 Home 10.0.26300 x64（1 章） | 照合済み |
+| CPU / RAM | Ryzen AI 9 HX 375 / 32GB | 同 CPU、31.3 GiB 認識。GPU ドライバーは 2025-01 版のまま（1 章） | 照合済み（ドライバー更新は Phase H の前に判断） |
+| SDK / TFM | .NET 10 / net10.0-windows | SDK 10.0.400、Core のみ net10.0（2 章） | 照合済み |
+| NAudio | WASAPI 共有、固定版 | 3.3.0。3.x の `WasapiRecorder` を使う（3 章・9 章） | 照合済み。仕様書の 2.x 資料との差分あり |
+| whisper.cpp | 固定ビルド、CPU 必須 | b5454（v1.9.5）CPU 版、zip と exe の SHA-256 を記録（4 章） | 照合済み |
+| STT モデル | 多言語 small / medium 比較 | `ggml-small.bin`、SHA-256 を記録（5 章）。medium 比較は Phase C | 照合済み |
+| LM Studio | loopback API | 0.4.27+2、認証なし、待ち受けは 127.0.0.1 のみ、LM Link・MCP 未使用、本文ログ OFF（6 章） | 照合済み |
+| Gemma | 3 4B 量子化 | Gemma 3 4B Instruct Q4_K_M、GGUF の SHA-256 を記録（6 章） | 照合済み |
+| API | 127.0.0.1:1234/v1 | `http://127.0.0.1:1234/v1`、json_schema の構造化出力に対応（6 章） | 照合済み |
+| context / GPU | 実測後固定 | C=8192 / O=4096、推論エンジンは Vulkan 版を既定選択、オフロード量は未調整（6 章） | 初期値として固定。Phase D・H で再測定 |
+| SQLite | Microsoft.Data.Sqlite / WAL | 10.0.14、エンジン 3.53.3、FTS5 trigram・WAL・Online Backup を確認（3 章） | 照合済み |
+| JSON Schema 検証 | Draft 2020-12 | Corvus.Json.Validator 5.7.9（3 章） | 照合済み |
+| 保存ルート | ローカル NTFS / 同期対象外 | `%LOCALAPPDATA%\VoiceJournal`（7 章）。OneDrive 配下には置かない | 照合済み |
+| 管理ファイル | 初回解析＋追記専用が既定 | **既存ファイルなし**（2026-11-01 に利用者へ確認）。アプリが `Workspace\management\issues.md` と `tasks.md` を UTF-8 で新規作成する。既存ファイルの取込み（11.3）は機能として残すが、初期運用では使わない | 確定 |
+
+### Phase A の完了条件（詳細仕様書 23 章）
+
+- **ローカルサンプル 1 本で音声 → STT → 検証済み JSON**: TTS 音声 → whisper（CER 0）→ Gemma の構造化出力 → Draft 2020-12 のスキーマ検証に合格（8 章）。実音声（マイク・ループバック）の録音と STT も確認（9 章）
+- **26 章の採用値確定**: 上表のとおり
+- 持ち越し: GPU ドライバー更新の判断（Phase H の前）、medium モデルとの比較（Phase C）、`WasapiRecorder` のデバイス位置の単位調査（Phase B）

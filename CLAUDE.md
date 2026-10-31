@@ -15,7 +15,9 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - NuGet の版は `Directory.Packages.props` で一元管理する。版を変えたら `docs/environment-lock.md` も更新する
 - 警告はエラー扱い（`TreatWarningsAsErrors`）。テストのみ CA1707（メソッド名のアンダースコア）を許可
 - STT は CPU 経路が必須。GPU（Vulkan）・NPU は Phase H の任意最適化
-- LM Studio API は `http://127.0.0.1:1234/v1` のループバックのみ
+- LM Studio API は `http://127.0.0.1:1234/v1` のループバックのみ。LM Studio のログにプロンプト本文を残さない（`logSensitiveData: false`）
+- 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する
+- 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
 ## コマンド
 
@@ -32,4 +34,4 @@ dotnet test VoiceJournal.slnx
 
 - `.ps1` は日本語を含むため **BOM 付き UTF-8** で保存する（PowerShell 5.1 対策）
 - 音声・モデル・DB（`*.wav` `*.bin` `*.gguf` `*.db`）はコミットしない
-- 現在のフェーズ: **Phase A（環境固定・技術検証）**。詳細仕様書 23 章の順に進める
+- 現在のフェーズ: **Phase A（環境固定・技術検証）は完了条件を満たした**（`docs/environment-lock.md` 10 章）。次は **Phase B（録音・保存）**。詳細仕様書 23 章の順に進める
