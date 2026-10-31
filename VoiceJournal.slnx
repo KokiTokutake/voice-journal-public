@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VoiceJournal.App/VoiceJournal.App.csproj" />
+    <Project Path="src/VoiceJournal.Core/VoiceJournal.Core.csproj" />
+    <Project Path="src/VoiceJournal.Infrastructure/VoiceJournal.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VoiceJournal.Tests/VoiceJournal.Tests.csproj" />
+  </Folder>
+</Solution>

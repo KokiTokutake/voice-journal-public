@@ -1,0 +1,26 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.binlog
+
+# Claude Code personal settings
+.claude/settings.local.json
+
+# Secrets / local config
+.env
+.env.*
+appsettings.Local.json
+
+# Audio, models and generated data must never be committed
+# (workspace data lives in %LOCALAPPDATA%\VoiceJournal, outside OneDrive)
+*.wav
+*.partial
+*.bin
+*.gguf
+*.db
+*.db-wal
+*.db-shm

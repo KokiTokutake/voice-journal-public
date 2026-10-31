@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Domain / Application layer. Must not depend on Windows APIs, NAudio, SQLite or the LLM. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>
