@@ -24,6 +24,8 @@ dotnet build VoiceJournal.slnx
 dotnet test VoiceJournal.slnx
 .\scripts\New-TestSpeech.ps1          # 日本語 TTS で検証用 WAV を生成
 .\scripts\Test-Environment.ps1        # Stage A の疎通確認（whisper → LM Studio）
+.\scripts\Test-AudioSource.ps1 -Source loopback      # システム音声の録音試験（TTS を再生しながら録音）
+.\scripts\Test-AudioSource.ps1 -Source mic [-Raw]    # マイクの録音試験（原稿を読み上げる。利用者が自分の端末で実行）
 ```
 
 ## 注意

@@ -30,7 +30,7 @@
 
 | パッケージ | 版 | 備考 |
 |---|---|---|
-| NAudio | 3.3.0 | 詳細仕様書は 2.x のドキュメントを参照。WASAPI API の差分は Phase B で確認 |
+| NAudio | 3.3.0 | **3.x では `WasapiCapture` / `WasapiLoopbackCapture` が非推奨**。後継は `WasapiRecorderBuilder` → `WasapiRecorder`（パケットごとに無音・不連続フラグとデバイス位置を受け取れる、`WithRawMode()` でシステムの音声処理を回避できる）。`ISampleProvider.Read` は `Span<float>` 版。詳細仕様書は 2.x の資料を参照しているので、Phase B は 3.x の API で設計する |
 | Microsoft.Data.Sqlite | 10.0.14 | SQLitePCLRaw 2.1.13 / エンジン **3.53.3**。FTS5 trigram で日本語部分一致を確認済み（`SqliteCapabilityTests`） |
 | xunit / runner | 2.9.3 / 3.1.4 | |
 | Microsoft.NET.Test.Sdk | 17.14.1 | |
@@ -102,3 +102,24 @@ JSON Schema 検証器の比較（2026-10-31）:
 | Gemma 応答時間 / JSON 解析 | 7.9 秒（prompt 108 / completion 135 tokens、`finish_reason: stop`）/ 解析成功。担当者「田中さん」・期限「来週の金曜日」・課題「既存のパソコンの性能不足」を正しく抽出 |
 | JSON Schema 検証 | Gemma の実出力が Draft 2020-12 スキーマに合格（`JsonSchemaValidatorTests.GemmaOutput_IsValid`） |
 | 結果ファイル | `%LOCALAPPDATA%\VoiceJournal\verify\stage-a-result.json` |
+
+## 9. 音源単体試験（2026-10-31）
+
+`scripts/Test-AudioSource.ps1` と `tools/VoiceJournal.AudioProbe`（NAudio 3.3.0 の `WasapiRecorder`、共有モード）で録音し、whisper small（CPU）で文字起こしした。原稿は TTS 試験と同じ文。デバイスはいずれも 48kHz / 32bit 浮動小数点 / 2ch。
+
+| 音源 | 条件 | ピーク / 平均 dBFS | STT 秒 | CER |
+|---|---|---|---|---|
+| ループバック | Speaker (Realtek(R) Audio)、TTS 音声をスピーカー再生 | −1.8 / −14.4 | 3.9 | 0.020 |
+| マイク | Microphone Array (AMD Audio Device)、通常モード、実音声 | −4.2 / −28.1 | 3.3 | 0.158 |
+| マイク | 同、**raw モード**（`WithRawMode()`） | −26.1 / −53.3 | 3.1 | 0.079 |
+| マイク | raw モードの録音をピーク −3 dBFS に正規化（+27 dB） | — | — | 0.069 |
+
+わかったこと:
+
+- **通常モードのマイクは、話していない区間が完全なデジタル無音になる**。Windows または AMD の音声処理（ノイズ抑制・ゲート）が働いており、話し始めの音も削られて CER が悪化したと考えられる。raw モードでは自然な雑音（−65〜−78 dBFS）が残り、CER が半分になった
+- raw モードは通常モードより約 25 dB 小さい（通常モードは自動で音量を上げている）。STT 用の 16kHz 版を作るときにソフトウェアで正規化すると、さらに少し改善した
+- Phase B の方針案: マイクは raw モードで録音して原音として保存し、STT 用の派生ファイルだけ正規化する。通常モードとの切り替えを設定で選べるようにする
+- ループバックは再生していない間パケットが届かない。経過時間に合わせて無音を補うことで、録音長と経過時間が一致した（4.99 秒を補完）
+- 録音開始の直後に話し始めると冒頭（「本日」）が欠けた。開始前の待ち時間か録音中表示が必要。通常モードでは開始要求から最初のパケットまで約 1.1 秒の差があった
+- 人名などの固有名詞（「田中さん」→「田舎さん」「花子さん」「パナコさん」）は small モデルで誤りやすい。Phase C で medium と比較する
+- `device_position_jumps` はマイクでほぼ全パケットに出ており、デバイス位置の単位がフレーム数と一致していない可能性がある。時刻合わせには使わず、Phase B で単位を調べる

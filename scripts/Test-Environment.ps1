@@ -15,7 +15,8 @@ param(
     [string]$Wav,
     [string]$LmStudioBaseUrl = 'http://127.0.0.1:1234/v1',
     [string]$ModelId,
-    [switch]$SkipLlm
+    [switch]$SkipLlm,
+    [string]$ResultName = 'stage-a-result.json'
 )
 $ErrorActionPreference = 'Stop'
 if (-not $WhisperExe)   { $WhisperExe   = Get-ChildItem (Join-Path $Root 'tools\whisper') -Recurse -Filter 'whisper-cli.exe' | Select-Object -First 1 -ExpandProperty FullName }
@@ -131,6 +132,6 @@ if (-not $SkipLlm) {
     }
 }
 
-$resultPath = Join-Path $Root 'verify\stage-a-result.json'
+$resultPath = Join-Path $Root "verify\$ResultName"
 [IO.File]::WriteAllText($resultPath, ($results | ConvertTo-Json -Depth 10), $utf8)
 Write-Host "結果: $resultPath" -ForegroundColor Green
