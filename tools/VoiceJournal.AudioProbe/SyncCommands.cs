@@ -197,20 +197,35 @@ internal static class SyncCommands
         return onsets;
     }
 
-    /// <summary>First hop in [from, to] where the mic tone level rises 15 dB above its median of the preceding second.</summary>
+    /// <summary>
+    /// First hop in [from, to] where the mic tone level rises 15 dB above its median of the preceding second
+    /// and stays there for most of the next <see cref="SustainMs"/> (the burst lasts 150 ms). Room noise with a
+    /// 1 kHz component is usually a click of a few ms; without this check it was taken for the burst onset
+    /// (AT-03 on 2026-11-01: 5 of 180 bursts off by 100–350 ms while the rest agreed within 23 ms).
+    /// </summary>
     private static (double RawMs, double ClockMs)? FirstRise(List<(double RawMs, double ClockMs, double Db)> frames, double from, double to)
     {
         var baseline = frames.Where(f => f.RawMs >= from - 1000 && f.RawMs < from).Select(f => f.Db).ToList();
         if (baseline.Count == 0) return null;
         var threshold = Median(baseline) + 15;
-        foreach (var f in frames)
+        var start = frames.FindIndex(f => f.RawMs >= from);
+        if (start < 0) return null;
+        for (var i = start; i < frames.Count && frames[i].RawMs <= to; i++)
         {
-            if (f.RawMs < from) continue;
-            if (f.RawMs > to) break;
-            if (f.Db >= threshold) return (f.RawMs, f.ClockMs);
+            if (frames[i].Db < threshold) continue;
+            int above = 0, total = 0;
+            for (var j = i; j < frames.Count && frames[j].RawMs < frames[i].RawMs + SustainMs; j++)
+            {
+                total++;
+                if (frames[j].Db >= threshold) above++;
+            }
+            if (total > 0 && above >= total * SustainRatio) return (frames[i].RawMs, frames[i].ClockMs);
         }
         return null;
     }
+
+    private const double SustainMs = 60;
+    private const double SustainRatio = 0.75;
 
     private static double Median(IReadOnlyList<double> values)
     {
