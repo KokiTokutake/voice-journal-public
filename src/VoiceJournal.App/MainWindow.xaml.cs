@@ -1,21 +1,47 @@
 ﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Threading;
+using VoiceJournal.App.Services;
 using VoiceJournal.App.ViewModels;
+using VoiceJournal.App.Views;
 
 namespace VoiceJournal.App;
 
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan SavedNoticeTime = TimeSpan.FromSeconds(3);
+
     private readonly MainViewModel _viewModel;
+    private readonly IUiSettingsStore _settings;
+    private readonly DispatcherTimer _hideMiniBar;
+    private MiniBarWindow? _miniBar;
     private bool _closeConfirmed;
     private bool _asking;
 
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow(MainViewModel viewModel, IUiSettingsStore settings)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _settings = settings;
         DataContext = viewModel;
+        _hideMiniBar = new DispatcherTimer { Interval = SavedNoticeTime };
+        _hideMiniBar.Tick += (_, _) =>
+        {
+            _hideMiniBar.Stop();
+            _miniBar?.Hide();
+        };
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsRecordingActive)) UpdateMiniBar();
+        };
+        // Once audio flows, get out of the way: minimize, which brings up the mini bar.
+        _viewModel.Recording.RecordingStarted += (_, _) => WindowState = WindowState.Minimized;
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        UpdateMiniBar();
     }
 
     // While recording, ask "停止して保存" / "戻る" (detail spec 18.1); the window closes only after the
@@ -25,6 +51,7 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(e);
         if (_closeConfirmed || !_viewModel.IsRecordingActive)
         {
+            _miniBar?.Close();
             base.OnClosing(e);
             return;
         }
@@ -36,6 +63,7 @@ public partial class MainWindow : Window
         {
             try
             {
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal; // the question needs a visible owner
                 if (await _viewModel.ConfirmCloseAsync())
                 {
                     _closeConfirmed = true;
@@ -47,5 +75,48 @@ public partial class MainWindow : Window
                 _asking = false;
             }
         }));
+    }
+
+    /// <summary>
+    /// Mini bar while recording and minimized (the user's choice, 2026-11-01). When the recording ends while
+    /// minimized, the bar shows "保存しました" for a moment and then disappears.
+    /// </summary>
+    private void UpdateMiniBar()
+    {
+        if (MiniBarPlacement.ShouldShow(WindowState, _viewModel.IsRecordingActive))
+        {
+            _hideMiniBar.Stop();
+            ShowMiniBar();
+        }
+        else if (_miniBar is { IsVisible: true })
+        {
+            if (WindowState == WindowState.Minimized) _hideMiniBar.Start(); // recording just ended: brief notice
+            else _miniBar.Hide();
+        }
+    }
+
+    private void ShowMiniBar()
+    {
+        if (_miniBar is null)
+        {
+            _miniBar = new MiniBarWindow { DataContext = _viewModel.Recording };
+            _miniBar.RestoreRequested += (_, _) =>
+            {
+                WindowState = WindowState.Normal;
+                Activate();
+            };
+            _miniBar.Moved += (_, _) => _settings.Save(_settings.Load() with { MiniBarLeft = _miniBar.Left, MiniBarTop = _miniBar.Top });
+        }
+        if (_miniBar.IsVisible) return;
+
+        // Measure first so the default corner position accounts for the bar's real size.
+        _miniBar.Left = -10_000;
+        _miniBar.Show();
+        _miniBar.UpdateLayout();
+        var size = new Size(_miniBar.ActualWidth, _miniBar.ActualHeight);
+        var virtualScreen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop, SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        var place = MiniBarPlacement.Resolve(_settings.Load(), SystemParameters.WorkArea, virtualScreen, size, MiniBarWindow.ShadowMargin);
+        _miniBar.Left = place.X;
+        _miniBar.Top = place.Y;
     }
 }

@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\VoiceJournal.ico" />
-    <None Remove="Assets\VoiceJournal-256.png" />
+    <Resource Include="Assets\VoiceJournal-256.png" />
   </ItemGroup>
 
   <ItemGroup>

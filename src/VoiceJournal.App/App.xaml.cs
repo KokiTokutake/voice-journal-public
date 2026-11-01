@@ -14,8 +14,8 @@ namespace VoiceJournal.App;
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Application has no Dispose; the mutex and services are released in OnExit.")]
 public partial class App : Application
 {
-    // One instance per user: two instances would recover / record into the same workspace.
-    private const string SingleInstanceName = @"Local\VoiceJournal.SingleInstance";
+    // One instance per workspace: two instances would recover / record into the same folder.
+    private const string SingleInstancePrefix = @"Local\VoiceJournal.SingleInstance.";
 
     private Mutex? _singleInstance;
     private ServiceProvider? _services;
@@ -25,7 +25,12 @@ public partial class App : Application
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledException;
 
-        _singleInstance = new Mutex(initiallyOwned: true, SingleInstanceName, out var createdNew);
+        var options = StartupOptions.Parse(e.Args);
+        if (options.Theme is { } theme) ThemeMode = theme;
+        var root = options.WorkspaceRoot ?? Workspace.DefaultRoot;
+        var rootKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(root).ToUpperInvariant())))[..16];
+        _singleInstance = new Mutex(initiallyOwned: true, SingleInstancePrefix + rootKey, out var createdNew);
         if (!createdNew)
         {
             MessageBox.Show("Voice Journal はすでに起動しています。", "Voice Journal", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -37,7 +42,7 @@ public partial class App : Application
         VoiceJournalDatabase database;
         try
         {
-            workspace = Workspace.OpenOrCreate(Workspace.DefaultRoot);
+            workspace = Workspace.OpenOrCreate(root);
             database = VoiceJournalDatabase.Open(workspace.DatabasePath);
         }
         catch (Exception ex) when (ex is WorkspaceRootException or DatabaseSchemaException or DatabaseBusyException
@@ -96,6 +101,7 @@ public partial class App : Application
         services.AddSingleton<IDialogService, WpfDialogService>();
         services.AddSingleton<IPowerService, WindowsPowerService>();
         services.AddSingleton<IShellService, ExplorerShellService>();
+        services.AddSingleton<IUiSettingsStore>(new JsonUiSettingsStore(JsonUiSettingsStore.DefaultPath));
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();

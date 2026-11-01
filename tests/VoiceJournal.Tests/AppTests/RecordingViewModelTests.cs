@@ -98,6 +98,74 @@ public sealed class RecordingViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task BigButton_StartsThenStops_AndMetersScroll()
+    {
+        Assert.Equal("録音開始", _vm.ToggleLabel);
+        await _vm.ToggleCommand.ExecuteAsync(null);
+        Throttle();
+        Assert.True(_vm.IsActive);
+        Assert.Equal("停止して保存", _vm.ToggleLabel);
+        Assert.Equal("準備中", _vm.ShortStatusText);
+
+        var ticks = _vm.MeterTick;
+        _vm.Tick();
+        _vm.Tick(); // even with nothing new (silence) every update moves the level history
+        Assert.Equal(ticks + 2, _vm.MeterTick);
+
+        await _vm.ToggleCommand.ExecuteAsync(null);
+        _ui.Drain();
+        Assert.Equal(RecorderStatus.Saved, _vm.Status);
+        Assert.Equal("保存しました", _vm.ShortStatusText);
+        Assert.Equal("録音開始", _vm.ToggleLabel);
+    }
+
+    [Fact]
+    public async Task RecordingStarted_IsRaisedOnce_WhenAudioFirstFlows() // switches the window to the mini bar
+    {
+        var started = 0;
+        _vm.RecordingStarted += (_, _) => started++;
+        await _vm.StartCommand.ExecuteAsync(null);
+        Throttle();
+        _vm.Tick();
+        Assert.Equal(0, started); // still preparing: the window stays (errors must remain visible)
+
+        PushBoth(TimeSpan.FromSeconds(1));
+        _vm.Tick();
+        Assert.Equal(1, started);
+
+        // A reconnect during the recording does not raise it again.
+        _catalog.Latest(AudioSource.Mic).Fail(new AudioDeviceException(AudioDeviceErrorKind.DeviceInvalidated, "gone"));
+        _ui.Drain();
+        _vm.ReconnectCommand.Execute(null);
+        Throttle();
+        _ui.Drain();
+        PushBoth(TimeSpan.FromSeconds(1));
+        _vm.Tick();
+        _vm.Tick();
+        Assert.Equal(1, started);
+    }
+
+    [Fact]
+    public async Task RecordingStarted_IsNotRaised_WhenStartFails()
+    {
+        var started = 0;
+        _vm.RecordingStarted += (_, _) => started++;
+        _catalog.CreateErrors[AudioSource.Mic] = new AudioDeviceException(AudioDeviceErrorKind.AccessDenied, "denied");
+        await _vm.StartCommand.ExecuteAsync(null);
+        _ui.Drain();
+        Assert.Equal(0, started);
+    }
+
+    [Fact]
+    public void BigButton_IsDisabledWithoutADevice()
+    {
+        _vm.SelectedMic = null;
+        Assert.False(_vm.ToggleCommand.CanExecute(null));
+        _vm.IsLoopbackMode = true; // the mic is not needed then
+        Assert.True(_vm.ToggleCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task MicPermissionDenied_DoesNotStart_AndExplainsTheSetting() // CAP-001 / AT-04
     {
         _catalog.CreateErrors[AudioSource.Mic] = new AudioDeviceException(AudioDeviceErrorKind.AccessDenied, "denied");

@@ -4,125 +4,178 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
+             xmlns:controls="clr-namespace:VoiceJournal.App.Controls"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:RecordingViewModel}">
-    <Grid Margin="16" MaxWidth="1000" HorizontalAlignment="Left">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" MinWidth="320" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="260" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <StackPanel Margin="24,8,24,24" MaxWidth="980">
 
-        <!-- Title / project -->
-        <Label Grid.Row="0" Grid.Column="0" Content="タイトル(_T)" Target="{Binding ElementName=TitleBox}" VerticalAlignment="Center" FontWeight="SemiBold" />
-        <TextBox x:Name="TitleBox" Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
-                 IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="タイトル" />
-        <Label Grid.Row="0" Grid.Column="2" Content="project(_P)" Target="{Binding ElementName=ProjectBox}" Margin="16,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" />
-        <TextBox x:Name="ProjectBox" Grid.Row="0" Grid.Column="3" Margin="0,4" Text="{Binding Project, UpdateSourceTrigger=PropertyChanged}"
-                 IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="project" />
+        <!-- ===== Hero: record button, time, status, levels ===== -->
+        <Border Style="{StaticResource Card}" Padding="28,24">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-        <!-- Mode -->
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="音源" Style="{StaticResource FieldLabel}" Margin="5,0,12,0" />
-        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,8" IsEnabled="{Binding CanEditSettings}">
-            <RadioButton Content="マイク(_M)" GroupName="Mode" IsChecked="{Binding IsMicMode}" Margin="0,0,24,0" />
-            <RadioButton Content="PC 内部音声(_I)" GroupName="Mode" IsChecked="{Binding IsLoopbackMode}" Margin="0,0,24,0" />
-            <RadioButton Content="両方(_B)" GroupName="Mode" IsChecked="{Binding IsBothMode}" />
-        </StackPanel>
+                <Button Grid.Row="0" Grid.Column="0" Style="{StaticResource RecordButton}" Command="{Binding ToggleCommand}"
+                        ToolTip="{Binding ToggleLabel}" AutomationProperties.Name="{Binding ToggleLabel}" Margin="0,0,28,0" />
 
-        <!-- Mic -->
-        <Label Grid.Row="2" Grid.Column="0" Content="マイク(_C)" Target="{Binding ElementName=MicBox}" VerticalAlignment="Center" FontWeight="SemiBold"
-               Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
-        <ComboBox x:Name="MicBox" Grid.Row="2" Grid.Column="1" Margin="0,4" ItemsSource="{Binding MicDevices}" SelectedItem="{Binding SelectedMic}"
-                  DisplayMemberPath="Name" IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="マイクのデバイス"
-                  Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
-        <TextBlock Grid.Row="2" Grid.Column="2" Text="レベル" Style="{StaticResource FieldLabel}" Margin="16,0,12,0"
-                   Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
-        <DockPanel Grid.Row="2" Grid.Column="3" Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock DockPanel.Dock="Right" Text="{Binding MicLevelText}" Width="72" TextAlignment="Right" VerticalAlignment="Center" />
-            <ProgressBar Minimum="0" Maximum="1" Value="{Binding MicLevel, Mode=OneWay}" Height="10" VerticalAlignment="Center"
-                         AutomationProperties.Name="マイクのレベル" />
-        </DockPanel>
-        <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,8" IsChecked="{Binding UseRawMic}" IsEnabled="{Binding CanEditSettings}"
-                  Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}"
-                  Content="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）" />
+                <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ElapsedText}" FontSize="52" FontWeight="Light" Typography.NumeralAlignment="Tabular"
+                               AutomationProperties.Name="経過時間" />
+                    <StackPanel Orientation="Horizontal" Margin="2,2,0,0">
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource RecordBrush}" Margin="0,0,8,0" VerticalAlignment="Center"
+                                 Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="録音の状態" />
+                    </StackPanel>
+                    <TextBlock Margin="2,6,0,0" Style="{StaticResource Note}">
+                        <Run Text="&#xEDA2;" FontFamily="{StaticResource IconFont}" /> <Run Text="{Binding FreeSpaceText, Mode=OneWay}" />
+                        <Run Text="   " /><Run Text="&#xE838;" FontFamily="{StaticResource IconFont}" /> <Run Text="{Binding SaveLocation, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
 
-        <!-- Loopback -->
-        <Label Grid.Row="4" Grid.Column="0" Content="出力先(_O)" Target="{Binding ElementName=LoopbackBox}" VerticalAlignment="Center" FontWeight="SemiBold"
-               Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
-        <ComboBox x:Name="LoopbackBox" Grid.Row="4" Grid.Column="1" Margin="0,4" ItemsSource="{Binding LoopbackDevices}" SelectedItem="{Binding SelectedLoopback}"
-                  DisplayMemberPath="Name" IsEnabled="{Binding CanEditSettings}" AutomationProperties.Name="PC 内部音声の出力先"
-                  Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
-        <TextBlock Grid.Row="4" Grid.Column="2" Text="レベル" Style="{StaticResource FieldLabel}" Margin="16,0,12,0"
-                   Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
-        <DockPanel Grid.Row="4" Grid.Column="3" Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock DockPanel.Dock="Right" Text="{Binding LoopbackLevelText}" Width="72" TextAlignment="Right" VerticalAlignment="Center" />
-            <ProgressBar Minimum="0" Maximum="1" Value="{Binding LoopbackLevel, Mode=OneWay}" Height="10" VerticalAlignment="Center"
-                         AutomationProperties.Name="PC 内部音声のレベル" />
-        </DockPanel>
+                <!-- Level "waveforms" -->
+                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,24,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="120" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="80" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-        <!-- Status -->
-        <TextBlock Grid.Row="5" Grid.Column="0" Text="状態" Style="{StaticResource FieldLabel}" Margin="5,12,12,0" />
-        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,12,0,0">
-            <TextBlock Text="{Binding StatusText}" FontSize="16" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="録音の状態" />
-            <TextBlock Text="{Binding ElapsedText}" FontSize="16" Margin="16,0,0,0" FontFamily="Consolas, Segoe UI" AutomationProperties.Name="経過時間" />
-        </StackPanel>
-        <TextBlock Grid.Row="5" Grid.Column="2" Grid.ColumnSpan="2" Text="{Binding FreeSpaceText}" Margin="16,12,0,0" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="&#xE720;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,8,0" />
+                        <TextBlock Text="マイク" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <controls:LevelHistory Grid.Row="0" Grid.Column="1" Height="40" Margin="0,4" BarCount="64"
+                                           Level="{Binding MicLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"
+                                           BarBrush="{DynamicResource AccentFillColorDefaultBrush}" HotBrush="{StaticResource RecordBrush}"
+                                           IdleBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                           Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}"
+                                           AutomationProperties.Name="マイクのレベル" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding MicLevelText}" TextAlignment="Right" VerticalAlignment="Center"
+                               Style="{StaticResource Note}" Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
 
-        <TextBlock Grid.Row="6" Grid.Column="0" Text="保存先" Style="{StaticResource FieldLabel}" Margin="5,8,12,0" />
-        <TextBlock Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding SaveLocation}" Margin="0,8,0,0" TextWrapping="Wrap" Style="{StaticResource Note}" />
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="&#xE767;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,8,0" />
+                        <TextBlock Text="PC 内部音声" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <controls:LevelHistory Grid.Row="1" Grid.Column="1" Height="40" Margin="0,4" BarCount="64"
+                                           Level="{Binding LoopbackLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"
+                                           BarBrush="{DynamicResource AccentFillColorDefaultBrush}" HotBrush="{StaticResource RecordBrush}"
+                                           IdleBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                           Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}"
+                                           AutomationProperties.Name="PC 内部音声のレベル" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding LoopbackLevelText}" TextAlignment="Right" VerticalAlignment="Center"
+                               Style="{StaticResource Note}" Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </Grid>
+        </Border>
 
-        <TextBlock Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding LoopbackNotice}" Margin="0,8,0,0" Style="{StaticResource Note}"
-                   Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
+        <!-- ===== Warnings, reconnect and result ===== -->
+        <ItemsControl ItemsSource="{Binding Warnings}" AutomationProperties.Name="お知らせ">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border BorderThickness="1" BorderBrush="{StaticResource CautionBorderBrush}" CornerRadius="8" Padding="14,10" Margin="0,0,0,8"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource CautionBorderBrush}"
+                                       FontSize="16" Margin="0,0,10,0" VerticalAlignment="Top" />
+                            <TextBlock Text="{Binding Mode=OneWay}" TextWrapping="Wrap" />
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Content="再接続(_N)" Tag="&#xE703;" Command="{Binding ReconnectCommand}" Style="{StaticResource AccentActionButton}"
+                HorizontalAlignment="Left" Margin="0,0,0,12"
+                Visibility="{Binding HasDisconnectedSource, Converter={StaticResource BoolToVisibility}}" />
+        <Border Margin="0,0,0,12" Padding="14,10" CornerRadius="8" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding LastSavedDirectory}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="フォルダーを開く(_F)" Tag="&#xE838;" Command="{Binding OpenLastSavedCommand}"
+                        Style="{StaticResource ActionButton}" Margin="12,0,0,0" />
+                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,10,0" />
+                <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
+                    <Run Text="保存しました: " /><Run Text="{Binding LastSavedDirectory, Mode=OneWay}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </TextBlock>
+            </DockPanel>
+        </Border>
 
-        <!-- Actions -->
-        <WrapPanel Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,20,0,8">
-            <Button Content="録音開始(_S)" Command="{Binding StartCommand}" Style="{StaticResource ActionButton}" />
-            <Button Content="停止して保存(_E)" Command="{Binding StopCommand}" Style="{StaticResource ActionButton}" />
-            <Button Content="再接続(_N)" Command="{Binding ReconnectCommand}" Style="{StaticResource ActionButton}"
-                    Visibility="{Binding HasDisconnectedSource, Converter={StaticResource BoolToVisibility}}" />
-            <Button Content="デバイス一覧を更新(_U)" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ActionButton}"
-                    IsEnabled="{Binding CanEditSettings}" />
-        </WrapPanel>
+        <!-- ===== Settings (fixed while recording) ===== -->
+        <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEditSettings}">
+            <StackPanel>
+                <TextBlock Text="録音の設定" Style="{StaticResource SectionTitle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="110" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="0.6*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-        <!-- Warnings and result -->
-        <StackPanel Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="3">
-            <ItemsControl ItemsSource="{Binding Warnings}" AutomationProperties.Name="お知らせ" Margin="0,8,0,0">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border BorderThickness="1" BorderBrush="#C08000" CornerRadius="4" Padding="10,6" Margin="0,0,0,6">
-                            <TextBlock TextWrapping="Wrap">
-                                <Run Text="⚠ " /><Run Text="{Binding Mode=OneWay}" />
-                            </TextBlock>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <StackPanel.Style>
-                    <Style TargetType="StackPanel">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding LastSavedDirectory}" Value="{x:Null}">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </StackPanel.Style>
-                <TextBlock Text="保存したフォルダー: " VerticalAlignment="Center" />
-                <TextBlock Text="{Binding LastSavedDirectory}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" Style="{StaticResource Note}" />
-                <Button Content="フォルダーを開く(_F)" Command="{Binding OpenLastSavedCommand}" Margin="12,0,0,0" Padding="12,4" />
+                    <Label Grid.Row="0" Grid.Column="0" Content="タイトル(_T)" Target="{Binding ElementName=TitleBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="TitleBox" Grid.Row="0" Grid.Column="1" Margin="0,4" Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="タイトル" />
+                    <Label Grid.Row="0" Grid.Column="2" Content="project(_P)" Target="{Binding ElementName=ProjectBox}" VerticalAlignment="Center" Padding="0" Margin="20,0,12,0" />
+                    <TextBox x:Name="ProjectBox" Grid.Row="0" Grid.Column="3" Margin="0,4" Text="{Binding Project, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="project" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="音源" Style="{StaticResource FieldLabel}" />
+                    <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Style="{StaticResource SegmentHost}" Margin="0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Content="マイク(_M)" Tag="&#xE720;" GroupName="Mode" IsChecked="{Binding IsMicMode}" Style="{StaticResource Segment}" />
+                            <RadioButton Content="PC 内部音声(_I)" Tag="&#xE767;" GroupName="Mode" IsChecked="{Binding IsLoopbackMode}" Style="{StaticResource Segment}" />
+                            <RadioButton Content="両方(_B)" Tag="&#xE8F2;" GroupName="Mode" IsChecked="{Binding IsBothMode}" Style="{StaticResource Segment}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Label Grid.Row="2" Grid.Column="0" Content="マイク(_C)" Target="{Binding ElementName=MicBox}" VerticalAlignment="Center" Padding="0"
+                           Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
+                    <ComboBox x:Name="MicBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,4" ItemsSource="{Binding MicDevices}"
+                              SelectedItem="{Binding SelectedMic}" DisplayMemberPath="Name" AutomationProperties.Name="マイクのデバイス"
+                              Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
+                    <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,2,0,8" IsChecked="{Binding UseRawMic}"
+                              Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}"
+                              Content="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）" />
+
+                    <Label Grid.Row="4" Grid.Column="0" Content="出力先(_O)" Target="{Binding ElementName=LoopbackBox}" VerticalAlignment="Center" Padding="0"
+                           Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
+                    <ComboBox x:Name="LoopbackBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,4" ItemsSource="{Binding LoopbackDevices}"
+                              SelectedItem="{Binding SelectedLoopback}" DisplayMemberPath="Name" AutomationProperties.Name="PC 内部音声の出力先"
+                              Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding LoopbackNotice}" Margin="0,4,0,0" Style="{StaticResource Note}"
+                               Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+                <Button Content="デバイス一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ActionButton}"
+                        HorizontalAlignment="Left" Margin="0,16,0,0" />
             </StackPanel>
-        </StackPanel>
-    </Grid>
+        </Border>
+    </StackPanel>
 </UserControl>

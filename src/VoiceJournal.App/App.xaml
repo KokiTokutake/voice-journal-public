@@ -3,25 +3,198 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ThemeMode="System"
              ShutdownMode="OnMainWindowClose">
-    <!-- ThemeMode="System": Fluent theme following the Windows light/dark setting (detail spec 18.1). -->
+    <!-- ThemeMode="System": Fluent theme following the Windows light/dark setting (detail spec 18.1).
+         Colors come from the Fluent resources (DynamicResource) so both themes work; only the record red is fixed. -->
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+        <SolidColorBrush x:Key="RecordBrush" Color="#E5484D" />
+        <SolidColorBrush x:Key="RecordHoverBrush" Color="#F2555A" />
+        <SolidColorBrush x:Key="RecordPressedBrush" Color="#C93A3F" />
+        <SolidColorBrush x:Key="RecordSoftBrush" Color="#33E5484D" />
+        <SolidColorBrush x:Key="CautionBorderBrush" Color="#D29922" />
+
+        <!-- Text -->
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="0,0,12,0" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
-
         <Style x:Key="Note" TargetType="TextBlock">
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="Icon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
+        <!-- Card: grouped content on the window background -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="20" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <!-- Top navigation: text tabs with an accent underline -->
+        <Style x:Key="NavTab" TargetType="TabItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Grid Background="Transparent" Margin="0,0,4,0">
+                            <Border x:Name="Hover" CornerRadius="6" Margin="0,4,0,6" />
+                            <ContentPresenter ContentSource="Header" Margin="14,8,14,12" RecognizesAccessKey="True" />
+                            <Border x:Name="Underline" Height="3" CornerRadius="1.5" Width="24" VerticalAlignment="Bottom"
+                                    Background="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Hidden" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Underline" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Hover" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The big round record / stop button. Its DataContext is the RecordingViewModel. -->
+        <Style x:Key="RecordButton" TargetType="Button">
+            <Setter Property="Width" Value="104" />
+            <Setter Property="Height" Value="104" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse x:Name="Halo" Fill="{StaticResource RecordSoftBrush}" Opacity="0" />
+                            <Ellipse x:Name="FocusRing" StrokeThickness="2" Stroke="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Hidden" />
+                            <Ellipse x:Name="Ring" Margin="8" StrokeThickness="3" Stroke="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                     Fill="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+                            <Ellipse x:Name="Dot" Width="44" Height="44" Fill="{StaticResource RecordBrush}" />
+                            <Rectangle x:Name="Square" Width="32" Height="32" RadiusX="6" RadiusY="6" Fill="{StaticResource RecordBrush}" Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter TargetName="Dot" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="Square" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource RecordBrush}" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="Pulse">
+                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                            <DoubleAnimation Storyboard.TargetName="Halo" Storyboard.TargetProperty="Opacity" From="0.2" To="1" Duration="0:0:1" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="Pulse" />
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource RecordHoverBrush}" />
+                                <Setter TargetName="Square" Property="Fill" Value="{StaticResource RecordHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource RecordPressedBrush}" />
+                                <Setter TargetName="Square" Property="Fill" Value="{StaticResource RecordPressedBrush}" />
+                            </Trigger>
+                            <!-- Keyboard focus: a separate outer ring, so the red "recording" ring stays red -->
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Segmented choice (mode selector) -->
+        <Style x:Key="Segment" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Pill" CornerRadius="6" Padding="16,7" Margin="2" Background="Transparent">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Glyph" Text="{TemplateBinding Tag}" Style="{StaticResource Icon}" Margin="0,0,8,0" FontSize="14" />
+                                <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Pill" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="IsChecked" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Pill" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Pill" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Pill" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SegmentHost" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+
+        <!-- Buttons with an icon glyph (Tag) and text -->
         <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="Padding" Value="16,6" />
-            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource AncestorType=Button}}" Style="{StaticResource Icon}" FontSize="14" Margin="0,0,8,0" />
+                            <ContentPresenter Content="{Binding}" RecognizesAccessKey="True" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AccentActionButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+
+        <!-- Header "● REC" pill -->
+        <Style x:Key="RecPill" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource RecordBrush}" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="12,4" />
         </Style>
     </Application.Resources>
 </Application>

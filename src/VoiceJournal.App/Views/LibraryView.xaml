@@ -5,36 +5,51 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:LibraryViewModel}">
-    <DockPanel Margin="16">
-        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-            <Label Content="検索(_K)" Target="{Binding ElementName=SearchBox}" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" VerticalAlignment="Center" Margin="12,0,0,0" />
-            <Button DockPanel.Dock="Right" Content="一覧を更新(_U)" Command="{Binding RefreshCommand}" Padding="12,4" Margin="12,0,0,0" />
-            <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" MaxWidth="420" HorizontalAlignment="Left"
-                     MinWidth="260" AutomationProperties.Name="タイトル・project・日付で検索" />
+    <DockPanel Margin="24,8,24,24">
+        <!-- Search and refresh -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" VerticalAlignment="Center" Margin="12,0,0,0" Style="{StaticResource Note}" />
+            <Button DockPanel.Dock="Right" Content="一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" Margin="12,0,0,0" />
+            <Grid MaxWidth="440" HorizontalAlignment="Left" MinWidth="280">
+                <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Padding="34,6,8,6"
+                         AutomationProperties.Name="タイトル・project・日付で検索" />
+                <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </Grid>
+            <Label Content="検索(_K)" Target="{Binding ElementName=SearchBox}" Width="0" Padding="0" />
         </DockPanel>
 
-        <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-            <Button Content="フォルダーを開く(_F)" Command="{Binding OpenFolderCommand}" Style="{StaticResource ActionButton}" />
-            <Button Content="マイクを再生(_M)" Command="{Binding PlayMicCommand}" Style="{StaticResource ActionButton}" />
-            <Button Content="PC 内部音声を再生(_I)" Command="{Binding PlayLoopbackCommand}" Style="{StaticResource ActionButton}" />
-            <Button Content="再生を停止(_X)" Command="{Binding StopPlaybackCommand}" Style="{StaticResource ActionButton}" />
-            <TextBlock Text="{Binding NowPlaying}" VerticalAlignment="Center" Margin="8,0" />
-        </WrapPanel>
+        <!-- Player / actions -->
+        <Border DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="14,10" Margin="0,12,0,0">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Left">
+                    <Button Content="マイクを再生(_M)" Tag="&#xE768;" Command="{Binding PlayMicCommand}" Style="{StaticResource ActionButton}" />
+                    <Button Content="PC 内部音声を再生(_I)" Tag="&#xE768;" Command="{Binding PlayLoopbackCommand}" Style="{StaticResource ActionButton}" />
+                    <Button Content="停止(_X)" Tag="&#xE71A;" Command="{Binding StopPlaybackCommand}" Style="{StaticResource ActionButton}" />
+                    <Button Content="フォルダーを開く(_F)" Tag="&#xE838;" Command="{Binding OpenFolderCommand}" Style="{StaticResource ActionButton}" />
+                </WrapPanel>
+                <TextBlock Text="{Binding NowPlaying}" VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
+            </DockPanel>
+        </Border>
 
-        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite" />
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" />
 
-        <DataGrid ItemsSource="{Binding Sessions}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"
-                  SelectionMode="Single" HeadersVisibility="Column" CanUserAddRows="False" AutomationProperties.Name="録音の一覧">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="開始日時" Binding="{Binding StartedText}" SortMemberPath="StartedLocal" Width="140" />
-                <DataGridTextColumn Header="タイトル" Binding="{Binding TitleText}" Width="*" />
-                <DataGridTextColumn Header="project" Binding="{Binding ProjectText}" Width="140" />
-                <DataGridTextColumn Header="長さ" Binding="{Binding DurationText}" SortMemberPath="Duration" Width="80" />
-                <DataGridTextColumn Header="音源" Binding="{Binding ModeText}" Width="100" />
-                <DataGridTextColumn Header="状態" Binding="{Binding StateText}" Width="130" />
-                <DataGridTextColumn Header="欠損" Binding="{Binding LossText}" Width="110" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <!-- List -->
+        <Border Style="{StaticResource Card}" Padding="0" Margin="0">
+            <DataGrid ItemsSource="{Binding Sessions}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"
+                      SelectionMode="Single" HeadersVisibility="Column" CanUserAddRows="False" GridLinesVisibility="None"
+                      BorderThickness="0" Background="Transparent" RowHeight="40" AutomationProperties.Name="録音の一覧">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="開始日時" Binding="{Binding StartedText}" SortMemberPath="StartedLocal" Width="150" />
+                    <DataGridTextColumn Header="タイトル" Binding="{Binding TitleText}" Width="*" />
+                    <DataGridTextColumn Header="project" Binding="{Binding ProjectText}" Width="140" />
+                    <DataGridTextColumn Header="長さ" Binding="{Binding DurationText}" SortMemberPath="Duration" Width="80" />
+                    <DataGridTextColumn Header="音源" Binding="{Binding ModeText}" Width="110" />
+                    <DataGridTextColumn Header="状態" Binding="{Binding StateText}" Width="140" />
+                    <DataGridTextColumn Header="欠損" Binding="{Binding LossText}" Width="110" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
     </DockPanel>
 </UserControl>

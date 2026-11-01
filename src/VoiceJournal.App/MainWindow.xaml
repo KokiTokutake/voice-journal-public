@@ -7,19 +7,30 @@
         xmlns:views="clr-namespace:VoiceJournal.App.Views"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="Voice Journal" Icon="/Assets/VoiceJournal.ico"
-        Width="1180" Height="780" MinWidth="640" MinHeight="480"
+        Width="1180" Height="820" MinWidth="640" MinHeight="480"
         WindowStartupLocation="CenterScreen">
     <DockPanel>
-        <!-- Header: app name and the always-visible recording indicator (detail spec 18.1) -->
-        <Grid DockPanel.Dock="Top" Margin="20,12,20,0">
-            <TextBlock Text="Voice Journal" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold"
-                       Foreground="#D13438" Text="{Binding IndicatorText}"
-                       AutomationProperties.Name="録音インジケーター" AutomationProperties.LiveSetting="Polite" />
+        <!-- Header: app name, navigation and the always-visible recording indicator (detail spec 18.1) -->
+        <Grid DockPanel.Dock="Top" Margin="24,14,24,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="/Assets/VoiceJournal-256.png" Width="28" Height="28" Margin="0,0,10,0" />
+                <TextBlock Text="Voice Journal" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+            <Border Grid.Column="2" Style="{StaticResource RecPill}" VerticalAlignment="Center"
+                    Visibility="{Binding IsRecordingActive, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding IndicatorText}" Foreground="White" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
+                           AutomationProperties.Name="録音インジケーター" AutomationProperties.LiveSetting="Polite" />
+            </Border>
         </Grid>
-        <TextBlock DockPanel.Dock="Top" Margin="20,4,20,0" Text="{Binding StartupMessage}" Opacity="0.8" />
+        <TextBlock DockPanel.Dock="Top" Margin="24,4,24,0" Text="{Binding StartupMessage}" Style="{StaticResource Note}" />
 
-        <TabControl Margin="12,8,12,12" SelectedIndex="{Binding SelectedPageIndex}">
+        <TabControl Margin="12,6,12,0" SelectedIndex="{Binding SelectedPageIndex}" BorderThickness="0" Background="Transparent" Padding="0"
+                    ItemContainerStyle="{StaticResource NavTab}">
             <TabItem Header="録音(_R)">
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                     <views:RecordingView DataContext="{Binding Recording}" />
@@ -29,13 +40,13 @@
                 <views:LibraryView DataContext="{Binding Library}" />
             </TabItem>
             <TabItem Header="管理(_G)">
-                <TextBlock Margin="24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
+                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
             </TabItem>
             <TabItem Header="処理状況(_J)">
-                <TextBlock Margin="24" Style="{StaticResource Note}" Text="文字起こし・記録生成の処理状況は Phase C 以降で実装します。" />
+                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="文字起こし・記録生成の処理状況は Phase C 以降で実装します。" />
             </TabItem>
             <TabItem Header="設定(_Z)">
-                <TextBlock Margin="24" Style="{StaticResource Note}" Text="設定画面は後のフェーズで実装します。保存先は %LOCALAPPDATA%\VoiceJournal\Workspace です。" />
+                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="設定画面は後のフェーズで実装します。保存先は %LOCALAPPDATA%\VoiceJournal\Workspace です。" />
             </TabItem>
         </TabControl>
     </DockPanel>

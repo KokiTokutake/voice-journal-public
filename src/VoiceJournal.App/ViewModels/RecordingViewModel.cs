@@ -82,6 +82,12 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     /// <summary>Raised on the UI thread after a recording was saved (or failed) and indexed.</summary>
     public event EventHandler? RecordingCompleted;
 
+    /// <summary>
+    /// Raised once per recording on the UI thread, when audio first flows ("準備中" → "録音中"). The window
+    /// switches to the mini bar then (the user's choice, 2026-11-01); not on start failures or reconnects.
+    /// </summary>
+    public event EventHandler? RecordingStarted;
+
     // ---- settings (fixed while recording) -------------------------------------------------
 
     [ObservableProperty]
@@ -92,7 +98,7 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsMicMode), nameof(IsLoopbackMode), nameof(IsBothMode), nameof(NeedsMic), nameof(NeedsLoopback))]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
     public partial CaptureMode Mode { get; set; } = CaptureMode.Both;
 
     public bool IsMicMode
@@ -122,11 +128,11 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     public ObservableCollection<AudioDeviceInfo> LoopbackDevices { get; } = [];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
     public partial AudioDeviceInfo? SelectedMic { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
     public partial AudioDeviceInfo? SelectedLoopback { get; set; }
 
     /// <summary>Raw capture (no noise suppression / AGC) is the default (Phase A: half the CER).</summary>
@@ -140,11 +146,23 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     // ---- live state ------------------------------------------------------------------------
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsActive), nameof(CanEditSettings), nameof(IndicatorText))]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(ShortStatusText), nameof(IsActive), nameof(CanEditSettings), nameof(IndicatorText), nameof(ToggleLabel))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(ToggleCommand))]
     public partial RecorderStatus Status { get; set; } = RecorderStatus.Idle;
 
     public string StatusText => UserMessages.StatusText(Status);
+
+    /// <summary>One or two words for the mini bar.</summary>
+    public string ShortStatusText => Status switch
+    {
+        RecorderStatus.Preparing => "準備中",
+        RecorderStatus.Recording => "録音中",
+        RecorderStatus.PartiallyStopped => "一部の音源が停止中",
+        RecorderStatus.Stopping => "保存中…",
+        RecorderStatus.Saved => "保存しました",
+        RecorderStatus.Failed => "録音できませんでした",
+        _ => string.Empty,
+    };
 
     /// <summary>A recording exists (preparing, recording, partially stopped or stopping).</summary>
     public bool IsActive => Status is RecorderStatus.Preparing or RecorderStatus.Recording or RecorderStatus.PartiallyStopped or RecorderStatus.Stopping;
@@ -166,6 +184,10 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
         RecorderStatus.Stopping => "● 保存中",
         _ => string.Empty,
     };
+
+    /// <summary>Incremented on every meter update, so the level history scrolls even through silence.</summary>
+    [ObservableProperty]
+    public partial long MeterTick { get; set; }
 
     [ObservableProperty]
     public partial double MicLevel { get; set; }
@@ -251,6 +273,15 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     }
 
     private bool CanStop() => IsActive && Status != RecorderStatus.Stopping;
+
+    private bool CanToggle() => IsActive ? CanStop() : CanStart();
+
+    /// <summary>The big record button: starts when idle, stops and saves while recording.</summary>
+    [RelayCommand(CanExecute = nameof(CanToggle))]
+    private Task ToggleAsync() => IsActive ? StopAsync() : StartAsync();
+
+    /// <summary>Name of the big button for screen readers and its tooltip.</summary>
+    public string ToggleLabel => IsActive ? "停止して保存" : "録音開始";
 
     /// <summary>Stops, finalizes and indexes the recording. Safe to call more than once.</summary>
     [RelayCommand(CanExecute = nameof(CanStop))]
@@ -379,6 +410,7 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
         {
             Status = RecorderStatus.Recording;
             _lastMicSound = Elapsed; // silence is counted from when audio started to flow
+            RecordingStarted?.Invoke(this, EventArgs.Empty);
         }
 
         if (NeedsMic)
@@ -399,6 +431,7 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
             LoopbackLevel = ToMeter(peak);
             LoopbackLevelText = LevelText(peak);
         }
+        MeterTick++;
         if (_time.GetElapsedTime(_lastFreeSpaceCheck) >= FreeSpaceInterval)
         {
             _lastFreeSpaceCheck = _time.GetTimestamp();

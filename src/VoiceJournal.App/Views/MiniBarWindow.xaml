@@ -1,0 +1,55 @@
+<Window x:Class="VoiceJournal.App.Views.MiniBarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
+        xmlns:controls="clr-namespace:VoiceJournal.App.Controls"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:RecordingViewModel}"
+        Title="Voice Journal - 録音中" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ResizeMode="NoResize" SizeToContent="WidthAndHeight" Topmost="True" ShowInTaskbar="False" ShowActivated="False"
+        AutomationProperties.Name="録音ミニバー">
+    <!-- Shown only while recording and the main window is minimized. Drag anywhere to move; double-click to restore. -->
+    <Border Margin="12" CornerRadius="14" Padding="14,8,8,8" BorderThickness="1"
+            Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            MouseLeftButtonDown="OnDragArea">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.3" />
+        </Border.Effect>
+        <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="Dot" Width="12" Height="12" Fill="{StaticResource RecordBrush}" VerticalAlignment="Center" Margin="0,0,10,0">
+                <Ellipse.Triggers>
+                    <EventTrigger RoutedEvent="Loaded">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.3" Duration="0:0:0.9" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Ellipse.Triggers>
+            </Ellipse>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,14,0" MinWidth="96">
+                <TextBlock Text="{Binding ElapsedText}" FontSize="18" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
+                           AutomationProperties.Name="経過時間" />
+                <TextBlock Text="{Binding ShortStatusText}" FontSize="11" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
+                <controls:LevelHistory Width="96" Height="14" BarCount="24" Level="{Binding MicLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"
+                                       BarBrush="{DynamicResource AccentFillColorDefaultBrush}" HotBrush="{StaticResource RecordBrush}"
+                                       IdleBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,0,0,3"
+                                       Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" AutomationProperties.Name="マイクのレベル" />
+                <controls:LevelHistory Width="96" Height="14" BarCount="24" Level="{Binding LoopbackLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"
+                                       BarBrush="{DynamicResource AccentFillColorDefaultBrush}" HotBrush="{StaticResource RecordBrush}"
+                                       IdleBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                       Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" AutomationProperties.Name="PC 内部音声のレベル" />
+            </StackPanel>
+            <Button Command="{Binding StopCommand}" Width="36" Height="36" Padding="0" Margin="0,0,4,0" ToolTip="停止して保存"
+                    AutomationProperties.Name="停止して保存">
+                <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="{StaticResource RecordBrush}" />
+            </Button>
+            <Button Click="OnRestore" Width="36" Height="36" Padding="0" ToolTip="ウィンドウを元に戻す" AutomationProperties.Name="ウィンドウを元に戻す">
+                <TextBlock Text="&#xE740;" Style="{StaticResource Icon}" FontSize="14" />
+            </Button>
+        </StackPanel>
+    </Border>
+</Window>
