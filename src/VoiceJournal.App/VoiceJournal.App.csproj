@@ -6,7 +6,18 @@
     <UseWPF>true</UseWPF>
     <!-- Regenerate with scripts/New-AppIcon.ps1 -->
     <ApplicationIcon>Assets\VoiceJournal.ico</ApplicationIcon>
+    <!-- WPF0001: Application.ThemeMode (Fluent, follows the Windows light/dark setting) is marked experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VoiceJournal.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Assets\VoiceJournal.ico" />

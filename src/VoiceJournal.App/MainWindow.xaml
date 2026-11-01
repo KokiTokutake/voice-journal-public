@@ -3,11 +3,40 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:VoiceJournal.App"
-        mc:Ignorable="d"
+        xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
+        xmlns:views="clr-namespace:VoiceJournal.App.Views"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="Voice Journal" Icon="/Assets/VoiceJournal.ico"
-        Height="720" Width="1100" MinHeight="480" MinWidth="640">
-    <Grid>
+        Width="1180" Height="780" MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel>
+        <!-- Header: app name and the always-visible recording indicator (detail spec 18.1) -->
+        <Grid DockPanel.Dock="Top" Margin="20,12,20,0">
+            <TextBlock Text="Voice Journal" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold"
+                       Foreground="#D13438" Text="{Binding IndicatorText}"
+                       AutomationProperties.Name="録音インジケーター" AutomationProperties.LiveSetting="Polite" />
+        </Grid>
+        <TextBlock DockPanel.Dock="Top" Margin="20,4,20,0" Text="{Binding StartupMessage}" Opacity="0.8" />
 
-    </Grid>
+        <TabControl Margin="12,8,12,12" SelectedIndex="{Binding SelectedPageIndex}">
+            <TabItem Header="録音(_R)">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <views:RecordingView DataContext="{Binding Recording}" />
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="ライブラリ(_L)">
+                <views:LibraryView DataContext="{Binding Library}" />
+            </TabItem>
+            <TabItem Header="管理(_G)">
+                <TextBlock Margin="24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
+            </TabItem>
+            <TabItem Header="処理状況(_J)">
+                <TextBlock Margin="24" Style="{StaticResource Note}" Text="文字起こし・記録生成の処理状況は Phase C 以降で実装します。" />
+            </TabItem>
+            <TabItem Header="設定(_Z)">
+                <TextBlock Margin="24" Style="{StaticResource Note}" Text="設定画面は後のフェーズで実装します。保存先は %LOCALAPPDATA%\VoiceJournal\Workspace です。" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
 </Window>

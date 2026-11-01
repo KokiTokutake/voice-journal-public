@@ -515,11 +515,19 @@ public sealed class RecordingSessionTests : IDisposable
     {
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
+            if (file.EndsWith(".tmp", StringComparison.Ordinal)) continue; // a write in flight; recovery ignores these too
             var dest = Path.Combine(target, Path.GetRelativePath(source, file));
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var output = File.Create(dest);
-            input.CopyTo(output);
+            try
+            {
+                using var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var output = File.Create(dest);
+                input.CopyTo(output);
+            }
+            catch (FileNotFoundException)
+            {
+                // replaced between listing and opening
+            }
         }
         return target;
     }

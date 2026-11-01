@@ -20,14 +20,14 @@ public sealed class RecordingWarningEventArgs(RecordingWarningKind kind, AudioSo
     public Exception? Error { get; } = error;
 }
 
+/// <summary>One track as seen from outside the session.</summary>
+public sealed record TrackStatus(AudioSource Source, string DeviceId, string DeviceName, TrackState State);
+
 /// <summary>
 /// One recording session (detail spec 6, 7): creates the session folder and manifest, runs one
 /// <see cref="TrackRecorder"/> per source, and applies the start/stop/failure rules.
 /// The manifest is the only shared mutable state and is updated under a lock and saved atomically.
 /// </summary>
-/// <summary>One track as seen from outside the session.</summary>
-public sealed record TrackStatus(AudioSource Source, string DeviceId, string DeviceName, TrackState State);
-
 public sealed class RecordingSession : IAsyncDisposable
 {
     private readonly object _gate = new();
@@ -226,6 +226,32 @@ public sealed class RecordingSession : IAsyncDisposable
     /// Normal stop: stop capturing → drain queues → finalize chunks → save manifest → Finalized.
     /// Repeated calls return the same task (detail spec 6.2).
     /// </summary>
+    /// <summary>Time since <see cref="Start"/> on the monotonic clock (zero before it).</summary>
+    public TimeSpan Elapsed
+    {
+        get
+        {
+            lock (_gate) return _started && _originTimestamp != 0 ? _time.GetElapsedTime(_originTimestamp) : TimeSpan.Zero;
+        }
+    }
+
+    /// <summary>
+    /// Records why the recording ends early (e.g. <c>system_suspend</c>) as an Interrupted event on every
+    /// track, before <see cref="StopAsync"/>. The session still finalizes normally.
+    /// </summary>
+    public void MarkInterruption(string reason)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(reason);
+        lock (_gate)
+        {
+            if (!_started || _stopTask is not null) return;
+            var ms = (long)_time.GetElapsedTime(_originTimestamp).TotalMilliseconds;
+            foreach (var track in Manifest.Tracks)
+                track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.Interrupted, StartMs = ms, Detail = reason });
+            TrySaveLocked();
+        }
+    }
+
     public Task StopAsync()
     {
         lock (_gate)

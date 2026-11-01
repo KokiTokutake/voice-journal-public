@@ -32,6 +32,8 @@
 |---|---|---|
 | NAudio | 3.3.0 | **3.x では `WasapiCapture` / `WasapiLoopbackCapture` が非推奨**。後継は `WasapiRecorderBuilder` → `WasapiRecorder`（パケットごとに無音・不連続フラグとデバイス位置を受け取れる、`WithRawMode()` でシステムの音声処理を回避できる）。`ISampleProvider.Read` は `Span<float>` 版。詳細仕様書は 2.x の資料を参照しているので、Phase B は 3.x の API で設計する |
 | Microsoft.Data.Sqlite | 10.0.14 | SQLitePCLRaw 2.1.13 / エンジン **3.53.3**。FTS5 trigram で日本語部分一致を確認済み（`SqliteCapabilityTests`）。WAL まわりは `SqliteWalTests` で確認済み（下記） |
+| CommunityToolkit.Mvvm | 8.4.2 | ViewModel の通知プロパティ・コマンドの生成（MIT、Phase B5 で追加）。部分プロパティ（`[ObservableProperty] public partial ...`）で使う |
+| Microsoft.Extensions.DependencyInjection | 10.0.14 | App でのサービスの組み立て（MIT、Phase B5 で追加）。`Microsoft.Data.Sqlite` と同じ 10.0.14 の保守リリースにそろえた。破棄時に `IAsyncDisposable` だけのサービスがあると同期の `Dispose` が例外になるため、App のサービスは `IDisposable` を実装する |
 
 SQLite の WAL まわりの確認結果（詳細仕様書 14.2 / 15、`SqliteWalTests`、%TEMP% 上のローカル NTFS のファイル DB）:
 

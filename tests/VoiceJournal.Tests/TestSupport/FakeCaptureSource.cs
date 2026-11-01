@@ -8,7 +8,7 @@ public sealed class FakeCaptureSource(AudioSource source, AudioFormatInfo format
 {
     public AudioSource Source { get; } = source;
 
-    public string DeviceId { get; } = $"{{fake}}.{{{Guid.NewGuid()}}}";
+    public string DeviceId { get; init; } = $"{{fake}}.{{{Guid.NewGuid()}}}";
 
     public string DeviceName { get; } = deviceName;
 

@@ -4,7 +4,9 @@
   </PropertyGroup>
   <!-- Versions are pinned here only. Record changes in docs/environment-lock.md. -->
   <ItemGroup Label="Runtime">
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="Corvus.Json.Validator" Version="5.7.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageVersion Include="NAudio" Version="3.3.0" />
   </ItemGroup>

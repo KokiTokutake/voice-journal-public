@@ -1,23 +1,51 @@
-﻿using System.Text;
+﻿using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using System.Windows.Threading;
+using VoiceJournal.App.ViewModels;
 
 namespace VoiceJournal.App;
 
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
 public partial class MainWindow : Window
 {
-    public MainWindow()
+    private readonly MainViewModel _viewModel;
+    private bool _closeConfirmed;
+    private bool _asking;
+
+    public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
+        _viewModel = viewModel;
+        DataContext = viewModel;
+    }
+
+    // While recording, ask "停止して保存" / "戻る" (detail spec 18.1); the window closes only after the
+    // recording is saved. When idle it closes right away.
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (_closeConfirmed || !_viewModel.IsRecordingActive)
+        {
+            base.OnClosing(e);
+            return;
+        }
+        e.Cancel = true;
+        if (_asking) return;
+        _asking = true;
+        // Close() must not be called from inside Closing: ask and close after this event has returned.
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(async () =>
+        {
+            try
+            {
+                if (await _viewModel.ConfirmCloseAsync())
+                {
+                    _closeConfirmed = true;
+                    Close();
+                }
+            }
+            finally
+            {
+                _asking = false;
+            }
+        }));
     }
 }
