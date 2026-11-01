@@ -5,4 +5,9 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Test seams (writer gate) are internal. -->
+    <InternalsVisibleTo Include="VoiceJournal.Tests" />
+  </ItemGroup>
+
 </Project>

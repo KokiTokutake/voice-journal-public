@@ -70,5 +70,9 @@ public enum AudioEventKind
     /// <summary>A partial chunk was recovered into a separate WAV at startup.</summary>
     Recovered,
     DiskSpaceLow,
+    /// <summary>Writing a chunk failed (I/O error); the track stopped and earlier chunks were kept.</summary>
+    WriteFailed,
+    /// <summary>The device flagged a discontinuity; nothing was inserted.</summary>
+    Discontinuity,
     ClockCorrection,
 }
