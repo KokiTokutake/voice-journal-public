@@ -33,7 +33,7 @@ public sealed record ChunkSidecar
     {
         try
         {
-            return File.Exists(path) ? JsonSerializer.Deserialize<ChunkSidecar>(File.ReadAllBytes(path), VoiceJournalJson.Options) : null;
+            return File.Exists(path) ? JsonSerializer.Deserialize<ChunkSidecar>(AtomicFile.ReadAllBytes(path), VoiceJournalJson.Options) : null;
         }
         catch (JsonException) { return null; }
         catch (IOException) { return null; }

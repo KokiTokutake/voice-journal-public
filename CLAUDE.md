@@ -36,4 +36,6 @@ dotnet test VoiceJournal.slnx
 
 - `.ps1` は日本語を含むため **BOM 付き UTF-8** で保存する（PowerShell 5.1 対策）
 - 音声・モデル・DB（`*.wav` `*.bin` `*.gguf` `*.db`）はコミットしない
+- DB（`Workspace\db\voicejournal.db`）は索引にすぎない。正本は各セッションの `manifest.json` と音声ファイルで、`SessionIndex.Rebuild()` で作り直せる。スキーマ変更は `Infrastructure/Storage/Migrations.cs` に新しい版を追加し、公開済みの SQL は書き換えない（ハッシュで検査している）
+- Windows では、開かれているファイルへの置き換え（`File.Move` の上書き）は相手が削除共有を指定していても失敗する。録音中の `manifest.json` やサイドカーを同じプロセスから読まない（`RecordingSession.SnapshotManifestJson()` を使う）。どうしても読むときは `AtomicFile.ReadAllBytes` で短時間だけ開く
 - 現在のフェーズ: **Phase A（環境固定・技術検証）は完了条件を満たした**（`docs/environment-lock.md` 10 章）。次は **Phase B（録音・保存）**。詳細仕様書 23 章の順に進める

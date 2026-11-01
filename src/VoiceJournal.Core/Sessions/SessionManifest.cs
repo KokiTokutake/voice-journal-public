@@ -46,16 +46,23 @@ public sealed class SessionManifest
         foreach (var track in Tracks)
             foreach (var chunk in track.Chunks)
                 SessionPaths.EnsureSafeRelativePath(chunk.File);
-        AtomicFile.WriteAllBytes(PathIn(sessionDirectory), JsonSerializer.SerializeToUtf8Bytes(this, VoiceJournalJson.Options));
+        AtomicFile.WriteAllBytes(PathIn(sessionDirectory), ToJsonBytes());
     }
 
+    /// <summary>The exact bytes <see cref="Save"/> writes.</summary>
+    public byte[] ToJsonBytes() => JsonSerializer.SerializeToUtf8Bytes(this, VoiceJournalJson.Options);
+
     /// <exception cref="InvalidDataException">The manifest is missing required data or has an unknown schema version.</exception>
-    public static SessionManifest Load(string sessionDirectory)
+    public static SessionManifest Load(string sessionDirectory) => Parse(AtomicFile.ReadAllBytes(PathIn(sessionDirectory)), sessionDirectory);
+
+    /// <summary>Parses manifest bytes already read (e.g. to hash exactly what was parsed).</summary>
+    /// <exception cref="InvalidDataException">The manifest is missing required data or has an unknown schema version.</exception>
+    public static SessionManifest Parse(ReadOnlySpan<byte> json, string sessionDirectory)
     {
         SessionManifest? manifest;
         try
         {
-            manifest = JsonSerializer.Deserialize<SessionManifest>(File.ReadAllBytes(PathIn(sessionDirectory)), VoiceJournalJson.Options);
+            manifest = JsonSerializer.Deserialize<SessionManifest>(json, VoiceJournalJson.Options);
         }
         catch (JsonException ex)
         {

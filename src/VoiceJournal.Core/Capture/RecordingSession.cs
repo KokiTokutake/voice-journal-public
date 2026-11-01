@@ -76,6 +76,15 @@ public sealed class RecordingSession : IAsyncDisposable
     }
 
     /// <summary>Raised in order on the thread that changed the state. Handlers must return quickly.</summary>
+    /// <summary>
+    /// The manifest as it is saved, serialized under the session lock. Lets in-process readers (the DB index)
+    /// avoid opening manifest.json while the writer replaces it.
+    /// </summary>
+    public byte[] SnapshotManifestJson()
+    {
+        lock (_gate) return Manifest.ToJsonBytes();
+    }
+
     /// <summary>Snapshot of every track (device and state) for display and for choosing what to reconnect.</summary>
     public IReadOnlyList<TrackStatus> GetTracks()
     {
@@ -83,6 +92,13 @@ public sealed class RecordingSession : IAsyncDisposable
     }
 
     public event EventHandler<CaptureState>? StateChanged;
+
+    /// <summary>
+    /// Raised after every manifest save (chunk started or completed, event recorded, state changed), under
+    /// the session lock and possibly on the writer thread. Handlers must only signal: the DB index is
+    /// updated from another thread by re-reading manifest.json (detail spec 6.2: no DB on the audio path).
+    /// </summary>
+    public event EventHandler? ManifestSaved;
 
     public event EventHandler<RecordingWarningEventArgs>? Warning;
 
@@ -247,7 +263,7 @@ public sealed class RecordingSession : IAsyncDisposable
             if (Manifest.CaptureState == CaptureState.Partial && Manifest.Tracks.All(t => t.State == TrackState.Recording))
                 SetStateLocked(CaptureState.Recording);
             else
-                Manifest.Save(Directory);
+                SaveLocked();
         }
     }
 
@@ -264,7 +280,7 @@ public sealed class RecordingSession : IAsyncDisposable
         lock (_gate)
         {
             change();
-            Manifest.Save(Directory);
+            SaveLocked();
         }
     }
 
@@ -284,7 +300,7 @@ public sealed class RecordingSession : IAsyncDisposable
             var position = (long)(_time.GetElapsedTime(_originTimestamp).TotalSeconds * 1000);
             recorder.Track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.DeviceDisconnected, StartMs = position, Detail = error is AudioDeviceException d ? d.Kind.ToString() : error.GetType().Name });
             if (Manifest.CaptureState == CaptureState.Recording) SetStateLocked(CaptureState.Partial);
-            else Manifest.Save(Directory);
+            else SaveLocked();
         }
         Warning?.Invoke(this, new RecordingWarningEventArgs(RecordingWarningKind.DeviceLost, recorder.Source, error));
     }
@@ -351,15 +367,21 @@ public sealed class RecordingSession : IAsyncDisposable
     private void SetStateLocked(CaptureState state)
     {
         Manifest.CaptureState = CaptureStateMachine.Transition(Manifest.CaptureState, state);
-        Manifest.Save(Directory);
+        SaveLocked();
         // Raised in order, under the lock. Handlers must not block (the UI should marshal to its dispatcher).
         StateChanged?.Invoke(this, state);
     }
 
     private void TrySaveLocked()
     {
-        try { Manifest.Save(Directory); }
+        try { SaveLocked(); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
+    }
+
+    private void SaveLocked()
+    {
+        Manifest.Save(Directory);
+        ManifestSaved?.Invoke(this, EventArgs.Empty);
     }
 }
