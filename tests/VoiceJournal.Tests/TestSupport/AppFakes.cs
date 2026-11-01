@@ -142,10 +142,11 @@ public sealed class FakePlayer : IAudioPlayer
 
     public event EventHandler<PlaybackEndedEventArgs>? Ended;
 
-    public void Play(IReadOnlyList<string> wavFiles)
+    public string Play(IReadOnlyList<string> wavFiles)
     {
         LastPlayed = wavFiles;
         IsPlaying = true;
+        return "テスト用スピーカー";
     }
 
     public void StopPlayback()

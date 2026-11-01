@@ -79,6 +79,7 @@ public sealed class LibraryAndStartupTests : IDisposable
         Assert.Equal(3, _player.LastPlayed!.Count); // 30 s chunks: 3 files in order
         Assert.All(_player.LastPlayed, f => Assert.Contains($"{Path.DirectorySeparatorChar}mic{Path.DirectorySeparatorChar}", f, StringComparison.Ordinal));
         Assert.Contains("再生テスト", _library.NowPlaying, StringComparison.Ordinal);
+        Assert.EndsWith("→ 出力先: テスト用スピーカー", _library.NowPlaying, StringComparison.Ordinal); // where the sound goes
 
         _library.StopPlaybackCommand.Execute(null);
         _ui.Drain();

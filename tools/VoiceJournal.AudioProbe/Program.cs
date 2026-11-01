@@ -40,6 +40,8 @@ internal static class Program
                 "record" when args.Length >= 4 => Record(args),
                 "positions" when args.Length >= 3 => Positions(args),
                 "session" when args.Length >= 3 => SessionCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
+                "play" when args.Length >= 2 => PlayCommand.Run(args, JsonOptions),
+                "listen" when args.Length >= 2 => PlayCommand.Listen(args, JsonOptions),
                 _ => Usage(),
             };
         }

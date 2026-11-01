@@ -6,7 +6,8 @@ public interface IAudioPlayer : IDisposable
     bool IsPlaying { get; }
 
     /// <summary>Stops whatever is playing and starts the given WAV files in order.</summary>
-    void Play(IReadOnlyList<string> wavFiles);
+    /// <returns>The name of the output device the sound goes to (the Windows default at this moment).</returns>
+    string Play(IReadOnlyList<string> wavFiles);
 
     void StopPlayback();
 

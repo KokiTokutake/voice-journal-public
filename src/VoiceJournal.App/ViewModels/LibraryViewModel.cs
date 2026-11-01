@@ -183,9 +183,9 @@ public sealed partial class LibraryViewModel : ObservableObject
                 Message = $"{UserMessages.SourceName(source)}の再生できる音声がありません。";
                 return;
             }
-            _player.Play(files);
+            var device = _player.Play(files);
             IsPlaying = true;
-            NowPlaying = $"再生中: {row.StartedText} {row.TitleText}（{UserMessages.SourceName(source)}）";
+            NowPlaying = $"再生中: {row.StartedText} {row.TitleText}（{UserMessages.SourceName(source)}）→ 出力先: {device}";
             Message = null;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or FormatException)
