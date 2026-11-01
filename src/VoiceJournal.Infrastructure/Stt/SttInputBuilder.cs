@@ -33,14 +33,43 @@ public sealed class SttInputBuilder : ISttInputBuilder
     private const double PeakPercentile = 0.9999;
     private const int BlockSamples = 16_000;
 
-    public Task<SttInput> BuildAsync(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken)
+    public Task<SttInput> BuildAsync(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken, SttPauseGate? pause = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
         ArgumentNullException.ThrowIfNull(configuration);
-        return Task.Run(() => Build(Path.GetFullPath(sessionDirectory), configuration, progress, cancellationToken), cancellationToken);
+        return Task.Run(() => Build(Path.GetFullPath(sessionDirectory), configuration, progress, pause, cancellationToken), cancellationToken);
     }
 
-    private static SttInput Build(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken)
+    public Task ExtractAsync(SttInput input, AudioSource source, TimeRange range, string outputPath, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(range);
+        ArgumentException.ThrowIfNullOrEmpty(outputPath);
+        var piece = input.Pieces.Where(p => p.Source == source && p.Piece.StartMs <= range.StartMs && range.EndMs <= p.Piece.EndMs)
+            .OrderBy(p => p.Piece.Index).FirstOrDefault()
+            ?? throw new ArgumentException("The range does not lie within one piece of that source.", nameof(range));
+        return Task.Run(() =>
+        {
+            using var reader = new WaveFileReader(piece.Path);
+            var offset = (range.StartMs - piece.Piece.StartMs) * SampleRate / 1000 * 2;
+            var length = (int)(range.DurationMs * SampleRate / 1000 * 2);
+            reader.Position = offset;
+            var bytes = new byte[length];
+            var read = 0;
+            while (read < length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var n = reader.Read(bytes, read, length - read);
+                if (n == 0) break;
+                read += n;
+            }
+            var temp = outputPath + ".tmp";
+            using (var writer = new WaveFileWriter(temp, new WaveFormat(SampleRate, 16, 1))) writer.Write(bytes, 0, read);
+            File.Move(temp, outputPath, overwrite: true);
+        }, cancellationToken);
+    }
+
+    private static SttInput Build(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, SttPauseGate? pause, CancellationToken cancellationToken)
     {
         var manifest = SessionManifest.Load(sessionDirectory);
         var tracks = manifest.Tracks.Where(t => UsableChunks(t).Any()).OrderBy(t => t.Source).ToList();
@@ -78,7 +107,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
                 var levels = new List<sbyte>();
                 double windowEnergy = 0;
                 var windowCount = 0;
-                foreach (var block in Mono16k(sessionDirectory, track, totalSamples, cancellationToken))
+                foreach (var block in Mono16k(sessionDirectory, track, totalSamples, pause, cancellationToken))
                 {
                     foreach (var x in block)
                     {
@@ -103,7 +132,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
 
                 // Pass 2: write the pieces with the gain.
                 var gain = (float)Math.Pow(10, gainDb / 20);
-                var pieces = WritePieces(sessionDirectory, track, totalSamples, plan, gain, building, Advance, cancellationToken);
+                var pieces = WritePieces(sessionDirectory, track, totalSamples, plan, gain, building, Advance, pause, cancellationToken);
                 sources.Add(new SourceInfo
                 {
                     Source = track.Source,
@@ -167,7 +196,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
     /// The track as 16 kHz mono blocks covering exactly [0, <paramref name="totalSamples"/>): silence before the
     /// first chunk and in gaps; consecutive chunks are joined without a gap.
     /// </summary>
-    private static IEnumerable<float[]> Mono16k(string sessionDirectory, TrackManifest track, long totalSamples, CancellationToken cancellationToken)
+    private static IEnumerable<float[]> Mono16k(string sessionDirectory, TrackManifest track, long totalSamples, SttPauseGate? pause, CancellationToken cancellationToken)
     {
         long position = 0;
         foreach (var chunk in UsableChunks(track))
@@ -199,6 +228,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
             while (remaining > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                pause?.WaitWhilePaused(cancellationToken); // recording comes first
                 var read = resampled.Read(buffer.AsSpan(0, (int)Math.Min(buffer.Length, remaining)));
                 if (read == 0)
                 {
@@ -229,7 +259,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
 
     private static List<PieceInfo> WritePieces(
         string sessionDirectory, TrackManifest track, long totalSamples, IReadOnlyList<SttPiece> plan, float gain,
-        string folder, Action<long> advance, CancellationToken cancellationToken)
+        string folder, Action<long> advance, SttPauseGate? pause, CancellationToken cancellationToken)
     {
         var name = Name(track.Source);
         Directory.CreateDirectory(Path.Combine(folder, name));
@@ -239,7 +269,7 @@ public sealed class SttInputBuilder : ISttInputBuilder
         long position = 0;
         try
         {
-            foreach (var block in Mono16k(sessionDirectory, track, totalSamples, cancellationToken))
+            foreach (var block in Mono16k(sessionDirectory, track, totalSamples, pause, cancellationToken))
             {
                 var count = 0;
                 for (var i = 0; i < block.Length; i++)

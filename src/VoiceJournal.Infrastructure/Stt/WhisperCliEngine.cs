@@ -174,18 +174,33 @@ public sealed partial class WhisperCliEngine : ISttEngine
 
         var active = Stopwatch.StartNew();
         var suspended = false;
+        var preempted = false;
         var pause = request.Pause;
-        void OnPause(object? sender, EventArgs e) => suspended = ApplyPause(process, pause!.IsPaused, suspended, active);
+        var pauseGate = new Lock();
+        void OnPause(object? sender, EventArgs e)
+        {
+            lock (pauseGate)
+            {
+                if (preempted) return;
+                var (now, ok) = ApplyPause(process, pause!.IsPaused, suspended, active);
+                suspended = now;
+                if (ok) return;
+                // Could not suspend: stop the recognizer so the recording gets the CPU; the piece is redone later.
+                preempted = true;
+                Kill(process, suspended);
+            }
+        }
         if (pause is not null)
         {
             pause.Changed += OnPause;
-            suspended = ApplyPause(process, pause.IsPaused, suspended, active);
+            OnPause(null, EventArgs.Empty);
         }
         try
         {
             var exit = process.WaitForExitAsync(CancellationToken.None);
             while (!exit.IsCompleted)
             {
+                if (Volatile.Read(ref preempted)) break;
                 if (cancellationToken.IsCancellationRequested)
                 {
                     Kill(process, suspended);
@@ -203,6 +218,11 @@ public sealed partial class WhisperCliEngine : ISttEngine
         finally
         {
             if (pause is not null) pause.Changed -= OnPause;
+        }
+        if (preempted)
+        {
+            process.WaitForExit(5_000);
+            throw new SttException(SttErrorCode.Preempted, "whisper-cli could not be paused for a recording and was stopped.");
         }
         process.WaitForExit(); // flush the redirected streams
         active.Stop();
@@ -249,19 +269,15 @@ public sealed partial class WhisperCliEngine : ISttEngine
         }
     }
 
-    private static bool ApplyPause(Process process, bool pause, bool suspended, Stopwatch active)
+    /// <returns>The new suspended state, and false when suspending failed.</returns>
+    private static (bool Suspended, bool Ok) ApplyPause(Process process, bool pause, bool suspended, Stopwatch active)
     {
-        if (process.HasExited || pause == suspended) return suspended;
+        if (process.HasExited || pause == suspended) return (suspended, true);
         var status = pause ? NativeMethods.NtSuspendProcess(process.Handle) : NativeMethods.NtResumeProcess(process.Handle);
-        if (status != 0)
-        {
-            // Could not pause: the job runner falls back to cancelling and redoing this piece.
-            if (pause) throw new SttException(SttErrorCode.RunFailed, $"whisper-cli could not be paused (NTSTATUS 0x{status:X8}).");
-            return suspended;
-        }
+        if (status != 0) return (suspended, !pause);
         if (pause) active.Stop();
         else active.Start();
-        return pause;
+        return (pause, true);
     }
 
     private static void Kill(Process process, bool suspended)

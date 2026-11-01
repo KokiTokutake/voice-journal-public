@@ -1,4 +1,5 @@
 using VoiceJournal.Core.Capture;
+using VoiceJournal.Core.Transcription;
 
 namespace VoiceJournal.Core.Sessions;
 
@@ -33,7 +34,9 @@ public sealed record SessionSummary(
     CaptureState CaptureState,
     long DurationMs,
     bool HasAudioLoss,
-    string RelativePath);
+    string RelativePath,
+    ProcessingState ProcessingState = ProcessingState.None,
+    int? LatestTranscriptRevision = null);
 
 public sealed record IndexFailure(string RelativePath, string Reason);
 

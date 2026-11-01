@@ -16,6 +16,12 @@ public enum SttErrorCode
 
     /// <summary>Not enough free memory to start the recognizer.</summary>
     NotEnoughMemory,
+
+    /// <summary>Stopped to make room for a recording because pausing was not possible; the piece is redone afterwards.</summary>
+    Preempted,
+
+    /// <summary>A range re-recognition could not be applied: the same range was edited in the meantime.</summary>
+    Conflict,
 }
 
 public sealed class SttException : Exception
@@ -37,7 +43,7 @@ public sealed class SttException : Exception
 /// </summary>
 public sealed class SttPauseGate
 {
-    private readonly Lock _gate = new();
+    private readonly object _gate = new();
     private bool _paused;
 
     public event EventHandler? Changed;
@@ -51,12 +57,27 @@ public sealed class SttPauseGate
 
     public void Resume() => Set(false);
 
+    /// <summary>Blocks the calling (worker) thread while paused. Used by CPU-heavy steps that run in-process.</summary>
+    /// <exception cref="OperationCanceledException">Cancelled while waiting.</exception>
+    public void WaitWhilePaused(CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            while (_paused)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Monitor.Wait(_gate, 200);
+            }
+        }
+    }
+
     private void Set(bool paused)
     {
         lock (_gate)
         {
             if (_paused == paused) return;
             _paused = paused;
+            Monitor.PulseAll(_gate);
         }
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -138,5 +159,11 @@ public interface ISttInputBuilder
     /// Builds (or reuses, when the same input already exists and verifies) the 16 kHz pieces for every source
     /// of the session.
     /// </summary>
-    Task<SttInput> BuildAsync(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken);
+    Task<SttInput> BuildAsync(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken, SttPauseGate? pause = null);
+
+    /// <summary>
+    /// Writes [<paramref name="range"/>) of one source of <paramref name="input"/> as a separate 16 kHz WAV (for re-recognizing
+    /// a range). The range must lie within one piece.
+    /// </summary>
+    Task ExtractAsync(SttInput input, AudioSource source, TimeRange range, string outputPath, CancellationToken cancellationToken);
 }

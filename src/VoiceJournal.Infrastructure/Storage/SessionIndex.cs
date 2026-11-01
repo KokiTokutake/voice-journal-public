@@ -101,7 +101,9 @@ public sealed class SessionIndex : ISessionIndex
                              FROM audio_chunks ch JOIN audio_tracks t ON t.id = ch.track_id
                              WHERE t.session_id = s.id), 0),
                    EXISTS (SELECT 1 FROM audio_events e JOIN audio_tracks t ON t.id = e.track_id
-                           WHERE t.session_id = s.id AND e.kind IN ('queue_overflow', 'device_disconnected', 'write_failed'))
+                           WHERE t.session_id = s.id AND e.kind IN ('queue_overflow', 'device_disconnected', 'write_failed')),
+                   s.processing_state,
+                   (SELECT MAX(tr.revision) FROM transcript_revisions tr WHERE tr.session_id = s.id)
             FROM sessions s
             WHERE s.workspace_id = $ws
             ORDER BY s.started_at DESC
@@ -122,7 +124,9 @@ public sealed class SessionIndex : ISessionIndex
                 DbText.ParseEnum<CaptureState>(r.GetString(7)),
                 r.GetInt64(9),
                 r.GetBoolean(10),
-                r.GetString(8)));
+                r.GetString(8),
+                DbText.ParseEnum<VoiceJournal.Core.Transcription.ProcessingState>(r.GetString(11)),
+                r.IsDBNull(12) ? null : r.GetInt32(12)));
         }
         return list;
     });

@@ -10,7 +10,7 @@ internal sealed record Migration(int Version, string Name, string Sql)
     public string Hash { get; } = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Sql.ReplaceLineEndings("\n"))));
 }
 
-/// <summary>Schema of the workspace database (detail spec 15.2). Only the tables Phase B needs exist so far.</summary>
+/// <summary>Schema of the workspace database (detail spec 15.2). Tables are added phase by phase.</summary>
 internal static class Migrations
 {
     public static IReadOnlyList<Migration> All { get; } =
@@ -83,6 +83,56 @@ internal static class Migrations
                 UNIQUE (track_id, ordinal)
             ) STRICT;
             CREATE INDEX ix_audio_events_kind ON audio_events (kind, track_id);
+            """),
+        // Phase C: processing jobs and transcript revisions. Indexes of stt/native/*/job.json and transcripts/rev-*.
+        new(2, "jobs_and_transcripts", """
+            CREATE TABLE jobs (
+                id               TEXT    NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                session_id       TEXT    NOT NULL REFERENCES sessions (id),
+                stage            TEXT    NOT NULL CHECK (stage IN ('stt')),
+                kind             TEXT    NOT NULL CHECK (kind IN ('full', 'range')),
+                input_hash       TEXT    CHECK (input_hash IS NULL OR (length(input_hash) = 64 AND input_hash NOT GLOB '*[^0-9a-f]*')),
+                config_hash      TEXT    NOT NULL CHECK (length(config_hash) = 64 AND config_hash NOT GLOB '*[^0-9a-f]*'),
+                model_name       TEXT    NOT NULL,
+                state            TEXT    NOT NULL CHECK (state IN ('queued', 'normalizing', 'transcribing', 'transcribed', 'failed', 'cancelled')),
+                checkpoint_json  TEXT    NOT NULL CHECK (json_valid(checkpoint_json)),
+                attempt          INTEGER NOT NULL CHECK (attempt >= 0),
+                error_code       TEXT,
+                result_revision  INTEGER CHECK (result_revision IS NULL OR result_revision >= 1),
+                created_at       TEXT    NOT NULL,
+                started_at       TEXT,
+                ended_at         TEXT,
+                ledger_sha256    TEXT    NOT NULL CHECK (length(ledger_sha256) = 64)
+            ) STRICT;
+            CREATE INDEX ix_jobs_state ON jobs (state, created_at);
+            CREATE INDEX ix_jobs_session ON jobs (session_id, created_at);
+
+            CREATE TABLE transcript_revisions (
+                id               TEXT    NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                session_id       TEXT    NOT NULL REFERENCES sessions (id),
+                revision         INTEGER NOT NULL CHECK (revision >= 1),
+                parent_revision  INTEGER CHECK (parent_revision IS NULL OR parent_revision < revision),
+                raw_revision     INTEGER NOT NULL CHECK (raw_revision >= 1 AND raw_revision <= revision),
+                kind             TEXT    NOT NULL CHECK (kind IN ('raw', 'edited')),
+                source_job_id    TEXT    CHECK (source_job_id IS NULL OR length(source_job_id) = 36),
+                path             TEXT    NOT NULL,
+                sha256           TEXT    NOT NULL CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
+                created_at       TEXT    NOT NULL,
+                UNIQUE (session_id, revision)
+            ) STRICT;
+
+            CREATE TABLE segments (
+                id                      TEXT    NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                transcript_revision_id  TEXT    NOT NULL REFERENCES transcript_revisions (id),
+                stable_segment_id       TEXT    NOT NULL CHECK (length(stable_segment_id) = 36),
+                source                  TEXT    NOT NULL CHECK (source IN ('mic', 'loopback', 'import')),
+                start_ms                INTEGER NOT NULL CHECK (start_ms >= 0),
+                end_ms                  INTEGER NOT NULL CHECK (end_ms > start_ms),
+                text                    TEXT    NOT NULL,
+                flags_json              TEXT    NOT NULL CHECK (json_valid(flags_json)),
+                UNIQUE (transcript_revision_id, stable_segment_id)
+            ) STRICT;
+            CREATE INDEX ix_segments_time ON segments (transcript_revision_id, start_ms);
             """),
     ];
 }

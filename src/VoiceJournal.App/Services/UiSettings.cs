@@ -11,6 +11,9 @@ public sealed record UiSettings
     public double? MiniBarLeft { get; init; }
 
     public double? MiniBarTop { get; init; }
+
+    /// <summary>Queue transcription when a recording is saved (detail spec 18.3, on by default).</summary>
+    public bool TranscribeAfterSaving { get; init; } = true;
 }
 
 public interface IUiSettingsStore

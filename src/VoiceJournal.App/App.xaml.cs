@@ -6,8 +6,10 @@ using VoiceJournal.App.ViewModels;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Playback;
 using VoiceJournal.Core.Sessions;
+using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Audio;
 using VoiceJournal.Infrastructure.Storage;
+using VoiceJournal.Infrastructure.Stt;
 
 namespace VoiceJournal.App;
 
@@ -16,6 +18,9 @@ public partial class App : Application
 {
     // One instance per workspace: two instances would recover / record into the same folder.
     private const string SingleInstancePrefix = @"Local\VoiceJournal.SingleInstance.";
+
+    /// <summary>Tools, models and settings live here regardless of the workspace (<c>%LOCALAPPDATA%\VoiceJournal</c>).</summary>
+    private static string AppDataRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoiceJournal");
 
     private Mutex? _singleInstance;
     private ServiceProvider? _services;
@@ -63,7 +68,14 @@ public partial class App : Application
         window.Show();
 
         var index = _services.GetRequiredService<ISessionIndex>();
-        await _services.GetRequiredService<MainViewModel>().InitializeAsync(() => WorkspaceStartup.Run(workspace, index));
+        var transcription = _services.GetRequiredService<TranscriptionCoordinator>();
+        await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
+        {
+            var report = WorkspaceStartup.Run(workspace, index);
+            // After the sessions are indexed and recovered: jobs reference them.
+            transcription.Startup();
+            return report;
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -102,6 +114,14 @@ public partial class App : Application
         services.AddSingleton<IPowerService, WindowsPowerService>();
         services.AddSingleton<IShellService, ExplorerShellService>();
         services.AddSingleton<IUiSettingsStore>(new JsonUiSettingsStore(JsonUiSettingsStore.DefaultPath));
+        services.AddSingleton(_ => SttToolSettings.LoadOrCreate(AppDataRoot));
+        services.AddSingleton<ISttEngine>(sp => new WhisperCliEngine(sp.GetRequiredService<SttToolSettings>()));
+        services.AddSingleton<ISttInputBuilder, SttInputBuilder>();
+        services.AddSingleton(sp => new SttJobProcessor(sp.GetRequiredService<ISttInputBuilder>(), sp.GetRequiredService<ISttEngine>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(new TranscriptIndex(workspace, database));
+        services.AddSingleton(sp => new TranscriptionCoordinator(
+            sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<SttJobProcessor>(), sp.GetRequiredService<TranscriptIndex>(),
+            sp.GetRequiredService<IUiSettingsStore>(), () => new SttConfiguration { ModelName = "ggml-small.bin" }, sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();

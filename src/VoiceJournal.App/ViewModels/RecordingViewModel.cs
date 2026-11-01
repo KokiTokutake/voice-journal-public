@@ -150,6 +150,10 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(ToggleCommand))]
     public partial RecorderStatus Status { get; set; } = RecorderStatus.Idle;
 
+    /// <summary>"保存後に文字起こし" (detail spec 18.3). Read by the transcription coordinator when a recording is saved.</summary>
+    [ObservableProperty]
+    public partial bool TranscribeAfterSaving { get; set; } = true;
+
     public string StatusText => UserMessages.StatusText(Status);
 
     /// <summary>One or two words for the mini bar.</summary>

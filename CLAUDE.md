@@ -37,6 +37,7 @@ dotnet test VoiceJournal.slnx
 - `.ps1` は日本語を含むため **BOM 付き UTF-8** で保存する（PowerShell 5.1 対策）
 - 音声・モデル・DB（`*.wav` `*.bin` `*.gguf` `*.db`）はコミットしない
 - DB（`Workspace\db\voicejournal.db`）は索引にすぎない。正本は各セッションの `manifest.json` と音声ファイルで、`SessionIndex.Rebuild()` で作り直せる。スキーマ変更は `Infrastructure/Storage/Migrations.cs` に新しい版を追加し、公開済みの SQL は書き換えない（ハッシュで検査している）
+- 文字起こしの正本もファイル。ジョブの台帳は各セッションの `stt/native/<job-id>/job.json`、原文と修正は `transcripts/rev-NNNN/`（書き換え禁止、修正は次の番号）。DB の `jobs` / `transcript_revisions` / `segments` は `TranscriptIndex.Rebuild()` で作り直せる索引
 - Windows では、開かれているファイルへの置き換え（`File.Move` の上書き）は相手が削除共有を指定していても失敗する。録音中の `manifest.json` やサイドカーを同じプロセスから読まない（`RecordingSession.SnapshotManifestJson()` を使う）。どうしても読むときは `AtomicFile.ReadAllBytes` で短時間だけ開く
 - 現在のフェーズ: Phase A（環境固定・技術検証）は完了（`docs/environment-lock.md` 10 章）。**Phase B（録音・保存）は受入試験に合格**（`docs/phase-b-report.md`。実機 8 時間と実機スリープは未確認のリスクとして残す）。次は **Phase C（文字起こし）**。詳細仕様書 23 章の順に進める
 - 受入試験の道具: `.\scripts\Test-PhaseB.ps1 -Test AT01|AT02|AT03`（結果は `%LOCALAPPDATA%\VoiceJournal\verify\phase-b\`）
