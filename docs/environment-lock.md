@@ -78,7 +78,7 @@ JSON Schema 検証器の比較（2026-10-31）:
 | 配布元 | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin |
 | サイズ | 487,601,967 bytes |
 | SHA-256 | `1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b` |
-| 比較候補 | `ggml-medium.bin`（Phase C で CER・所要時間を比較） |
+| 比較候補 | `ggml-medium.bin`（Phase C で CER・所要時間を比較）。導入済み（12 章） |
 
 ## 6. LM Studio / LLM
 
@@ -198,3 +198,36 @@ JSON Schema 検証器の比較（2026-10-31）:
 - マイクは開始要求から最初のパケットまで 0.87 秒かかった（Phase A の通常モードでは約 1.1 秒）。UI は最初のパケットが届くまで「準備中」と表示する（B5）
 - この試験で見つけて直した点: 再接続直後の最初のパケットに付く不連続フラグを欠損として記録していた。ループバックが最後まで無音のとき時刻写像が空になっていた（無音補完は単調時計が基準なので、位置＝時計の写像を記録するようにした）
 
+
+## 12. Phase C2 文字起こしの道具（2026-11-01）
+
+### 追加したモデル
+
+| 項目 | 採用値 |
+|---|---|
+| medium モデル | `ggml-medium.bin`、1,533,763,059 bytes、SHA-256 `6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208`（配布元の LFS ハッシュと一致）。配布元 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin 。配置先 `%LOCALAPPDATA%\VoiceJournal\models\whisper\` |
+| VAD モデル | `ggml-silero-v6.2.0.bin`（Silero VAD v6.2.0 の ggml 版）、885,098 bytes、SHA-256 `2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987`（配布元と一致）。配布元 https://huggingface.co/ggml-org/whisper-vad （リポジトリ版 `9ffd54a1`）。配置先 `%LOCALAPPDATA%\VoiceJournal\models\vad\` |
+| 登録 | アプリは `%LOCALAPPDATA%\VoiceJournal\config\stt.json` に登録した実行体・モデルだけを使い、毎回 SHA-256 を照合する（`SttToolSettings`。無ければこの章と 4・5 章の値で作る） |
+
+### VAD と時刻（whisper.cpp b5454 の `--vad`）
+
+`verify\phase-c\vad-offset-test.wav`（16kHz。無音 10 秒 → TTS 19.06 秒 → 無音 20 秒 → 同じ TTS → 無音 5 秒）を small で認識した。
+
+| 条件 | 結果 |
+|---|---|
+| VAD なし | 最初の区間が 0 ms から始まる（実際の声は 10.0 秒から）。2 回しか読んでいない原稿を 3 回分出力した（無音からの幻覚） |
+| VAD あり | 最初の区間は 9,990 ms（実際は 10,000 ms）。**時刻は元の音声の時刻で返る**。繰り返しなし |
+
+- VAD ありでも、1 つの区間が無音をまたぐことがある（26.6〜52.2 秒の区間が、1 回目の終わりと 2 回目の始まりを含んでいた）。whisper は声の部分をつないで認識するため。区間の時刻は両端とも正しい
+- 方針: VAD は両方の音源で既定オン（`SttConfiguration.UseVad`）。無音をまたぐ区間の扱いは C4 の画面と C5 の評価で判断する
+
+### メモリと速度（Ryzen AI 9 HX 375、12 スレッド、VAD あり、73.1 秒の音声）
+
+| モデル | 所要時間 | 実時間比 | プロセスの最大ワーキングセット |
+|---|---|---|---|
+| small | 8.3 秒 | 0.11 | 864 MB |
+| medium | 24.5 秒 | 0.34 | 2,173 MB |
+
+- 起動前の空きメモリ確認は small 1,024 MB、medium 2,560 MB とした（`RegisteredModel.RequiredMemoryMb`）
+- 録音中の一時停止（`NtSuspendProcess`）では、このメモリを持ったまま止まる
+- 30 分の音声の見込み: small 約 3.5 分、medium 約 10 分（NFR-06 の目標は small で 30 分以内）。実音声での計測は C5
