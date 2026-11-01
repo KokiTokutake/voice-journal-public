@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="VoiceJournal.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\VoiceJournal.Core\VoiceJournal.Core.csproj" />
   </ItemGroup>
 

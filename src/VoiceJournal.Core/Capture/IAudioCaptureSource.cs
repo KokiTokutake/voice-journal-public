@@ -14,7 +14,14 @@ public enum AudioPacketStatus
 }
 
 /// <summary>Callback for captured audio. The span is only valid during the call.</summary>
-public delegate void AudioDataHandler(ReadOnlySpan<byte> data, AudioPacketStatus flags);
+/// <param name="data">Whole frames in the source's <see cref="IAudioCaptureSource.Format"/>.</param>
+/// <param name="flags">Packet flags reported by the device.</param>
+/// <param name="captureTimestamp">
+/// When the first frame of the packet was captured, in <see cref="TimeProvider.GetTimestamp"/> units of the
+/// clock the session uses (for WASAPI: the packet's QPC position converted to <see cref="System.Diagnostics.Stopwatch"/>
+/// ticks). 0 when the source cannot tell; the arrival time is used instead.
+/// </param>
+public delegate void AudioDataHandler(ReadOnlySpan<byte> data, AudioPacketStatus flags, long captureTimestamp);
 
 /// <summary>Raised once when a source stops; <see cref="Error"/> is null for a requested stop.</summary>
 public sealed class CaptureSourceStoppedEventArgs(Exception? error) : EventArgs

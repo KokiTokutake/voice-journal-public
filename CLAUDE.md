@@ -17,6 +17,7 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - STT は CPU 経路が必須。GPU（Vulkan）・NPU は Phase H の任意最適化
 - LM Studio API は `http://127.0.0.1:1234/v1` のループバックのみ。LM Studio のログにプロンプト本文を残さない（`logSensitiveData: false`）
 - 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する
+- 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
 ## コマンド
@@ -28,6 +29,7 @@ dotnet test VoiceJournal.slnx
 .\scripts\Test-Environment.ps1        # Stage A の疎通確認（whisper → LM Studio）
 .\scripts\Test-AudioSource.ps1 -Source loopback      # システム音声の録音試験（TTS を再生しながら録音）
 .\scripts\Test-AudioSource.ps1 -Source mic [-Raw]    # マイクの録音試験（原稿を読み上げる。利用者が自分の端末で実行）
+.\scripts\Test-Recording.ps1                        # 本番の録音パイプラインでの実機確認（マイク計測・両方モード・USB 抜き差し。利用者が実行）
 ```
 
 ## 注意

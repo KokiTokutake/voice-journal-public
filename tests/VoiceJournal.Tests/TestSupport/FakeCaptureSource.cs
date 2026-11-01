@@ -38,9 +38,9 @@ public sealed class FakeCaptureSource(AudioSource source, AudioFormatInfo format
     /// <summary>Called after every pushed packet (tests use it to throttle to the writer's pace).</summary>
     public Action? AfterPush { get; set; }
 
-    public void Push(ReadOnlySpan<byte> data, AudioPacketStatus status = AudioPacketStatus.None)
+    public void Push(ReadOnlySpan<byte> data, AudioPacketStatus status = AudioPacketStatus.None, long captureTimestamp = 0)
     {
-        DataAvailable?.Invoke(data, status);
+        DataAvailable?.Invoke(data, status, captureTimestamp);
         AfterPush?.Invoke();
     }
 
@@ -51,8 +51,11 @@ public sealed class FakeCaptureSource(AudioSource source, AudioFormatInfo format
         Stopped?.Invoke(this, new CaptureSourceStoppedEventArgs(error));
     }
 
-    /// <summary>Pushes <paramref name="duration"/> of audio in packets, advancing the clock by each packet's length first.</summary>
-    public void PushFor(ManualTimeProvider clock, TimeSpan duration, TimeSpan? packet = null, byte value = 0x11, AudioPacketStatus status = AudioPacketStatus.None)
+    /// <summary>
+    /// Pushes <paramref name="duration"/> of audio in packets, advancing the clock by each packet's length first.
+    /// With <paramref name="stampCaptureTime"/>, each packet carries the clock time its first frame was captured.
+    /// </summary>
+    public void PushFor(ManualTimeProvider clock, TimeSpan duration, TimeSpan? packet = null, byte value = 0x11, AudioPacketStatus status = AudioPacketStatus.None, bool stampCaptureTime = false)
     {
         ArgumentNullException.ThrowIfNull(clock);
         var packetLength = packet ?? TimeSpan.FromMilliseconds(10);
@@ -62,8 +65,9 @@ public sealed class FakeCaptureSource(AudioSource source, AudioFormatInfo format
         var packets = (long)Math.Round(duration / packetLength);
         for (var i = 0; i < packets; i++)
         {
+            var captured = clock.GetTimestamp();
             clock.Advance(packetLength);
-            Push(buffer, status);
+            Push(buffer, status, stampCaptureTime ? captured : 0);
         }
     }
 

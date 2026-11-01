@@ -24,6 +24,7 @@ internal sealed class TrackRecorder : IDisposable
     private readonly long _capacityBytes;
     private readonly long _gapToleranceFrames;
     private readonly long _freeSpaceCheckFrames;
+    private readonly long _maxTimestampSkewFrames;
     private readonly bool _isLoopback;
     private readonly ConcurrentQueue<Packet> _queue = new();
     private readonly SemaphoreSlim _signal = new(0);
@@ -47,6 +48,13 @@ internal sealed class TrackRecorder : IDisposable
     private bool _positionKnown;
     private long _framesSinceSpaceCheck;
 
+    // Time map: the timeline position where the latest device-timestamped packet starts, and the
+    // monotonic-clock frame at which it was captured.
+    private bool _clockKnown;
+    private bool _sawPacket;
+    private long _clockAnchorPosition;
+    private long _clockAnchorFrames;
+
     public TrackRecorder(
         RecordingSession session,
         IAudioCaptureSource source,
@@ -68,11 +76,18 @@ internal sealed class TrackRecorder : IDisposable
         _capacityBytes = Math.Max(_format.BlockAlign, (long)(options.QueueCapacity.TotalSeconds * _format.AverageBytesPerSecond));
         _gapToleranceFrames = (long)(options.LoopbackGapTolerance.TotalSeconds * _format.SampleRate);
         _freeSpaceCheckFrames = Math.Max(1, (long)(options.FreeSpaceCheckInterval.TotalSeconds * _format.SampleRate));
+        _maxTimestampSkewFrames = (long)(MaxTimestampSkew.TotalSeconds * _format.SampleRate);
 
         // Loopback timeline starts at the given position and silence is filled from there;
         // mic timeline starts where its first packet lands.
         _positionFrames = startPositionFrames;
         _positionKnown = _isLoopback;
+
+        // Loopback silence is filled from the session clock itself, so until a timestamped packet
+        // arrives the time map is the identity (position = clock).
+        _clockKnown = _isLoopback;
+        _clockAnchorPosition = startPositionFrames;
+        _clockAnchorFrames = startPositionFrames;
 
         _thread = new Thread(WriterLoop)
         {
@@ -81,6 +96,9 @@ internal sealed class TrackRecorder : IDisposable
             Priority = ThreadPriority.AboveNormal,
         };
     }
+
+    /// <summary>A device timestamp further than this from the arrival time is ignored (wrong clock domain, glitch).</summary>
+    internal static TimeSpan MaxTimestampSkew { get; } = TimeSpan.FromSeconds(2);
 
     public AudioSource Source => _track.Source;
 
@@ -144,7 +162,7 @@ internal sealed class TrackRecorder : IDisposable
 
     // ---- capture thread ---------------------------------------------------------------------
 
-    private void OnData(ReadOnlySpan<byte> data, AudioPacketStatus flags)
+    private void OnData(ReadOnlySpan<byte> data, AudioPacketStatus flags, long captureTimestamp)
     {
         if (!_accepting || data.IsEmpty) return;
         var now = _time.GetTimestamp();
@@ -167,7 +185,7 @@ internal sealed class TrackRecorder : IDisposable
         data[..length].CopyTo(buffer);
         if ((flags & AudioPacketStatus.Silent) == 0) UpdatePeak(buffer.AsSpan(0, length));
         Interlocked.Increment(ref _packetsReceived);
-        _queue.Enqueue(new Packet(buffer, length, flags, now));
+        _queue.Enqueue(new Packet(buffer, length, flags, now, captureTimestamp));
         try { _signal.Release(); }
         catch (ObjectDisposedException) { } // a late callback racing with Dispose; the packet is reclaimed there
     }
@@ -253,6 +271,17 @@ internal sealed class TrackRecorder : IDisposable
         var frames = packet.Length / _format.BlockAlign;
         var arrivalFrames = ToFrames(packet.Timestamp);
         var packetStart = Math.Max(0, arrivalFrames - frames);
+        var timestamped = false;
+        if (packet.CaptureTimestamp != 0)
+        {
+            // Prefer the device's capture time: arrival times jitter by the buffer length (~100 ms).
+            var captured = ToFrames(packet.CaptureTimestamp);
+            if (Math.Abs(arrivalFrames - (captured + frames)) <= _maxTimestampSkewFrames)
+            {
+                packetStart = Math.Max(0, captured);
+                timestamped = true;
+            }
+        }
 
         if (!_positionKnown)
         {
@@ -261,22 +290,29 @@ internal sealed class TrackRecorder : IDisposable
             if (_track.Chunks.Count == 0) _track.StartOffsetMs = FramesToMs(packetStart);
         }
 
-        // The first packet of a stream is commonly flagged; only later discontinuities are real gaps.
-        if ((packet.Flags & AudioPacketStatus.Discontinuity) != 0 && HasWrittenAudio)
+        // The first packet of a stream (also after a reconnect) is commonly flagged; only later
+        // discontinuities are real gaps.
+        var firstPacket = !_sawPacket;
+        _sawPacket = true;
+        if ((packet.Flags & AudioPacketStatus.Discontinuity) != 0 && !firstPacket)
         {
             _session.AddEvent(_track, new AudioEventManifest { Kind = AudioEventKind.Discontinuity, StartMs = FramesToMs(_positionFrames) });
         }
 
-        if (_isLoopback && packetStart - _positionFrames > _gapToleranceFrames)
+        var fill = _isLoopback && packetStart - _positionFrames > _gapToleranceFrames ? packetStart - _positionFrames : 0;
+        if (timestamped)
         {
-            FillSilence(packetStart - _positionFrames, recordEvent: true);
+            // Anchor before filling, so a chunk that starts inside the fill already has its clock time.
+            _clockKnown = true;
+            _clockAnchorPosition = _positionFrames + fill;
+            _clockAnchorFrames = packetStart;
         }
+
+        if (fill > 0) FillSilence(fill, recordEvent: true);
 
         if ((packet.Flags & AudioPacketStatus.Silent) != 0) WriteSilenceFrames(frames);
         else WriteFrames(packet.Buffer.AsSpan(0, packet.Length));
     }
-
-    private bool HasWrittenAudio => _writer is not null || _track.Chunks.Count > 0;
 
     private void Finish()
     {
@@ -352,7 +388,7 @@ internal sealed class TrackRecorder : IDisposable
         if (_writer is not null) return _writer;
         var sequence = _track.Chunks.Count == 0 ? 1 : _track.Chunks.Max(c => c.Sequence) + 1;
         var relative = SessionPaths.PartialChunkFile(_track.Source, sequence);
-        var chunk = new ChunkManifest { Sequence = sequence, File = relative, StartMs = FramesToMs(_positionFrames), State = ChunkState.Partial };
+        var chunk = new ChunkManifest { Sequence = sequence, File = relative, StartMs = FramesToMs(_positionFrames), ClockStartMs = ClockMsAt(_positionFrames), State = ChunkState.Partial };
         _writer = WavChunkWriter.Create(SessionPaths.Resolve(_session.Directory, relative), _format, chunk.StartMs, _time);
         _chunk = chunk;
         _session.UpdateManifest(() => _track.Chunks.Add(chunk));
@@ -380,9 +416,12 @@ internal sealed class TrackRecorder : IDisposable
         var relative = SessionPaths.ChunkFile(_track.Source, chunk.Sequence);
         var done = writer.Complete(SessionPaths.Resolve(_session.Directory, relative));
         writer.Dispose();
+        var clockEnd = ClockMsAt(_positionFrames);
         _session.UpdateManifest(() =>
         {
             chunk.File = relative;
+            chunk.ClockStartMs ??= ClockMsAt(_positionFrames - done.FrameCount);
+            chunk.ClockEndMs = clockEnd;
             chunk.FrameCount = done.FrameCount;
             chunk.SizeBytes = done.SizeBytes;
             chunk.Sha256 = done.Sha256;
@@ -405,5 +444,8 @@ internal sealed class TrackRecorder : IDisposable
 
     private long FramesToMs(long frames) => frames * 1000 / _format.SampleRate;
 
-    private readonly record struct Packet(byte[] Buffer, int Length, AudioPacketStatus Flags, long Timestamp);
+    /// <summary>Clock time of a timeline position, extrapolated at the nominal rate from the latest timestamped packet.</summary>
+    private long? ClockMsAt(long position) => _clockKnown ? FramesToMs(_clockAnchorFrames + (position - _clockAnchorPosition)) : null;
+
+    private readonly record struct Packet(byte[] Buffer, int Length, AudioPacketStatus Flags, long Timestamp, long CaptureTimestamp);
 }

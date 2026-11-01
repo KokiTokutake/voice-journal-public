@@ -238,7 +238,10 @@ public sealed class RecordingSessionTests : IDisposable
         Throttle(session, mic2);
         session.Reconnect(mic2);
         Assert.Equal(CaptureState.Recording, session.State);
-        PushBoth(mic2, loop, TimeSpan.FromSeconds(1));
+        _clock.Advance(TimeSpan.FromMilliseconds(10));
+        mic2.Push(new byte[80 * MicFormat.BlockAlign], AudioPacketStatus.Discontinuity); // a new stream starts flagged
+        loop.Push(new byte[80 * LoopbackFormat.BlockAlign]);
+        PushBoth(mic2, loop, TimeSpan.FromSeconds(1) - TimeSpan.FromMilliseconds(10));
         await session.StopAsync();
 
         var manifest = SessionManifest.Load(session.Directory);
@@ -247,6 +250,7 @@ public sealed class RecordingSessionTests : IDisposable
         Assert.Equal([1, 2], micTrack.Chunks.Select(c => c.Sequence));
         Assert.Contains(micTrack.Events, e => e.Kind == AudioEventKind.DeviceDisconnected);
         Assert.Contains(micTrack.Events, e => e.Kind == AudioEventKind.DeviceReconnected);
+        Assert.DoesNotContain(micTrack.Events, e => e.Kind == AudioEventKind.Discontinuity);
         // The gap stays missing: the second chunk starts after the first one ended.
         var firstEnd = micTrack.Chunks[0].StartMs + micTrack.Chunks[0].FrameCount * 1000 / MicFormat.SampleRate;
         Assert.True(micTrack.Chunks[1].StartMs >= firstEnd + 1900);
@@ -333,6 +337,111 @@ public sealed class RecordingSessionTests : IDisposable
         var chunks = SessionManifest.Load(session.Directory).Tracks[0].Chunks;
         Assert.Equal(6, chunks.Count);
         Assert.Equal(30 * 60 * 1000, chunks.Sum(c => c.FrameCount));
+    }
+
+    [Fact]
+    public async Task Loopback_UsesCaptureTimestamps_WhenDeliveryIsBursty()
+    {
+        // WASAPI hands over ~100 ms of 10 ms packets at once, with a varying delay. The capture
+        // timestamps keep the silence fill exact even though arrival times jitter.
+        var loop = new FakeCaptureSource(AudioSource.Loopback, LoopbackFormat);
+        await using var session = Create(CaptureMode.Loopback, loop);
+        session.Start();
+        var origin = _clock.GetTimestamp();
+        var packet = new byte[80 * LoopbackFormat.BlockAlign];
+        Array.Fill<byte>(packet, 0x11);
+        var random = new Random(1234);
+
+        void Play(double fromSeconds, double seconds)
+        {
+            for (var burst = 0; burst < seconds * 10; burst++)
+            {
+                var burstStart = TimeSpan.FromSeconds(fromSeconds) + TimeSpan.FromMilliseconds(burst * 100);
+                var arrival = burstStart + TimeSpan.FromMilliseconds(100 + random.Next(0, 80));
+                _clock.Advance(TimeSpan.FromTicks(origin + arrival.Ticks - _clock.GetTimestamp()));
+                for (var i = 0; i < 10; i++)
+                    loop.Push(packet, AudioPacketStatus.None, origin + (burstStart + TimeSpan.FromMilliseconds(i * 10)).Ticks);
+            }
+        }
+
+        Play(2, 1);  // 2s..3s
+        Play(6, 1);  // 6s..7s
+        _clock.Advance(TimeSpan.FromTicks(origin + TimeSpan.FromSeconds(8).Ticks - _clock.GetTimestamp()));
+        await session.StopAsync();
+
+        var track = SessionManifest.Load(session.Directory).Tracks[0];
+        var chunk = Assert.Single(track.Chunks);
+        Assert.Equal(8 * 8000, chunk.FrameCount);
+        var gaps = track.Events.Where(e => e.Kind == AudioEventKind.LoopbackSilence).Select(e => (e.StartMs, e.EndMs!.Value)).ToList();
+        Assert.Equal([(0L, 2000L), (3000L, 6000L), (7000L, 8000L)], gaps);
+        Assert.Equal(0, chunk.ClockStartMs);
+        Assert.Equal(8000, chunk.ClockEndMs);
+    }
+
+    [Fact]
+    public async Task Mic_DeviceClockDrift_IsRecordedAsTimeMap() // detail spec 6.3 / AT-03
+    {
+        // The device clock runs 0.1 % slow: each 80-frame (nominal 10 ms) packet takes 10.01 ms.
+        var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        await using var session = Create(CaptureMode.Mic, mic, o => o with { ChunkDuration = TimeSpan.FromMinutes(1) });
+        session.Start();
+        var packet = new byte[80 * MicFormat.BlockAlign];
+        var packetClock = TimeSpan.FromTicks(100_100);
+        for (var i = 0; i < 15_000; i++) // 150 s of samples
+        {
+            var captured = _clock.GetTimestamp();
+            _clock.Advance(packetClock);
+            mic.Push(packet, AudioPacketStatus.None, captured);
+        }
+        await session.StopAsync();
+
+        var track = SessionManifest.Load(session.Directory).Tracks[0];
+        Assert.Equal(0, track.StartOffsetMs);
+        Assert.Equal([0L, 60_000L, 120_000L], track.Chunks.Select(c => c.StartMs));
+        Assert.Equal([0L, 60_060L, 120_120L], track.Chunks.Select(c => c.ClockStartMs!.Value));
+        // Chunk ends are extrapolated from the last packet at the nominal rate: within 1 ms.
+        Assert.Collection(
+            track.Chunks.Select(c => c.ClockEndMs!.Value),
+            end => Assert.InRange(end, 60_059L, 60_060L),
+            end => Assert.InRange(end, 120_119L, 120_120L),
+            end => Assert.InRange(end, 150_149L, 150_150L));
+    }
+
+    [Fact]
+    public async Task SilentLoopback_HasIdentityTimeMap()
+    {
+        // Nothing plays during the whole recording: no packet, no device timestamp.
+        var loop = new FakeCaptureSource(AudioSource.Loopback, LoopbackFormat);
+        await using var session = Create(CaptureMode.Loopback, loop);
+        session.Start();
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await session.StopAsync();
+
+        var chunk = Assert.Single(SessionManifest.Load(session.Directory).Tracks[0].Chunks);
+        Assert.Equal(5 * 8000, chunk.FrameCount);
+        Assert.Equal(0, chunk.ClockStartMs);
+        Assert.Equal(5000, chunk.ClockEndMs);
+    }
+
+    [Fact]
+    public async Task CaptureTimestamp_FarFromArrival_IsIgnored()
+    {
+        var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        await using var session = Create(CaptureMode.Mic, mic);
+        session.Start();
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        var packet = new byte[80 * MicFormat.BlockAlign];
+        for (var i = 0; i < 100; i++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(10));
+            mic.Push(packet, AudioPacketStatus.None, captureTimestamp: 42); // some other clock domain
+        }
+        await session.StopAsync();
+
+        var track = SessionManifest.Load(session.Directory).Tracks[0];
+        Assert.Equal(1000, track.StartOffsetMs); // from the arrival time, not from the bogus timestamp
+        Assert.Null(track.Chunks[0].ClockStartMs);
+        Assert.Null(track.Chunks[0].ClockEndMs);
     }
 
     [LongFact]

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Phase A audio-source probe. Throwaway verification tool; the real capture pipeline lives in Infrastructure (Phase B). -->
+  <!-- Audio verification tool. Phase A: raw device probes. Phase B3: drives the real pipeline (Core + Infrastructure) on real devices. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -9,6 +9,10 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\VoiceJournal.Infrastructure\VoiceJournal.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

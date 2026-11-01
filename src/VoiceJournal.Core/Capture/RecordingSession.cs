@@ -25,6 +25,9 @@ public sealed class RecordingWarningEventArgs(RecordingWarningKind kind, AudioSo
 /// <see cref="TrackRecorder"/> per source, and applies the start/stop/failure rules.
 /// The manifest is the only shared mutable state and is updated under a lock and saved atomically.
 /// </summary>
+/// <summary>One track as seen from outside the session.</summary>
+public sealed record TrackStatus(AudioSource Source, string DeviceId, string DeviceName, TrackState State);
+
 public sealed class RecordingSession : IAsyncDisposable
 {
     private readonly object _gate = new();
@@ -73,6 +76,12 @@ public sealed class RecordingSession : IAsyncDisposable
     }
 
     /// <summary>Raised in order on the thread that changed the state. Handlers must return quickly.</summary>
+    /// <summary>Snapshot of every track (device and state) for display and for choosing what to reconnect.</summary>
+    public IReadOnlyList<TrackStatus> GetTracks()
+    {
+        lock (_gate) return [.. Manifest.Tracks.Select(t => new TrackStatus(t.Source, t.DeviceId, t.DeviceName, t.State))];
+    }
+
     public event EventHandler<CaptureState>? StateChanged;
 
     public event EventHandler<RecordingWarningEventArgs>? Warning;
@@ -273,7 +282,7 @@ public sealed class RecordingSession : IAsyncDisposable
         {
             recorder.Track.State = TrackState.Disconnected;
             var position = (long)(_time.GetElapsedTime(_originTimestamp).TotalSeconds * 1000);
-            recorder.Track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.DeviceDisconnected, StartMs = position, Detail = error.GetType().Name });
+            recorder.Track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.DeviceDisconnected, StartMs = position, Detail = error is AudioDeviceException d ? d.Kind.ToString() : error.GetType().Name });
             if (Manifest.CaptureState == CaptureState.Recording) SetStateLocked(CaptureState.Partial);
             else Manifest.Save(Directory);
         }

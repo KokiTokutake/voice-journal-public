@@ -104,6 +104,17 @@ public sealed class ChunkManifest
 
     public long FrameCount { get; set; }
 
+    /// <summary>
+    /// Monotonic-clock time (ms since session start) at which the chunk's first frame was captured, from the
+    /// device's capture timestamps; null when the source gave none. <see cref="StartMs"/> counts samples, so the
+    /// two drift apart by the device clock error. Together with <see cref="ClockEndMs"/> this is the per-track
+    /// time map used to line up mic and loopback (detail spec 6.3). The audio itself is never resampled.
+    /// </summary>
+    public long? ClockStartMs { get; set; }
+
+    /// <summary>Monotonic-clock time just after the chunk's last frame; see <see cref="ClockStartMs"/>.</summary>
+    public long? ClockEndMs { get; set; }
+
     public long SizeBytes { get; set; }
 
     public string? Sha256 { get; set; }

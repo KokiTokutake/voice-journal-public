@@ -2,6 +2,8 @@
 //
 //   AudioProbe list
 //   AudioProbe record <mic|loopback> <seconds> <outBase> [--device <endpointId>] [--raw]
+//   AudioProbe positions <mic|loopback> <seconds> [--raw]      (B3: device / QPC position units and clock rate)
+//   AudioProbe session <mic|loopback|both> <seconds> [...]     (B3: real pipeline, see SessionCommand.cs)
 //
 // record writes:
 //   <outBase>.orig.wav   native WASAPI shared-mode format, untouched (原音)
@@ -25,6 +27,7 @@ internal static class Program
     {
         WriteIndented = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
     };
 
     private static int Main(string[] args)
@@ -35,6 +38,8 @@ internal static class Program
             {
                 "list" => List(),
                 "record" when args.Length >= 4 => Record(args),
+                "positions" when args.Length >= 3 => Positions(args),
+                "session" when args.Length >= 3 => SessionCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 _ => Usage(),
             };
         }
@@ -48,6 +53,8 @@ internal static class Program
     private static int Usage()
     {
         Console.Error.WriteLine("usage: AudioProbe list | record <mic|loopback> <seconds> <outBase> [--device <id>] [--raw]");
+        Console.Error.WriteLine("       AudioProbe positions <mic|loopback> <seconds> [--raw]");
+        Console.Error.WriteLine("       AudioProbe session <mic|loopback|both> <seconds> [--workspace <dir>] [--normal] [--chunk-seconds <n>] [--reconnect]");
         return 2;
     }
 
@@ -177,6 +184,94 @@ internal static class Program
         File.WriteAllText(outBase + ".probe.json", json);
         Console.WriteLine(json);
         return level.PeakDbfs < -60 ? 3 : 0;
+    }
+
+    /// <summary>
+    /// Phase B3: find the unit of the devicePosition / qpcPosition values WasapiRecorder reports.
+    /// Nothing is written to disk; only per-packet counters are kept and printed as JSON.
+    /// </summary>
+    private static int Positions(string[] args)
+    {
+        var source = args[1];
+        if (source is not ("mic" or "loopback")) return Usage();
+        var seconds = double.Parse(args[2], CultureInfo.InvariantCulture);
+        var raw = args.Contains("--raw");
+
+        using var enumerator = new MMDeviceEnumerator();
+        var device = enumerator.GetDefaultAudioEndpoint(source == "mic" ? DataFlow.Capture : DataFlow.Render, Role.Console);
+        var builder = new WasapiRecorderBuilder().WithDevice(device).WithSharedMode().WithEventSync();
+        if (source == "loopback") builder = builder.WithLoopbackCapture();
+        if (raw) builder = builder.WithRawMode();
+        using var capture = builder.Build();
+        var format = capture.WaveFormat;
+        var latencyBeforeStart = capture.LatencyMilliseconds;
+
+        var packets = new List<(long DevicePos, long Qpc, int Frames, AudioClientBufferFlags Flags, long Ticks)>(4096);
+        var clock = Stopwatch.StartNew();
+        var stopped = new ManualResetEventSlim();
+        Exception? error = null;
+        capture.DataAvailable += (buffer, flags, devicePosition, qpc) =>
+        {
+            lock (packets) packets.Add((devicePosition, qpc, buffer.Length / format.BlockAlign, flags, clock.ElapsedTicks));
+        };
+        capture.RecordingStopped += (_, e) => { error = e.Exception; stopped.Set(); };
+        capture.StartRecording();
+        var latencyAfterStart = capture.LatencyMilliseconds;
+        Thread.Sleep(TimeSpan.FromSeconds(seconds));
+        capture.StopRecording();
+        stopped.Wait(TimeSpan.FromSeconds(5));
+        if (error is not null) throw new InvalidOperationException("capture failed", error);
+
+        var nonEmpty = packets.Where(p => p.Frames > 0).ToList();
+        long jumps = 0, contiguous = 0;
+        for (var i = 1; i < nonEmpty.Count; i++)
+        {
+            if (nonEmpty[i].DevicePos == nonEmpty[i - 1].DevicePos + nonEmpty[i - 1].Frames) contiguous++;
+            else jumps++;
+        }
+        // Longest run of contiguous device positions: its position/QPC ratio is the device clock rate.
+        int runStart = 0, bestStart = 0, bestEnd = 0;
+        for (var i = 1; i <= nonEmpty.Count; i++)
+        {
+            if (i < nonEmpty.Count && nonEmpty[i].DevicePos == nonEmpty[i - 1].DevicePos + nonEmpty[i - 1].Frames) continue;
+            if (i - 1 - runStart > bestEnd - bestStart) { bestStart = runStart; bestEnd = i - 1; }
+            runStart = i;
+        }
+        var runSeconds = bestEnd > bestStart ? (nonEmpty[bestEnd].Qpc - nonEmpty[bestStart].Qpc) / 1e7 : 0;
+        var runRate = runSeconds > 0 ? (nonEmpty[bestEnd].DevicePos - nonEmpty[bestStart].DevicePos) / runSeconds : 0;
+        var first = nonEmpty.FirstOrDefault();
+        var last = nonEmpty.LastOrDefault();
+        var qpcSpanSeconds = nonEmpty.Count > 1 ? (last.Qpc - first.Qpc) / 1e7 : 0; // WASAPI documents QPC positions in 100 ns units
+        var stopwatchSpanSeconds = nonEmpty.Count > 1 ? (last.Ticks - first.Ticks) / (double)Stopwatch.Frequency : 0;
+        var report = new
+        {
+            source,
+            raw_mode = raw,
+            device = device.FriendlyName,
+            native_format = FormatName(format),
+            latency_ms_before_start = latencyBeforeStart,
+            latency_ms_after_start = latencyAfterStart,
+            packets = packets.Count,
+            empty_packets = packets.Count - nonEmpty.Count,
+            frames_delivered = nonEmpty.Sum(p => (long)p.Frames),
+            silent_packets = packets.Count(p => p.Flags.HasFlag(AudioClientBufferFlags.Silent)),
+            discontinuities = packets.Count(p => p.Flags.HasFlag(AudioClientBufferFlags.DataDiscontinuity)),
+            timestamp_errors = packets.Count(p => p.Flags.HasFlag(AudioClientBufferFlags.TimestampError)),
+            contiguous_positions = contiguous,
+            position_jumps = jumps,
+            device_position_span = last.DevicePos - first.DevicePos,
+            frames_in_span = nonEmpty.Count > 1 ? nonEmpty.Take(nonEmpty.Count - 1).Sum(p => (long)p.Frames) : 0,
+            qpc_span_seconds = Math.Round(qpcSpanSeconds, 4),
+            stopwatch_span_seconds = Math.Round(stopwatchSpanSeconds, 4),
+            device_position_per_qpc_second = qpcSpanSeconds > 0 ? Math.Round((last.DevicePos - first.DevicePos) / qpcSpanSeconds, 1) : 0,
+            sample_rate = format.SampleRate,
+            longest_contiguous_run_seconds = Math.Round(runSeconds, 3),
+            device_clock_rate_in_run = Math.Round(runRate, 2),
+            device_clock_ppm_vs_qpc = runRate > 0 ? Math.Round((runRate / format.SampleRate - 1) * 1e6, 1) : 0,
+            first_packets = nonEmpty.Take(8).Select(p => new { device_position = p.DevicePos, qpc = p.Qpc, frames = p.Frames, flags = p.Flags.ToString() }),
+        };
+        Console.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
+        return 0;
     }
 
     /// <summary>Downmix to mono, resample to 16 kHz, write 16-bit PCM; measure levels on the native-rate mono signal.</summary>
