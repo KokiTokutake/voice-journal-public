@@ -52,6 +52,10 @@ internal sealed class TrackRecorder : IDisposable
     // monotonic-clock frame at which it was captured.
     private bool _clockKnown;
     private bool _sawPacket;
+
+    // The loopback-silence event being extended by consecutive fills (one event per silent stretch).
+    private AudioEventManifest? _openSilence;
+    private long _openSilenceEndFrames;
     private long _clockAnchorPosition;
     private long _clockAnchorFrames;
 
@@ -96,6 +100,16 @@ internal sealed class TrackRecorder : IDisposable
             Priority = ThreadPriority.AboveNormal,
         };
     }
+
+    /// <summary>
+    /// While loopback delivers nothing (nothing playing), the writer wakes this often and fills silence up to
+    /// <see cref="IdleFillMargin"/> before now, so silent stretches reach the disk (and survive a crash) instead
+    /// of being written only when the next sound arrives.
+    /// </summary>
+    internal static TimeSpan IdleFillInterval { get; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>Idle filling stays this far behind "now", so it never overlaps a packet still on its way (~100 ms buffer).</summary>
+    internal static TimeSpan IdleFillMargin { get; } = TimeSpan.FromSeconds(1);
 
     /// <summary>A device timestamp further than this from the arrival time is ignored (wrong clock domain, glitch).</summary>
     internal static TimeSpan MaxTimestampSkew { get; } = TimeSpan.FromSeconds(2);
@@ -233,7 +247,11 @@ internal sealed class TrackRecorder : IDisposable
         {
             while (true)
             {
-                _signal.Wait();
+                if (!_signal.Wait(IdleFillInterval))
+                {
+                    FillIdleSilence();
+                    continue;
+                }
                 while (_queue.TryDequeue(out var packet))
                 {
                     try
@@ -310,6 +328,7 @@ internal sealed class TrackRecorder : IDisposable
 
         if (fill > 0) FillSilence(fill, recordEvent: true);
 
+        _openSilence = null; // device data (even a silent-flagged packet) ends a filled stretch
         if ((packet.Flags & AudioPacketStatus.Silent) != 0) WriteSilenceFrames(frames);
         else WriteFrames(packet.Buffer.AsSpan(0, packet.Length));
     }
@@ -319,7 +338,8 @@ internal sealed class TrackRecorder : IDisposable
         if (_isLoopback && _positionKnown)
         {
             var end = ToFrames(Interlocked.Read(ref _completeAtTimestamp));
-            if (end - _positionFrames > 0) FillSilence(end - _positionFrames, recordEvent: end - _positionFrames > _gapToleranceFrames);
+            var continuesSilence = _openSilence is not null && _openSilenceEndFrames == _positionFrames;
+            if (end - _positionFrames > 0) FillSilence(end - _positionFrames, recordEvent: continuesSilence || end - _positionFrames > _gapToleranceFrames);
         }
 
         if (HasOverflowed)
@@ -336,14 +356,30 @@ internal sealed class TrackRecorder : IDisposable
         CompleteCurrentChunk();
     }
 
+    private void FillIdleSilence()
+    {
+        if (!_isLoopback || !_positionKnown || _completing || HasOverflowed) return;
+        var target = ToFrames(_time.GetTimestamp()) - (long)(IdleFillMargin.TotalSeconds * _format.SampleRate);
+        if (target > _positionFrames) FillSilence(target - _positionFrames, recordEvent: true);
+    }
+
     private void FillSilence(long frames, bool recordEvent)
     {
         var start = _positionFrames;
         WriteSilenceFrames(frames);
-        if (recordEvent)
+        if (!recordEvent) return;
+        if (_openSilence is { } open && _openSilenceEndFrames == start)
         {
-            _session.AddEvent(_track, new AudioEventManifest { Kind = AudioEventKind.LoopbackSilence, StartMs = FramesToMs(start), EndMs = FramesToMs(_positionFrames) });
+            // Continues the stretch filled just before (idle fills every second, then the gap up to the next packet).
+            var end = FramesToMs(_positionFrames);
+            _session.UpdateManifest(() => open.EndMs = end);
         }
+        else
+        {
+            _openSilence = new AudioEventManifest { Kind = AudioEventKind.LoopbackSilence, StartMs = FramesToMs(start), EndMs = FramesToMs(_positionFrames) };
+            _session.AddEvent(_track, _openSilence);
+        }
+        _openSilenceEndFrames = _positionFrames;
     }
 
     private void WriteFrames(ReadOnlySpan<byte> data)

@@ -43,8 +43,13 @@ public sealed class SessionRowViewModel
 
     public string StateText => UserMessages.CaptureStateName(Summary.CaptureState);
 
-    /// <summary>Text, not only a color (detail spec 18.1).</summary>
-    public string LossText => Summary.HasAudioLoss ? "⚠ 欠損あり" : string.Empty;
+    /// <summary>
+    /// Text, not only a color (detail spec 18.1). A session recovered after a crash may miss its last seconds
+    /// (AT-19 "欠損表示"; detail spec 19: the last chunk may hold unsaved audio).
+    /// </summary>
+    public string LossText => Summary.HasAudioLoss ? "⚠ 欠損あり"
+        : Summary.CaptureState == CaptureState.Interrupted ? "⚠ 末尾に欠損の可能性"
+        : string.Empty;
 
     public bool HasMic => Summary.CaptureMode != CaptureMode.Loopback;
 

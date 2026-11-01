@@ -66,8 +66,15 @@ public sealed class AtomicFileTests : IDisposable
         {
             while (!cts.IsCancellationRequested)
             {
-                AtomicFile.ReadAllBytes(path); // a reader polling the file, like a sync client or a viewer
-                reads++;
+                try
+                {
+                    AtomicFile.ReadAllBytes(path); // a reader polling the file, like a sync client or a viewer
+                    reads++;
+                }
+                catch (FileNotFoundException)
+                {
+                    // Windows: the name can be briefly absent while the replace is in progress
+                }
                 Thread.Sleep(1);
             }
         });

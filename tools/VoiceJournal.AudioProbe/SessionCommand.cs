@@ -1,6 +1,7 @@
 // Phase B3 device check: records with the real pipeline (RecordingSession + WasapiCaptureSource).
 //
 //   AudioProbe session <mic|loopback|both> <seconds> [--workspace <dir>] [--normal] [--chunk-seconds <n>] [--reconnect]
+//                      [--mic-device <id|name part>] [--loopback-device <id|name part>] [--title <text>] [--level-every <seconds>]
 //
 // --reconnect   when a device is lost, wait for the same endpoint to come back and resume it as new
 //               chunks (what the "reconnect" button will do in the app).
@@ -36,6 +37,8 @@ internal static class SessionCommand
         var micMode = args.Contains("--normal") ? MicProcessingMode.Normal : MicProcessingMode.Raw;
         var chunkSeconds = Option(args, "--chunk-seconds");
         var autoReconnect = args.Contains("--reconnect");
+        var title = Option(args, "--title") ?? "B3 device check";
+        var levelEvery = TimeSpan.FromSeconds(double.Parse(Option(args, "--level-every") ?? "1", CultureInfo.InvariantCulture));
 
         using var catalog = new WasapiDeviceCatalog();
         var sources = new List<IAudioCaptureSource>();
@@ -49,13 +52,17 @@ internal static class SessionCommand
         {
             foreach (var source in needed)
             {
-                var device = catalog.GetDefault(source) ?? throw new InvalidOperationException($"no default {source} device");
+                var wanted = Option(args, source == AudioSource.Mic ? "--mic-device" : "--loopback-device");
+                var device = wanted is null
+                    ? catalog.GetDefault(source) ?? throw new InvalidOperationException($"no default {source} device")
+                    : catalog.GetDevices(source).FirstOrDefault(d => d.Id == wanted || d.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase))
+                      ?? throw new InvalidOperationException($"no {source} device matches '{wanted}'");
                 var created = catalog.CreateSource(source, device.Id, micMode);
                 sources.Add(created);
                 Console.WriteLine($"{source}: {created.DeviceName} | {Describe(created.Format)}");
             }
 
-            var options = new RecordingOptions { Mode = mode, MicMode = micMode, Title = "B3 device check" };
+            var options = new RecordingOptions { Mode = mode, MicMode = micMode, Title = title };
             if (chunkSeconds is not null) options = options with { ChunkDuration = TimeSpan.FromSeconds(double.Parse(chunkSeconds, CultureInfo.InvariantCulture)) };
 
             var clock = Stopwatch.StartNew();
@@ -69,11 +76,15 @@ internal static class SessionCommand
                 if (w.Kind == RecordingWarningKind.DeviceLost) lost.Enqueue(w.Source);
             };
 
+            using var awake = VoiceJournal.Infrastructure.Power.SleepBlocker.Acquire("Voice Journal: 受入試験の録音中"); // long runs must not sleep on idle
             clock.Restart(); // wall time = Start() .. StopAsync() request, as AT-01 compares
             session.Start();
             var flowingReported = false;
             var waitingForReconnect = new HashSet<AudioSource>();
-            var nextLevel = TimeSpan.FromSeconds(1);
+            var nextLevel = levelEvery;
+            var memory = new List<object>();
+            var nextMemory = TimeSpan.FromMinutes(1);
+            using var self = Process.GetCurrentProcess();
             while (clock.Elapsed < TimeSpan.FromSeconds(seconds) && session.State is not (CaptureState.Finalized or CaptureState.Failed))
             {
                 await Task.Delay(100).ConfigureAwait(false);
@@ -84,9 +95,15 @@ internal static class SessionCommand
                 }
                 if (clock.Elapsed >= nextLevel)
                 {
-                    nextLevel += TimeSpan.FromSeconds(1);
+                    nextLevel += levelEvery;
                     var levels = needed.Select(s => $"{s} {Dbfs(session.ReadPeak(s)),6:0.0} dBFS");
                     Console.WriteLine($"[{Stamp()}] {string.Join("  ", levels)}");
+                }
+                if (clock.Elapsed >= nextMemory)
+                {
+                    nextMemory += TimeSpan.FromMinutes(1);
+                    self.Refresh();
+                    memory.Add(new { minute = (int)Math.Round(clock.Elapsed.TotalMinutes), working_set_mb = self.WorkingSet64 / (1 << 20), managed_mb = GC.GetTotalMemory(false) / (1 << 20) });
                 }
                 while (lost.TryDequeue(out var source)) waitingForReconnect.Add(source);
                 if (autoReconnect) TryReconnect(session, catalog, sources, waitingForReconnect, micMode, Stamp);
@@ -95,7 +112,7 @@ internal static class SessionCommand
             Console.WriteLine($"[{Stamp()}] stopping");
             var wallMs = (long)clock.Elapsed.TotalMilliseconds;
             await session.StopAsync().ConfigureAwait(false);
-            var (summary, ok) = Summarize(session.Directory, wallMs);
+            var (summary, ok) = Summarize(session.Directory, wallMs, memory);
             Console.WriteLine(JsonSerializer.Serialize(summary, json));
             return ok ? 0 : 4;
         }
@@ -128,7 +145,7 @@ internal static class SessionCommand
         }
     }
 
-    private static (object Summary, bool Ok) Summarize(string directory, long wallMs)
+    private static (object Summary, bool Ok) Summarize(string directory, long wallMs, IReadOnlyList<object> memory)
     {
         var manifest = SessionManifest.Load(directory);
         var ok = true;
@@ -197,6 +214,7 @@ internal static class SessionCommand
             manifest.MicMode,
             manifest.CaptureState,
             wall_ms = wallMs,
+            memory_per_minute = memory,
             tracks,
             verified = ok,
         }, ok);

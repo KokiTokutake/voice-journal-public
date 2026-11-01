@@ -42,6 +42,9 @@ internal static class Program
                 "session" when args.Length >= 3 => SessionCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 "play" when args.Length >= 2 => PlayCommand.Run(args, JsonOptions),
                 "listen" when args.Length >= 2 => PlayCommand.Listen(args, JsonOptions),
+                "beeps" when args.Length >= 2 => SyncCommands.Beeps(args, JsonOptions),
+                "devices" => SyncCommands.Devices(JsonOptions),
+                "analyze-sync" when args.Length >= 2 => SyncCommands.Analyze(args, JsonOptions),
                 _ => Usage(),
             };
         }

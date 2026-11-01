@@ -107,6 +107,37 @@ public sealed class RecordingSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task SilentLoopback_ReachesTheDiskWhileIdle_AndSurvivesACrash() // found in B6 (AT-19)
+    {
+        // Nothing plays: WASAPI delivers no loopback packets at all. The writer must still put the
+        // silent stretch on disk every second, or a crash would lose the whole recording's length.
+        var loop = new FakeCaptureSource(AudioSource.Loopback, LoopbackFormat);
+        await using var session = Create(CaptureMode.Loopback, loop);
+        session.Start();
+        _clock.Advance(TimeSpan.FromSeconds(10));
+
+        // Idle filling stays one second behind "now": about 9 s should be written (sidecar is updated with it).
+        await WaitUntil(() => ChunkSidecar.TryLoad(SidecarOf(session, AudioSource.Loopback))?.FramesWritten >= 8 * 8000, timeoutMs: 15_000);
+        var crashed = CopyDirectory(session.Directory, Path.Combine(_ws.Path, "crashed-silent"));
+        var result = SessionRecovery.Recover(crashed, _clock);
+        Assert.Equal(CaptureState.Interrupted, result.NewState); // not "failed": the silence is the recording
+        var recovered = Assert.Single(SessionManifest.Load(crashed).Tracks[0].Chunks);
+        Assert.InRange(recovered.FrameCount, 8 * 8000, 9 * 8000);
+
+        // A packet then arrives and the user stops: one silence event covers the whole idle stretch.
+        _clock.Advance(TimeSpan.FromMilliseconds(10));
+        loop.Push(new byte[80 * LoopbackFormat.BlockAlign], AudioPacketStatus.None, _clock.GetTimestamp() - TimeSpan.FromMilliseconds(10).Ticks);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await session.StopAsync();
+        var track = SessionManifest.Load(session.Directory).Tracks[0];
+        Assert.InRange(track.Chunks.Sum(c => c.FrameCount), 11 * 8000, 11 * 8000 + 160);
+        var silence = track.Events.Where(e => e.Kind == AudioEventKind.LoopbackSilence).ToList();
+        Assert.Equal(2, silence.Count); // before the packet, and the tail after it
+        Assert.Equal(0, silence[0].StartMs);
+        Assert.InRange(silence[0].EndMs!.Value, 9_995, 10_005);
+    }
+
+    [Fact]
     public async Task SilentPackets_AreWrittenAsZeros()
     {
         var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
@@ -508,8 +539,8 @@ public sealed class RecordingSessionTests : IDisposable
         }
     }
 
-    private static string SidecarOf(RecordingSession session) =>
-        ChunkSidecar.PathFor(SessionPaths.Resolve(session.Directory, SessionPaths.PartialChunkFile(AudioSource.Mic, 1)));
+    private static string SidecarOf(RecordingSession session, AudioSource source = AudioSource.Mic) =>
+        ChunkSidecar.PathFor(SessionPaths.Resolve(session.Directory, SessionPaths.PartialChunkFile(source, 1)));
 
     private static string CopyDirectory(string source, string target)
     {

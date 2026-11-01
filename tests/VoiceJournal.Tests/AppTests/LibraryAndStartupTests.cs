@@ -119,6 +119,7 @@ public sealed class LibraryAndStartupTests : IDisposable
         Assert.Equal(2, _library.Sessions.Count);
         var recovered = _library.Sessions.Single(s => s.Directory == crashedDir);
         Assert.Equal("中断（回復済み）", recovered.StateText);
+        Assert.Equal("⚠ 末尾に欠損の可能性", recovered.LossText); // AT-19: the loss is shown
         Assert.Equal(CaptureState.Interrupted, SessionManifest.Load(crashedDir).CaptureState);
         Assert.NotEmpty(Directory.GetFiles(crashedDir, "*.recovered.wav", SearchOption.AllDirectories));
         Assert.NotEmpty(Directory.GetFiles(crashedDir, "*.partial", SearchOption.AllDirectories)); // originals kept
