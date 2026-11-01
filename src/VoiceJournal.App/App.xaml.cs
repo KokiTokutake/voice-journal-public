@@ -121,7 +121,11 @@ public partial class App : Application
         services.AddSingleton(new TranscriptIndex(workspace, database));
         services.AddSingleton(sp => new TranscriptionCoordinator(
             sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<SttJobProcessor>(), sp.GetRequiredService<TranscriptIndex>(),
-            sp.GetRequiredService<IUiSettingsStore>(), () => new SttConfiguration { ModelName = "ggml-small.bin" }, sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<ISttSettingsStore>(new JsonSttSettingsStore(JsonSttSettingsStore.DefaultPath));
+        services.AddSingleton<TranscriptViewModel>();
+        services.AddSingleton<ProcessingViewModel>();
+        services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();

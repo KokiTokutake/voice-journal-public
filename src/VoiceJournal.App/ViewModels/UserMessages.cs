@@ -1,5 +1,6 @@
 using System.Globalization;
 using VoiceJournal.Core.Capture;
+using VoiceJournal.Core.Transcription;
 
 namespace VoiceJournal.App.ViewModels;
 
@@ -31,6 +32,39 @@ internal static class UserMessages
         CaptureState.Interrupted => "中断（回復済み）",
         CaptureState.Failed => "失敗",
         _ => state.ToString(),
+    };
+
+    /// <summary>Processing state for the library and the processing screen.</summary>
+    public static string ProcessingStateName(ProcessingState state, int? revision = null) => state switch
+    {
+        ProcessingState.None => revision is null ? "未処理" : $"済み（Rev {revision}）",
+        ProcessingState.Queued => "順番待ち",
+        ProcessingState.Normalizing => "音声を変換中",
+        ProcessingState.Transcribing => "文字起こし中",
+        ProcessingState.Transcribed => revision is null ? "文字起こし済み" : $"済み（Rev {revision}）",
+        ProcessingState.Failed => "失敗",
+        ProcessingState.Cancelled => "取り消し",
+        _ => state.ToString(),
+    };
+
+    /// <summary>Error code (detail spec 19) and what the user can do.</summary>
+    public static string SttError(SttErrorCode? code) => code switch
+    {
+        null => string.Empty,
+        SttErrorCode.ToolMissing => "STT-001: whisper-cli またはモデルが見つからないか、登録した SHA-256 と一致しません。設定画面の「ツールを確認」で確かめてください。録音は残っています。",
+        SttErrorCode.RunFailed => "STT-002: 文字起こしが異常終了したか、時間内に終わりませんでした。終わった区間は残っています。「やり直す」で残りだけ実行します。",
+        SttErrorCode.NotEnoughMemory => "STT-002: 空きメモリが足りません。LM Studio などでモデルを読み込んでいたら、アンロードしてからやり直してください。",
+        SttErrorCode.Cancelled => "取り消しました。終わった区間と録音は残っています。",
+        SttErrorCode.Preempted => "録音のために中断しました。録音が終わると続きから再開します。",
+        SttErrorCode.Conflict => "再認識している間に同じ範囲が修正されたため、結果を反映しませんでした。もう一度実行してください。",
+        _ => code.ToString()!,
+    };
+
+    public static string ModelLabel(string modelName) => modelName switch
+    {
+        "ggml-small.bin" => "small（既定・速い）",
+        "ggml-medium.bin" => "medium（高精度・約 3 倍の時間）",
+        _ => modelName,
     };
 
     public static string StatusText(RecorderStatus status) => status switch

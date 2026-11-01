@@ -138,13 +138,19 @@ public sealed class FakePlayer : IAudioPlayer
 {
     public IReadOnlyList<string>? LastPlayed { get; private set; }
 
+    public TimeSpan LastStart { get; private set; }
+
+    public TimeSpan? LastDuration { get; private set; }
+
     public bool IsPlaying { get; private set; }
 
     public event EventHandler<PlaybackEndedEventArgs>? Ended;
 
-    public string Play(IReadOnlyList<string> wavFiles)
+    public string Play(IReadOnlyList<string> wavFiles, TimeSpan startInFirstFile = default, TimeSpan? duration = null)
     {
         LastPlayed = wavFiles;
+        LastStart = startInFirstFile;
+        LastDuration = duration;
         IsPlaying = true;
         return "テスト用スピーカー";
     }

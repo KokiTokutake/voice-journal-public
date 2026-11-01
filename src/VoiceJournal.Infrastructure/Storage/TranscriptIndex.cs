@@ -10,6 +10,11 @@ namespace VoiceJournal.Infrastructure.Storage;
 
 public sealed record TranscriptRebuildReport(int Sessions, int Jobs, int Revisions, IReadOnlyList<IndexFailure> Failed);
 
+/// <summary>A job row for the processing screen (UI-03).</summary>
+public sealed record JobSummary(
+    Guid JobId, Guid SessionId, string RelativePath, string? Title, DateTimeOffset SessionStartedAtUtc, SttJobKind Kind,
+    ProcessingState State, SttErrorCode? Error, string ModelName, DateTimeOffset CreatedAtUtc, DateTimeOffset? EndedAtUtc, int? ResultRevision);
+
 /// <summary>
 /// Indexes processing jobs and transcript revisions (detail spec 15.2 <c>jobs</c> / <c>transcript_revisions</c> /
 /// <c>segments</c>) and keeps <c>sessions.processing_state</c> up to date. The ledgers and revision files are the
@@ -181,6 +186,30 @@ public sealed class TranscriptIndex
         }
         return result;
     }
+
+    /// <summary>The newest jobs, newest first.</summary>
+    public IReadOnlyList<JobSummary> RecentJobs(int limit) => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT j.id, j.session_id, s.relative_path, s.title, s.started_at, j.kind, j.state, j.error_code, j.model_name,
+                   j.created_at, j.ended_at, j.result_revision
+            FROM jobs j JOIN sessions s ON s.id = j.session_id
+            ORDER BY j.created_at DESC LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$limit", limit);
+        using var r = cmd.ExecuteReader();
+        var list = new List<JobSummary>();
+        while (r.Read())
+        {
+            list.Add(new JobSummary(
+                Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3),
+                DbText.ParseUtc(r.GetString(4)), DbText.ParseEnum<SttJobKind>(r.GetString(5)), DbText.ParseEnum<ProcessingState>(r.GetString(6)),
+                r.IsDBNull(7) ? null : DbText.ParseEnum<SttErrorCode>(r.GetString(7)), r.GetString(8), DbText.ParseUtc(r.GetString(9)),
+                r.IsDBNull(10) ? null : DbText.ParseUtc(r.GetString(10)), r.IsDBNull(11) ? null : r.GetInt32(11)));
+        }
+        return list;
+    });
 
     private bool SessionIndexed(string sessionDirectory) => _db.Read(c =>
     {

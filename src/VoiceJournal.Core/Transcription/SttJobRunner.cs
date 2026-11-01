@@ -107,6 +107,24 @@ public sealed class SttJobRunner : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Puts a failed or cancelled job back in the queue (STT-002: finished pieces are kept, only the rest runs).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The job is not failed or cancelled.</exception>
+    public SttJob Retry(string sessionDirectory, Guid jobId)
+    {
+        var job = SttJobStore.Load(sessionDirectory, jobId);
+        if (job.State is not (ProcessingState.Failed or ProcessingState.Cancelled))
+            throw new InvalidOperationException($"Job {jobId} is {job.State}; only failed or cancelled jobs can be retried.");
+        job.State = ProcessingStateMachine.Transition(job.State, ProcessingState.Queued);
+        job.EndedAtUtc = null;
+        SttJobStore.Save(sessionDirectory, job);
+        lock (_gate) _queue.AddLast((sessionDirectory, job.JobId));
+        JobChanged?.Invoke(this, new SttJobChange(sessionDirectory, job));
+        _signal.Release();
+        return job;
+    }
+
     /// <summary>Cancels a queued or running job. Finished pieces, the audio and earlier revisions are kept.</summary>
     public void Cancel(string sessionDirectory, Guid jobId)
     {

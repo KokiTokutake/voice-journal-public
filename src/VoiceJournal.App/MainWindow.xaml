@@ -39,14 +39,19 @@
             <TabItem Header="ライブラリ(_L)">
                 <views:LibraryView DataContext="{Binding Library}" />
             </TabItem>
+            <TabItem Header="文字起こし(_S)">
+                <views:TranscriptView DataContext="{Binding Transcript}" />
+            </TabItem>
             <TabItem Header="管理(_G)">
                 <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
             </TabItem>
             <TabItem Header="処理状況(_J)">
-                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="文字起こし・記録生成の処理状況は Phase C 以降で実装します。" />
+                <views:ProcessingView DataContext="{Binding Processing}" />
             </TabItem>
             <TabItem Header="設定(_Z)">
-                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="設定画面は後のフェーズで実装します。保存先は %LOCALAPPDATA%\VoiceJournal\Workspace です。" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <views:SettingsView DataContext="{Binding Settings}" />
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </DockPanel>

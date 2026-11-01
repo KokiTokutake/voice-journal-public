@@ -64,6 +64,41 @@ public sealed class TranscriptionCoordinator : IDisposable
         return _runner.Enqueue(sessionDirectory, manifest.SessionId, _configuration());
     }
 
+    /// <summary>Queues re-recognition of a range (AT-07), with the current settings except for <paramref name="modelName"/>.</summary>
+    public SttJob EnqueueRange(string sessionDirectory, Core.Capture.AudioSource source, TimeRange range, int parentRevision, string? modelName = null)
+    {
+        var manifest = SessionManifest.Load(sessionDirectory);
+        var configuration = _configuration();
+        if (modelName is not null) configuration = configuration with { ModelName = modelName };
+        return _runner.EnqueueRange(sessionDirectory, manifest.SessionId, configuration, source, range, parentRevision);
+    }
+
+    public void Cancel(string sessionDirectory, Guid jobId) => _runner.Cancel(sessionDirectory, jobId);
+
+    /// <summary>Resumes a failed or cancelled job from its finished pieces (STT-002).</summary>
+    public SttJob Retry(string sessionDirectory, Guid jobId) => _runner.Retry(sessionDirectory, jobId);
+
+    /// <summary>A revision was saved from the UI (an edit): index it off the UI thread and tell the library.</summary>
+    public Task RevisionSavedAsync(string sessionDirectory) => Task.Run(() =>
+    {
+        try
+        {
+            _index.UpsertRevisions(sessionDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException
+                                       or DatabaseBusyException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            IndexError?.Invoke(this, ex);
+        }
+        RevisionsChanged?.Invoke(this, sessionDirectory);
+    });
+
+    /// <summary>The revisions of a session changed (an edit was indexed). Raised on a background thread.</summary>
+    public event EventHandler<string>? RevisionsChanged;
+
+    /// <summary>The settings a job queued now would use.</summary>
+    public SttConfiguration CurrentConfiguration => _configuration();
+
     private static bool IsActive(RecorderStatus status) =>
         status is RecorderStatus.Preparing or RecorderStatus.Recording or RecorderStatus.PartiallyStopped or RecorderStatus.Stopping;
 

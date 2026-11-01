@@ -6,6 +6,7 @@ using VoiceJournal.App.Services;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Playback;
 using VoiceJournal.Core.Sessions;
+using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Storage;
 
 namespace VoiceJournal.App.ViewModels;
@@ -43,6 +44,12 @@ public sealed class SessionRowViewModel
 
     public string StateText => UserMessages.CaptureStateName(Summary.CaptureState);
 
+    public string ProcessingText => UserMessages.ProcessingStateName(Summary.ProcessingState, Summary.LatestTranscriptRevision);
+
+    public bool HasTranscript => Summary.LatestTranscriptRevision is not null;
+
+    public bool IsProcessing => ProcessingStateMachine.IsActive(Summary.ProcessingState);
+
     /// <summary>
     /// Text, not only a color (detail spec 18.1). A session recovered after a crash may miss its last seconds
     /// (AT-19 "欠損表示"; detail spec 19: the last chunk may hold unsaved audio).
@@ -68,7 +75,7 @@ public sealed class SessionRowViewModel
     }
 }
 
-/// <summary>UI-04 library, minimal for Phase B: list, loss warning, search, open folder, play a track.</summary>
+/// <summary>UI-04 library: list, loss warning, processing state, search, open folder, play a track, transcribe, open the transcript.</summary>
 public sealed partial class LibraryViewModel : ObservableObject
 {
     private readonly ISessionIndex _index;
@@ -76,15 +83,25 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly IAudioPlayer _player;
     private readonly IShellService _shell;
     private readonly IUiDispatcher _ui;
+    private readonly TranscriptionCoordinator? _transcription;
     private List<SessionRowViewModel> _all = [];
+    private bool _refreshQueued;
 
-    public LibraryViewModel(ISessionIndex index, RecordingEnvironment environment, IAudioPlayer player, IShellService shell, IUiDispatcher ui)
+    public LibraryViewModel(ISessionIndex index, RecordingEnvironment environment, IAudioPlayer player, IShellService shell, IUiDispatcher ui,
+        TranscriptionCoordinator? transcription = null)
     {
         _index = index;
         _environment = environment;
         _player = player;
         _shell = shell;
         _ui = ui;
+        _transcription = transcription;
+        if (_transcription is not null)
+        {
+            // Job state changes (not progress) refresh the list; bursts collapse into one refresh.
+            _transcription.JobChanged += (_, _) => QueueRefresh();
+            _transcription.RevisionsChanged += (_, _) => QueueRefresh();
+        }
         _player.Ended += (_, e) => _ui.Post(() =>
         {
             IsPlaying = false;
@@ -99,7 +116,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand), nameof(TranscribeCommand), nameof(OpenTranscriptCommand))]
     public partial SessionRowViewModel? Selected { get; set; }
 
     [ObservableProperty]
@@ -144,6 +161,51 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     private bool HasSelection() => Selected is not null;
 
+    /// <summary>The user asked to open the transcript of a session (the main window switches to UI-06).</summary>
+    public event EventHandler<SessionRowViewModel>? OpenTranscriptRequested;
+
+    private void QueueRefresh()
+    {
+        lock (_all)
+        {
+            if (_refreshQueued) return;
+            _refreshQueued = true;
+        }
+        _ui.Post(async () =>
+        {
+            lock (_all) _refreshQueued = false;
+            await RefreshAsync();
+        });
+    }
+
+    private bool CanTranscribe() => _transcription is not null && Selected is { IsProcessing: false } row && row.Summary.CaptureState is not CaptureState.Recording;
+
+    /// <summary>Queues transcription with the current settings; for a transcribed session this makes a new raw revision (AT-26).</summary>
+    [RelayCommand(CanExecute = nameof(CanTranscribe))]
+    private async Task Transcribe()
+    {
+        if (_transcription is null || Selected is not { } row) return;
+        try
+        {
+            var job = _transcription.Enqueue(row.Directory);
+            await RefreshAsync(); // clears the message, so the notice comes after it
+            Message = (row.HasTranscript ? "今の設定で文字起こしし直します（以前の結果も残ります）。" : "文字起こしを順番待ちに入れました。")
+                + $"モデル: {UserMessages.ModelLabel(job.Configuration.ModelName)}。進み具合は「処理状況」で確認できます。";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Message = $"文字起こしを始められませんでした（{ex.Message}）。";
+        }
+    }
+
+    private bool CanOpenTranscript() => Selected?.HasTranscript == true;
+
+    [RelayCommand(CanExecute = nameof(CanOpenTranscript))]
+    private void OpenTranscript()
+    {
+        if (Selected is { } row) OpenTranscriptRequested?.Invoke(this, row);
+    }
+
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void OpenFolder()
     {
@@ -175,6 +237,26 @@ public sealed partial class LibraryViewModel : ObservableObject
             .OrderBy(c => c.Sequence)
             .Select(c => SessionPaths.Resolve(sessionDirectory, c.File))
             .Where(File.Exists)];
+    }
+
+    /// <summary>
+    /// The saved chunk files of a track from session time <paramref name="atMs"/> on: the chunk that contains it (or the
+    /// next one, when <paramref name="atMs"/> falls into a gap) and the offset into that first file.
+    /// </summary>
+    internal static (IReadOnlyList<string> Files, TimeSpan Offset) PlayableFrom(string sessionDirectory, AudioSource source, long atMs)
+    {
+        var manifest = SessionManifest.Load(sessionDirectory);
+        var track = manifest.Tracks.FirstOrDefault(t => t.Source == source);
+        if (track is null) return ([], TimeSpan.Zero);
+        var chunks = track.Chunks
+            .Where(c => c.State is ChunkState.Completed or ChunkState.Recovered && File.Exists(SessionPaths.Resolve(sessionDirectory, c.File)))
+            .OrderBy(c => c.Sequence)
+            .Select(c => (Chunk: c, EndMs: c.StartMs + c.FrameCount * 1000 / track.Format.SampleRate))
+            .SkipWhile(c => c.EndMs <= atMs)
+            .ToList();
+        if (chunks.Count == 0) return ([], TimeSpan.Zero);
+        var offset = TimeSpan.FromMilliseconds(Math.Max(0, atMs - chunks[0].Chunk.StartMs));
+        return ([.. chunks.Select(c => SessionPaths.Resolve(sessionDirectory, c.Chunk.File))], offset);
     }
 
     private void Play(AudioSource source)

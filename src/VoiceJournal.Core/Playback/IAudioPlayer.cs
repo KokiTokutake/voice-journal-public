@@ -5,9 +5,12 @@ public interface IAudioPlayer : IDisposable
 {
     bool IsPlaying { get; }
 
-    /// <summary>Stops whatever is playing and starts the given WAV files in order.</summary>
+    /// <summary>
+    /// Stops whatever is playing and starts the given WAV files in order, from <paramref name="startInFirstFile"/> into the
+    /// first file, for at most <paramref name="duration"/> (to the end when null).
+    /// </summary>
     /// <returns>The name of the output device the sound goes to (the Windows default at this moment).</returns>
-    string Play(IReadOnlyList<string> wavFiles);
+    string Play(IReadOnlyList<string> wavFiles, TimeSpan startInFirstFile = default, TimeSpan? duration = null);
 
     void StopPlayback();
 

@@ -1,4 +1,4 @@
-<UserControl x:Class="VoiceJournal.App.Views.RecordingView"
+﻿<UserControl x:Class="VoiceJournal.App.Views.RecordingView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -175,6 +175,8 @@
                 </Grid>
                 <Button Content="デバイス一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ActionButton}"
                         HorizontalAlignment="Left" Margin="0,16,0,0" />
+                <!-- Detail spec 18.3: "保存後 [✓]文字起こしをキューへ追加" -->
+                <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}" Content="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" />
             </StackPanel>
         </Border>
     </StackPanel>

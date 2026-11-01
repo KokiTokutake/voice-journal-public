@@ -9,6 +9,7 @@ public enum AppPage
 {
     Recording,
     Library,
+    Transcript,
     Management,
     Processing,
     Settings,
@@ -19,18 +20,44 @@ public sealed partial class MainViewModel : ObservableObject
 {
     private readonly IDialogService _dialogs;
 
-    public MainViewModel(RecordingViewModel recording, LibraryViewModel library, IDialogService dialogs)
+    public MainViewModel(
+        RecordingViewModel recording, LibraryViewModel library, IDialogService dialogs,
+        TranscriptViewModel? transcript = null, ProcessingViewModel? processing = null, SettingsViewModel? settings = null)
     {
         Recording = recording;
         Library = library;
+        Transcript = transcript;
+        Processing = processing;
+        Settings = settings;
         _dialogs = dialogs;
         Recording.PropertyChanged += OnRecordingChanged;
         Recording.RecordingCompleted += async (_, _) => await Library.RefreshAsync();
+        Library.OpenTranscriptRequested += (_, row) => OpenTranscript(row);
     }
 
     public RecordingViewModel Recording { get; }
 
     public LibraryViewModel Library { get; }
+
+    public TranscriptViewModel? Transcript { get; }
+
+    public ProcessingViewModel? Processing { get; }
+
+    public SettingsViewModel? Settings { get; }
+
+    /// <summary>UI-06 for the session chosen in the library.</summary>
+    public void OpenTranscript(SessionRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (Transcript is null) return;
+        Transcript.Open(row.Directory, $"{row.TitleText}（{row.StartedText}）");
+        CurrentPage = AppPage.Transcript;
+    }
+
+    partial void OnCurrentPageChanged(AppPage value)
+    {
+        if (value == AppPage.Processing && Processing is not null) _ = Processing.RefreshAsync();
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedPageIndex))]

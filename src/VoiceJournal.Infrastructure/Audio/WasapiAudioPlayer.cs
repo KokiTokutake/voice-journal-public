@@ -26,7 +26,7 @@ public sealed class WasapiAudioPlayer : IAudioPlayer
 
     public event EventHandler<PlaybackEndedEventArgs>? Ended;
 
-    public string Play(IReadOnlyList<string> wavFiles)
+    public string Play(IReadOnlyList<string> wavFiles, TimeSpan startInFirstFile = default, TimeSpan? duration = null)
     {
         ArgumentNullException.ThrowIfNull(wavFiles);
         if (wavFiles.Count == 0) throw new ArgumentException("Nothing to play.", nameof(wavFiles));
@@ -44,7 +44,9 @@ public sealed class WasapiAudioPlayer : IAudioPlayer
                 var first = readers[0].WaveFormat;
                 if (readers.Any(r => r.WaveFormat.SampleRate != first.SampleRate || r.WaveFormat.Channels != first.Channels))
                     throw new InvalidDataException("The chunks of a track must share one format.");
+                if (startInFirstFile > TimeSpan.Zero) readers[0].CurrentTime = startInFirstFile < readers[0].TotalTime ? startInFirstFile : readers[0].TotalTime;
                 ISampleProvider chain = new ConcatenatingSampleProvider(readers);
+                if (duration is { } d) chain = new OffsetSampleProvider(chain) { Take = d };
 
                 enumerator = new MMDeviceEnumerator();
                 device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);

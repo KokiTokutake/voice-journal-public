@@ -1,0 +1,72 @@
+<UserControl x:Class="VoiceJournal.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
+    <StackPanel Margin="24,8,24,24" MaxWidth="900" HorizontalAlignment="Left">
+        <!-- Transcription (UI-12) -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="文字起こし" Style="{StaticResource SectionTitle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="150" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Content="モデル(_M)" Target="{Binding ElementName=ModelBox}" VerticalAlignment="Center" Padding="0" />
+                    <ComboBox x:Name="ModelBox" Grid.Row="0" Grid.Column="1" Margin="0,4" MaxWidth="360" HorizontalAlignment="Left" MinWidth="260"
+                              ItemsSource="{Binding ModelOptions}" SelectedValuePath="Name" DisplayMemberPath="Label" SelectedValue="{Binding ModelName}"
+                              AutomationProperties.Name="文字起こしのモデル" />
+                    <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding UseVad}"
+                              Content="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(_V)" />
+                    <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding NormalizeGain}"
+                              Content="小さい音声の音量をそろえてから認識する（原音は変えません）(_N)" />
+                    <Label Grid.Row="3" Content="CPU のスレッド数(_H)" Target="{Binding ElementName=ThreadBox}" VerticalAlignment="Center" Padding="0" Margin="0,8,0,0" />
+                    <ComboBox x:Name="ThreadBox" Grid.Row="3" Grid.Column="1" Margin="0,12,0,4" Width="90" HorizontalAlignment="Left"
+                              ItemsSource="{Binding ThreadOptions}" SelectedItem="{Binding Threads}" AutomationProperties.Name="CPU のスレッド数" />
+                </Grid>
+                <TextBlock Margin="0,12,0,0" Style="{StaticResource Note}" TextWrapping="Wrap"
+                           Text="変更はすぐに保存され、次に始める文字起こしから使われます。録音中は文字起こしを一時停止し、録音が終わると再開します。" />
+                <TextBlock Margin="0,6,0,0" Text="{Binding Message}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </Border>
+
+        <!-- Tools -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="文字起こしのツール" Style="{StaticResource SectionTitle}" />
+                <TextBlock Style="{StaticResource Note}" TextWrapping="Wrap">
+                    <Run Text="登録した whisper-cli とモデルだけを、SHA-256 を照合してから使います。" /><LineBreak />
+                    <Run Text="whisper-cli: " /><Run Text="{Binding WhisperPath, Mode=OneWay}" />
+                </TextBlock>
+                <Button Content="ツールを確認(_K)" Tag="&#xE73E;" Command="{Binding VerifyToolsCommand}" Style="{StaticResource ActionButton}"
+                        HorizontalAlignment="Left" Margin="0,10,0,6" />
+                <ItemsControl ItemsSource="{Binding ToolStatus}" AutomationProperties.Name="ツールの確認結果">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- Storage -->
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="保存先" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{Binding WorkspaceRoot}" TextWrapping="Wrap" />
+                <TextBlock Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="保存先の変更、管理ファイル、バックアップなどの設定は後のフェーズで追加します。" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>
