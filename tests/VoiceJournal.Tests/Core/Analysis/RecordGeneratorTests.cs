@@ -20,14 +20,22 @@ internal sealed class EchoLlm : ILlmClient
 
     public bool Unavailable { get; set; }
 
+    /// <summary>LM Studio unloaded the model (TTL); the first request loads it again (JIT).</summary>
+    public bool Unloaded { get; set; }
+
+    public int LoadedContext { get; set; } = 8192;
+
     public Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken) =>
-        Unavailable ? throw new LlmUnavailableException("down") : Task.FromResult(new LlmModelInfo(modelId, 8192, 131072));
+        Unavailable ? throw new LlmUnavailableException("down")
+        : Task.FromResult(Unloaded ? new LlmModelInfo(modelId, null, 131072, false) : new LlmModelInfo(modelId, LoadedContext, 131072, true));
 
     public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (Unavailable) throw new LlmUnavailableException("down");
+        Unloaded = false;
         Requests.Add(request);
+        if (request.SchemaName == "voice_journal_wake") return Task.FromResult(Answer("{\"ok\":true}"));
         if (Override?.Invoke(request, Requests.Count) is { } custom) return Task.FromResult(custom);
         var input = request.Messages.First(m => m.Role == LlmRole.User).Content;
         var content = request.SchemaName == LlmSchemas.ExtractionName ? Extract(input) : Integrate(input);
@@ -267,6 +275,21 @@ public sealed class RecordGeneratorTests
         Assert.All(analysis.Candidates, c => Assert.Equal(CandidateAction.Create, c.Action));
         Assert.False(File.Exists(new RecordStore(dir.Path).ApprovedMarkdownPath)); // nothing approved itself
         Assert.False(Directory.Exists(Path.Combine(dir.Path, "management")));
+    }
+
+    [Fact]
+    public async Task UnloadedModel_IsWokenFirst_AndAShorterLoadedContextIsUsed()
+    {
+        using var dir = new TempDirectory();
+        var llm = new EchoLlm { Unloaded = true, LoadedContext = 4096 };
+
+        var result = await Generator(llm).GenerateAsync(Request(dir, Meeting(40), Settings with { OutputReserve = 1024 }), null, CancellationToken.None);
+
+        Assert.Equal(GenerationOutcome.Generated, result.Outcome);
+        Assert.Equal("voice_journal_wake", llm.Requests[0].SchemaName);
+        var analysis = new AnalysisStore(dir.Path).Load(result.AnalysisRevision!.Value);
+        Assert.Equal(4096, analysis.Provenance.ContextLength);
+        Assert.Contains(analysis.Analysis.Warnings, w => w.Contains("コンテキスト長が 4096", StringComparison.Ordinal));
     }
 
     [Fact]

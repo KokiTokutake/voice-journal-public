@@ -31,7 +31,7 @@ public sealed record GenerationSettings
     /// Upper bound of transcript tokens per piece. The answer size is bounded by the schema, so a piece much larger
     /// than this would be summarized too coarsely; much smaller pieces repeat the fixed cost of every request.
     /// </summary>
-    public int MaxPieceTokens { get; init; } = 2000;
+    public int MaxPieceTokens { get; init; } = 3000;
 
     /// <summary>Pieces sent at the same time (LM Studio serves up to its "parallel" setting). Not in the hash: it does not change answers.</summary>
     public int Parallelism { get; init; } = 1;
@@ -165,6 +165,8 @@ public sealed class RecordGenerator
         ArgumentNullException.ThrowIfNull(request);
         var watch = Stopwatch.StartNew();
         var settings = request.Settings;
+        var appWarnings = new List<string>();
+        settings = await PrepareModelAsync(settings, appWarnings, cancellationToken).ConfigureAwait(false);
         var estimator = new TokenEstimator(settings.TokenFactor);
         var zone = FindZone(request.TimeZoneId);
         var session = AnalysisPlanner.Session(request.StartedAtUtc, zone, request.Title);
@@ -173,8 +175,6 @@ public sealed class RecordGenerator
         var configHash = settings.ComputeHash();
         var analysisStore = new AnalysisStore(request.SessionDirectory);
         var work = analysisStore.WorkDirectory(request.JobId);
-
-        await _llm.GetModelAsync(settings.ModelId, cancellationToken).ConfigureAwait(false);
 
         var sessionTokens = estimator.Estimate(JsonSerializer.Serialize(session, AnalysisJson.Compact)) + 64;
         var extractionBudget = Math.Min(settings.MaxPieceTokens, new ContextBudget(settings.ContextLength, settings.OutputReserve,
@@ -231,7 +231,6 @@ public sealed class RecordGenerator
         if (pieces.All(p => p.SummaryPoints.Count == 0 && p.Topics.Count == 0 && p.Candidates.Count == 0))
             return Result(GenerationOutcome.NotAnalyzable, null, null, plan, failed, stats, droppedEvidence, dropped.Count, estimator, watch, null);
 
-        var appWarnings = new List<string>();
         progress?.Report(new GenerationProgress("integrate", 0, 1));
         var record = await IntegrateAsync(pieces, session, settings, estimator, stats, appWarnings, work, cancellationToken).ConfigureAwait(false);
         dropped.AddRange(record.Dropped);
@@ -276,6 +275,34 @@ public sealed class RecordGenerator
         records.Save(recordDocument, d => RecordMarkdown.Render(d, new RecordContext(request.StartedAtUtc, request.TimeZoneId, transcript, Approved: false)));
         progress?.Report(new GenerationProgress("done", 1, 1));
         return Result(GenerationOutcome.Generated, document.Revision, recordDocument.Revision, plan, failed, stats, droppedEvidence, dropped.Count, estimator, watch, null);
+    }
+
+    /// <summary>
+    /// Makes sure the model is loaded and uses the context length it is really loaded with (detail spec 9.2: read
+    /// C when possible). LM Studio may have unloaded it (TTL) and loads it again on the first request (JIT) with
+    /// its own per-model defaults, so a one-token request wakes it before C is read.
+    /// </summary>
+    private async Task<GenerationSettings> PrepareModelAsync(GenerationSettings settings, List<string> warnings, CancellationToken cancellationToken)
+    {
+        var model = await _llm.GetModelAsync(settings.ModelId, cancellationToken).ConfigureAwait(false);
+        if (model.Loaded == false)
+        {
+            await _llm.CompleteAsync(new LlmRequest
+            {
+                Model = settings.ModelId,
+                Messages = [new(LlmRole.User, "ok")],
+                SchemaName = "voice_journal_wake",
+                Schema = """{"type":"object","additionalProperties":false,"required":["ok"],"properties":{"ok":{"type":"boolean"}}}""",
+                MaxTokens = 8,
+            }, cancellationToken).ConfigureAwait(false);
+            model = await _llm.GetModelAsync(settings.ModelId, cancellationToken).ConfigureAwait(false);
+        }
+        if (model.LoadedContextLength is { } loaded && loaded < settings.ContextLength)
+        {
+            warnings.Add($"LM Studio のコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。LM Studio のモデル設定を確認してください。");
+            return settings with { ContextLength = loaded };
+        }
+        return settings;
     }
 
     /// <summary>

@@ -40,8 +40,12 @@ public sealed record LlmResponse
     public required TimeSpan Elapsed { get; init; }
 }
 
-/// <summary>The model the server reports, and the context length it is loaded with when the server says so.</summary>
-public sealed record LlmModelInfo(string Id, int? LoadedContextLength, int? MaxContextLength);
+/// <summary>
+/// The model the server reports, and the context length it is loaded with when the server says so.
+/// <paramref name="Loaded"/> is false when the server lists the model but has not loaded it (LM Studio's JIT
+/// loading or TTL unload); null when the server does not say.
+/// </summary>
+public sealed record LlmModelInfo(string Id, int? LoadedContextLength, int? MaxContextLength, bool? Loaded = null);
 
 /// <summary>LLM-001: the server is not running, not reachable on loopback, or the model is not loaded.</summary>
 public sealed class LlmUnavailableException : Exception

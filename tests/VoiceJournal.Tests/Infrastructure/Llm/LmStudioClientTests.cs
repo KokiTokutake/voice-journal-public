@@ -118,12 +118,12 @@ public sealed class LmStudioClientTests
         var handler = new FakeHandler((r, _) => r.RequestUri!.AbsolutePath switch
         {
             "/v1/models" => FakeHandler.Json("""{"data":[{"id":"gemma-3-4b-it"}]}"""),
-            "/api/v0/models/gemma-3-4b-it" => FakeHandler.Json("""{"id":"gemma-3-4b-it","loaded_context_length":16384,"max_context_length":131072}"""),
+            "/api/v0/models/gemma-3-4b-it" => FakeHandler.Json("""{"id":"gemma-3-4b-it","state":"loaded","loaded_context_length":16384,"max_context_length":131072}"""),
             _ => FakeHandler.Json("{}", HttpStatusCode.NotFound),
         });
         using var client = Client(handler);
 
-        Assert.Equal(new LlmModelInfo("gemma-3-4b-it", 16384, 131072), await client.GetModelAsync("gemma-3-4b-it", CancellationToken.None));
+        Assert.Equal(new LlmModelInfo("gemma-3-4b-it", 16384, 131072, true), await client.GetModelAsync("gemma-3-4b-it", CancellationToken.None));
         await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("other-model", CancellationToken.None));
     }
 }

@@ -101,18 +101,21 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
 
         // LM Studio's own REST API reports the loaded context length; the OpenAI-compatible one does not.
         int? loaded = null, max = null;
+        bool? isLoaded = null;
         try
         {
             var native = new Uri(_endpoint.BaseUri, "../api/v0/models/" + Uri.EscapeDataString(modelId));
             using var info = await SendAsync(HttpMethod.Get, native, null, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
             loaded = TryInt(info.RootElement, "loaded_context_length");
             max = TryInt(info.RootElement, "max_context_length");
+            if (info.RootElement.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String)
+                isLoaded = state.GetString() == "loaded";
         }
         catch (Exception ex) when (ex is LlmProtocolException or LlmUnavailableException)
         {
             // Older or newer servers without this endpoint: the settings value is used and shown to the user.
         }
-        return new LlmModelInfo(modelId, loaded, max);
+        return new LlmModelInfo(modelId, isLoaded == false ? null : loaded, max, isLoaded);
     }
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken cancellationToken)
