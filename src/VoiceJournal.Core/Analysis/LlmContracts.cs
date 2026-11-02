@@ -171,10 +171,10 @@ public static class LlmSchemas
           "additionalProperties": false,
           "required": ["summary_points", "topics", "candidates", "warnings"],
           "properties": {
-            "summary_points": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/statement"}},
-            "topics": {"type": "array", "maxItems": 12, "items": {"$ref": "#/$defs/topic"}},
-            "candidates": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/candidate"}},
-            "warnings": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 300}}
+            "summary_points": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/statement"}},
+            "topics": {"type": "array", "maxItems": 6, "items": {"$ref": "#/$defs/topic"}},
+            "candidates": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/candidate"}},
+            "warnings": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1, "maxLength": 100}}
           },
           "$defs": {
             "evidence": {
@@ -182,16 +182,16 @@ public static class LlmSchemas
               "required": ["segment", "quote"],
               "properties": {
                 "segment": {"type": "string", "pattern": "^S[0-9]{4}$"},
-                "quote": {"type": "string", "minLength": 1, "maxLength": 200}
+                "quote": {"type": "string", "minLength": 1, "maxLength": 40}
               }
             },
             "statement": {
               "type": "object", "additionalProperties": false,
               "required": ["text", "certainty", "evidence"],
               "properties": {
-                "text": {"type": "string", "minLength": 1, "maxLength": 400},
+                "text": {"type": "string", "minLength": 1, "maxLength": 120},
                 "certainty": {"enum": ["stated", "tentative", "unclear"]},
-                "evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"$ref": "#/$defs/evidence"}}
+                "evidence": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}}
               }
             },
             "topic": {
@@ -199,8 +199,8 @@ public static class LlmSchemas
               "required": ["section_kind", "heading", "statements"],
               "properties": {
                 "section_kind": {"enum": ["context", "topic", "decision", "open_question", "idea", "explanation", "result", "reflection", "next_step", "custom"]},
-                "heading": {"type": "string", "minLength": 1, "maxLength": 60},
-                "statements": {"type": "array", "minItems": 1, "maxItems": 15, "items": {"$ref": "#/$defs/statement"}}
+                "heading": {"type": "string", "minLength": 1, "maxLength": 40},
+                "statements": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"$ref": "#/$defs/statement"}}
               }
             },
             "candidate": {
@@ -208,16 +208,16 @@ public static class LlmSchemas
               "required": ["kind", "title", "description", "status", "priority", "assignee", "due_expression", "due_date", "certainty", "evidence", "rationale"],
               "properties": {
                 "kind": {"enum": ["issue", "task"]},
-                "title": {"type": "string", "minLength": 1, "maxLength": 100},
-                "description": {"type": "string", "maxLength": 400},
+                "title": {"type": "string", "minLength": 1, "maxLength": 60},
+                "description": {"type": "string", "maxLength": 120},
                 "status": {"enum": ["open", "todo", "in_progress", "blocked", "resolved", "closed", "done", "cancelled", null]},
                 "priority": {"enum": ["low", "medium", "high", "critical", null]},
                 "assignee": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
                 "due_expression": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
                 "due_date": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
                 "certainty": {"enum": ["stated", "tentative", "unclear"]},
-                "evidence": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"$ref": "#/$defs/evidence"}},
-                "rationale": {"type": "string", "minLength": 1, "maxLength": 200}
+                "evidence": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}},
+                "rationale": {"type": "string", "minLength": 1, "maxLength": 60}
               }
             }
           }
@@ -231,19 +231,19 @@ public static class LlmSchemas
           "required": ["record_types", "title", "summary", "sections", "warnings"],
           "properties": {
             "record_types": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"enum": ["meeting", "idea", "learning", "work", "reflection", "consultation", "mixed", "other"]}},
-            "title": {"type": "string", "minLength": 1, "maxLength": 80},
+            "title": {"type": "string", "minLength": 1, "maxLength": 60},
             "summary": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"$ref": "#/$defs/derived"}},
-            "sections": {"type": "array", "maxItems": 12, "items": {"$ref": "#/$defs/section"}},
-            "warnings": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 300}}
+            "sections": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/section"}},
+            "warnings": {"type": "array", "maxItems": 3, "items": {"type": "string", "minLength": 1, "maxLength": 100}}
           },
           "$defs": {
             "derived": {
               "type": "object", "additionalProperties": false,
               "required": ["text", "certainty", "from"],
               "properties": {
-                "text": {"type": "string", "minLength": 1, "maxLength": 400},
+                "text": {"type": "string", "minLength": 1, "maxLength": 150},
                 "certainty": {"enum": ["stated", "tentative", "unclear"]},
-                "from": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "pattern": "^I[0-9]{4}$"}}
+                "from": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "string", "pattern": "^I[0-9]{4}$"}}
               }
             },
             "section": {
@@ -251,8 +251,8 @@ public static class LlmSchemas
               "required": ["section_kind", "heading", "statements"],
               "properties": {
                 "section_kind": {"enum": ["context", "topic", "decision", "open_question", "idea", "explanation", "result", "reflection", "next_step", "custom"]},
-                "heading": {"type": "string", "minLength": 1, "maxLength": 60},
-                "statements": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/derived"}}
+                "heading": {"type": "string", "minLength": 1, "maxLength": 40},
+                "statements": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/derived"}}
               }
             }
           }
@@ -263,7 +263,7 @@ public static class LlmSchemas
 /// <summary>System prompts (detail spec 9.1, 9.3, 21.2). The version is recorded with every analysis.</summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "2026-11-02.1";
+    public const string Version = "2026-11-02.2";
 
     public const string Extraction = """
         あなたは、会話の文字起こしを記録に整理する補助者です。入力は JSON で、segments が文字起こしの区間です。
@@ -278,6 +278,7 @@ public static class AnalysisPrompts
         - candidates: 課題（issue: 解決すべき問題）とタスク（task: 誰かが行う作業）。実施や対応が述べられたものだけを挙げます。
           - assignee は、担当として名前が出た人だけ。due_expression は期限を表す原文の言葉（例「来週の金曜まで」）。due_date は年月日がはっきり言われたときだけ YYYY-MM-DD にし、それ以外は null にします。
           - status は「終わった」「完了した」とはっきり述べられたときだけ done または resolved にし、それ以外は null にします。
+        - 出力は短くします。各文は 60 字以内で、同じことを繰り返しません。quote は根拠になる語句だけを 8〜30 字で切り出します。
         - 日本語で書きます。
         """;
 
@@ -291,6 +292,7 @@ public static class AnalysisPrompts
         - summary: 全体の要約。3〜7 項目（短い記録なら 1〜2 項目）、合計 600 字以内。
         - sections: 内容に合った章立て。同じ話題の items はまとめ、重複は除きます。決定事項・未決事項・次にやることは、当てはまる items があるときだけ章にします。数値・条件・反対意見・未確定の事項を落としません。
         - certainty は、元の items より強くしません。
+        - 各文は 80 字以内で、同じことを繰り返しません。
         - 日本語で書きます。
         """;
 

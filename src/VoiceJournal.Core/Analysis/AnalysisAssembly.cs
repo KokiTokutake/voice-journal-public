@@ -512,14 +512,28 @@ public static class AnalysisAssembler
         warnings.AddRange(pieceList.SelectMany(p => p.Warnings));
         warnings.AddRange(record.Warnings);
 
+        // One section per heading (16.2-8): the model may name two sections alike; their statements are kept together.
+        var sections = new List<Section>();
+        foreach (var section in record.Sections)
+        {
+            var index = sections.FindIndex(s => s.Heading == section.Heading);
+            if (index < 0) sections.Add(section);
+            else sections[index] = sections[index] with { Statements = [.. sections[index].Statements, .. section.Statements] };
+        }
+        if (sections.Count > 30) warnings.Add($"章が多すぎるため、先頭の 30 章だけを残しました（全 {sections.Count} 章）。");
+        sections = [.. sections.Take(30).Select(s => s.Statements.Count > 100 ? s with { Statements = [.. s.Statements.Take(100)] } : s)];
+        var summary = record.Summary.Take(7).ToList();
+        if (summary.Sum(s => s.Text.Length) > AnalysisValidator.MaxSummaryCharacters)
+            warnings.Add($"要約が {AnalysisValidator.MaxSummaryCharacters} 字を超えています。レビューで短くしてください。");
+
         var analysis = new AnalysisResult
         {
             SessionId = sessionId,
             TranscriptRevision = transcriptRevision,
             RecordTypes = record.RecordTypes.Count > 0 ? record.RecordTypes : [RecordType.Other],
             Title = record.Title.Length > 0 ? Truncate(record.Title, 200) : "（題名なし）",
-            Summary = record.Summary,
-            Sections = [.. record.Sections.Take(30)],
+            Summary = summary,
+            Sections = sections,
             Candidates = candidates,
             Warnings = [.. warnings.Select(w => Truncate(w, 1000)).Distinct().Take(100)],
         };

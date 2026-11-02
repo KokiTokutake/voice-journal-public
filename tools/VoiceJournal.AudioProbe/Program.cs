@@ -48,6 +48,7 @@ internal static class Program
                 "analyze-sync" when args.Length >= 2 => SyncCommands.Analyze(args, JsonOptions),
                 "transcribe" when args.Length >= 2 => EvaluateCommands.TranscribeAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 "cer" when args.Length >= 2 => EvaluateCommands.Cer(args, JsonOptions),
+                "organize" when args.Length >= 2 => OrganizeCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 _ => Usage(),
             };
         }

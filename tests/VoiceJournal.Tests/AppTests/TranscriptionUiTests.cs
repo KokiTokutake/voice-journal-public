@@ -268,7 +268,9 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         var processing = new ProcessingViewModel(_coordinator, _transcripts, _ui, new RecordingEnvironment(_workspace.Root, 0));
         _engine.OnRun = r => r.OutputName == "loopback-0002" ? throw new SttException(SttErrorCode.ToolMissing, "gone") : FakeSttEngine.Utterance(r, 1_000, 3_000, "発話");
         var job = _coordinator.Enqueue(dir);
-        await WaitFor(() => SttJobStore.Load(dir, job.JobId).State == ProcessingState.Failed, "job fails");
+        // The screen reads the DB index, which is updated just after the ledger: wait for both (flaky under load before).
+        await WaitFor(() => SttJobStore.Load(dir, job.JobId).State == ProcessingState.Failed
+            && _transcripts.RecentJobs(50).Any(j => j.JobId == job.JobId && j.State == ProcessingState.Failed), "job fails");
         await processing.RefreshAsync();
 
         var row = Assert.Single(processing.Jobs);

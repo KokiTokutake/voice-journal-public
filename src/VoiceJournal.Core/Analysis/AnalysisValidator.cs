@@ -55,8 +55,9 @@ public static partial class AnalysisValidator
             if (c.ParentIssueCandidateId is { } parent && analysis.Candidates.FirstOrDefault(x => x.CandidateId == parent) is var p && (p is null || p.Kind != CandidateKind.Issue || p == c))
                 Add("parent_candidate", $"/candidates/{analysis.Candidates.ToList().IndexOf(c)}/parent_issue_candidate_id", "親の候補が課題の候補として存在しません");
 
+        // 600 characters is the guideline (detail spec 10.1, a warning from the assembler); far beyond it is broken output.
         var summaryLength = analysis.Summary.Sum(s => s.Text.Length);
-        if (summaryLength > MaxSummaryCharacters * 2) Add("summary_length", "/summary", $"要約が長すぎます（{summaryLength} 字）");
+        if (summaryLength > MaxSummaryCharacters * 5) Add("summary_length", "/summary", $"要約が長すぎます（{summaryLength} 字）");
         return issues;
 
         void StatementChecks(Statement s, string path)
