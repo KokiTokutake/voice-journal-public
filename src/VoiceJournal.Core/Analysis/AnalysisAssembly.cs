@@ -321,9 +321,14 @@ public static partial class CandidateChecker
     // Loose key so 「来週の金曜日までに」 matches 「来週金曜までに」 in the transcript.
     private static string DateKey(string text)
     {
-        var s = EvidenceText.Normalize(text).Replace("曜日", "曜", StringComparison.Ordinal).Replace("の", string.Empty, StringComparison.Ordinal);
+        var s = EvidenceText.Normalize(text);
+        s = WeekdayNote().Replace(s, string.Empty); // 「11月13日(金)」: the model adds the weekday, the speaker may not
+        s = s.Replace("曜日", "曜", StringComparison.Ordinal).Replace("の", string.Empty, StringComparison.Ordinal);
         return DateSuffix().Replace(s, string.Empty);
     }
+
+    [GeneratedRegex(@"[(（][月火水木金土日](?:曜日?)?[)）]|(?<=日)[月火水木金土日]曜日?")]
+    private static partial Regex WeekdayNote();
 
     [GeneratedRegex("(?:までには|までに|まで|には|中|頃|ごろ)$")]
     private static partial Regex DateSuffix();

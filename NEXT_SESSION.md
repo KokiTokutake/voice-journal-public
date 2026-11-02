@@ -1,60 +1,47 @@
-# 次のセッションでやること（2026-11-02 時点）
+# 次のセッションでやること（2026-11-02 夜 時点）
 
-**Phase C（文字起こし）は受入試験に合格**しました（`docs/phase-c-report.md`）。次は Phase D（要約・構造化）です。
+**Phase D（記録生成）を実装中**です。計画は `docs/phase-d-plan.md`（承認済み）。D1（Core）と D2 のコード（LM Studio クライアント・生成の手順）はコミット済みで、D2 の実機計測の途中です。
 
-## まだコミットしていない変更（コミットは利用者の指示があってから）
+## 済んだこと（このセッション）
 
-| ファイル | 内容 |
+| コミット | 内容 |
 |---|---|
-| `src/VoiceJournal.Core/Transcription/TranscriptStore.cs` | 使用中の Revision（`transcripts/current.json`）。`CurrentRevision()` / `LoadCurrent()` / `Adopt()`。`Save()` は使用中になったかを返す |
-| `src/VoiceJournal.Core/Transcription/SttJobProcessor.cs` | 区間の再認識は使用中の版の上に置く。保存の競合は `conflict` |
-| `src/VoiceJournal.App/ViewModels/TranscriptViewModel.cs`、`Views/TranscriptView.xaml` | `IsLatest` を `IsCurrent` に変更。「この Revision を使う(U)」と「［使用中］」の表示。修正後に全体ジョブが終わったときの案内 |
-| `tests/...`（3 ファイル） | 上の動作のテスト（全 272 件成功） |
-| `docs/phase-c-report.md`（新規）、`CLAUDE.md`、`NEXT_SESSION.md` | 報告書、コマンドとフェーズの更新 |
+| `85d6548` | `scripts/Get-PoolTag.ps1`（カーネルのプールのタグ別の記録と比較） |
+| `58e2ed6` | `docs/phase-d-plan.md` |
+| `a264577` | D1: 分析のモデルと検証、短い ID の変換、区間の計画、相対期日、記録の編集・保存・Markdown |
+| `3fd5368` | D2: LM Studio クライアント、`RecordGenerator`、`AudioProbe organize` |
 
-コミットの分け方の案:
+## カーネルのメモリ増加の切り分け（再起動後に実施）
 
-1. `fix: 修正後に終わった全体ジョブの原文が利用者の修正を隠さないよう、使用中の Revision を記録`（src と tests）
-2. `docs: Phase C の受入試験の結果を追加`（報告書、CLAUDE.md、NEXT_SESSION.md）
+記録は `%LOCALAPPDATA%\VoiceJournal\verify\pool\`。
 
-## 手順
+| 区間 | `amda` | `File` | `SQSF` |
+|---|---|---|---|
+| 再起動直後（起動 11 分） | 0.8 MB | 33 MB | 6.7 MB |
+| 何もしない 15 分 | +0.1 MB | +13.6 MB | +2.8 MB |
+| マイク録音 20 分（ビルドとテストが重なった） | +0.5 MB | +39.8 MB | +7.4 MB |
+| LM Studio で推論 9 分 | 増えず | 減った | ― |
 
-### 1. PC を再起動したあと、カーネルのメモリ増加を切り分ける
+- 短時間では、どの操作でも前回の 10 GB（`amda` 3.4 GB）につながる増え方は見えない。長時間（数日）の積み重ねか、別の操作（スリープの復帰など）の可能性。数日後に `Get-PoolTag.ps1 -Compare <boot の記録>` で比べる
 
-評価の時点で、非ページプールが約 10 GB ありました（通常は 0.5 GB 前後）。持ち主のドライバーは分かっていません。
+## D2 の実測で分かったこと
 
-- 主な内訳：`amda` 3.4 GB、`File` 2.5 GB、`IoWI` 1.1 GB、`SQSF` 0.5 GB
-- 詳細：報告書の 5 章
+- LM Studio はスキーマをプロンプトに入れない（文法で制約）。実際のプロンプトは見積もりの約 1/3
+- 時間を決めるのは出力の量。旧プロンプトでは抽出の出力が入力より多く、1 区間 約 65 秒（約 14 トークン/秒）
+- **llama-server のメモリ**: 並列 4・オフロード自動では作業セット 6.6 GB・プライベート 4.3 GB で、GPU にはモデルの一部しか載っていなかった（GPU 共有 841 MB）。並列 1・`--gpu max` で作業セット 5.3 GB・プライベート 3.0 GB・GPU 共有 2.8 GB、PC の空きは 4.8 → 6.1 GB。作業セットとプライベートの差（約 2.3 GB）は GGUF の mmap
+- 読み込み: `lms load gemma-3-4b-it -c 8192 --parallel 1 --gpu max --identifier gemma-3-4b-it -y`
 
-切り分けの手順：
+## 次の手順
 
-1. 再起動の直後に、プールのタグ別の量を記録する。読み取りには `NtQuerySystemInformation(22)` を使う（前回の PowerShell は一時ファイルなので、作り直す）
-2. 次の 3 つを同じ時間ずつ行い、それぞれの前後で `amda` / `File` / `IoWI` / `SQSF` の増え方を比べる
-   - 何もしない
-   - マイクで録音する（`AudioProbe session mic`。**マイクで録音する前に利用者の了承を得る**）
-   - LM Studio で推論する（Vulkan）
-3. 全部のドライバーを調べ直し、`amda` の持ち主を探す。前回は `amdacp...` という名前に当たっただけで、持ち主の根拠にはならなかった
-
-### 2. Phase D の計画を立てる
-
-- 詳細仕様書の Phase D の章と、23 章の完了条件を読み、`docs/phase-d-plan.md` を作る。進め方は Phase C と同じで、計画を作って利用者の承認を得てから実装する
-- Phase C から引き継ぐこと
-  - 要約は**使用中の Revision**（`TranscriptStore.LoadCurrent()`）を使う
-  - 根拠の参照は「Revision ＋ segment_id」の組にする
-  - DB の索引に使用中の版を加えるかを決める（加えるなら、DB の版 3 にする）
-  - 数字・日時・人名の取り違えがある（午前→午後、月額→合計 など。報告書の 3 章）。抽出した期限・担当・金額には根拠の区間を示し、承認制で確かめる
-  - AT-26 の後半（承認の失効）を Phase D/E で試す
-
-### 3. 残っている確認（急がない）
-
-- 30 分を超える音声の実測（ピースの統合）。長い会議を録ったときに、`Test-PhaseC.ps1 -Test Evaluate` を実行する
-- Phase B から引き継いだもの：実機での 8 時間録音、実機でのスリープ
-- 検証用の一時データ `%LOCALAPPDATA%\VoiceJournal\verify\phase-c\probe-test` は消してよい。`eval-workspace` は評価の記録なので残す
+1. D2 の実測の続き: 新しいプロンプト（`2026-11-02.2`）で 25 分の会議を生成し、時間・区間の数・quote の一致率・記録の中身を確かめる。C（8192 / 16384）、O、並列数を比べて決め、`environment-lock.md` 6 章に書く
+2. D3: 記録の生成ジョブ（キュー・録音中の停止・再開）、DB 版 3、録音後の自動投入
+3. D4: 記録レビューの画面（UI-07）
+4. D5: 評価セット（独話・学習・混在は私が文字起こし相当のテキストを作る）と受入試験
 
 ## 守ること
 
 - チャットは必ず日本語にする。ツール呼び出しの合間の短い文も同じ
 - 利用者のマイクで録音するのは、利用者の了承を得てから。スピーカーから不要な音を出さない
-- 音声、モデル、DB、`settings.local.json` はコミットしない。ログに文字起こしの本文を残さない
-- コミットとプッシュは指示があってから行う。メッセージは日本語で、接頭辞を付ける。リモートは `origin`（https://github.com/KokiTokutake/voice-journal 、非公開）
+- 音声、モデル、DB、`settings.local.json` はコミットしない。ログに文字起こしやプロンプトの本文を残さない
+- コミットとプッシュは指示があってから行う（このセッションでは「コミットして進めて」の指示あり。プッシュはしていない）。メッセージは日本語で、接頭辞を付ける
 - Python の文字列に Windows のパスを書くと、`\v` などが制御文字に化ける。Edit を使うか、raw 文字列にする

@@ -8,6 +8,8 @@
     <ApplicationIcon>Assets\VoiceJournal.ico</ApplicationIcon>
     <!-- WPF0001: Application.ThemeMode (Fluent, follows the Windows light/dark setting) is marked experimental. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
+      <!-- Corvus.Json.Validator compiles the analysis schema at run time and finds reference assemblies through the deps.json compile context (Phase D2). -->
+    <PreserveCompilationContext>true</PreserveCompilationContext>
   </PropertyGroup>
 
   <ItemGroup>

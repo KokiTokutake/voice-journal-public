@@ -73,7 +73,7 @@ public static partial class RecordMarkdown
         md.Append('\n');
         if (s.Evidence.Count == 0) return;
         md.Append("  - 根拠: ");
-        md.Append(string.Join("、", s.Evidence.Select(e => Link(e, transcript))));
+        md.Append(string.Join("、", s.Evidence.DistinctBy(e => e.SegmentId).Select(e => Link(e, transcript)))); // one link per segment
         md.Append('\n');
     }
 

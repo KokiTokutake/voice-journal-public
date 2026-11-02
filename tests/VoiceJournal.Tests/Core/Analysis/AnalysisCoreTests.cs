@@ -563,3 +563,17 @@ internal static class FullSchema
         return Schema.Validate(doc.RootElement, ValidationLevel.Detailed);
     }
 }
+
+public sealed class DateEvidenceTests
+{
+    [Theory]
+    [InlineData("11月13日金曜日までにデータを準備します", "11月13日(金)までに")]
+    [InlineData("11月13日までにデータを準備します", "11月13日（金曜）まで")]
+    [InlineData("11月13日金曜までにお願いします", "11月13日まで")]
+    public void WeekdayAddedByTheModel_StillMatchesTheTranscript(string text, string expression)
+    {
+        var t = A.Transcript(text);
+        var c = A.Check(t, A.Task("データ準備", "S0001", text[..6], due: expression));
+        Assert.Equal(new DateOnly(2026, 11, 13), c.Fields.DueDate);
+    }
+}
