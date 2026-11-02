@@ -8,12 +8,39 @@ using VoiceJournal.Core.Serialization;
 
 namespace VoiceJournal.Core.Transcription;
 
+/// <summary>Who chose the revision in use: the job that wrote it, or the user (an edit, a re-recognition, a choice).</summary>
+public enum TranscriptAdoptedBy
+{
+    Automatic,
+    User,
+}
+
+/// <summary><c>transcripts/current.json</c>: the revision in use. Rewritten in place; it only points at revisions.</summary>
+public sealed record TranscriptAdoption
+{
+    public const int CurrentSchemaVersion = 1;
+
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+
+    public required int Revision { get; init; }
+
+    public required TranscriptAdoptedBy By { get; init; }
+
+    public required DateTimeOffset AdoptedAtUtc { get; init; }
+}
+
 /// <summary>
 /// Transcript revisions of one session folder (plan 3.2):
 /// <c>transcripts/rev-NNNN/transcript.raw.json</c> (+ <c>transcript.raw.txt</c>) or <c>transcript.edited.json</c>,
-/// and <c>transcript.md</c> at the session root rendered from the latest revision. A revision is written once
+/// and <c>transcript.md</c> at the session root rendered from the revision in use. A revision is written once
 /// and never replaced.
 /// </summary>
+/// <remarks>
+/// The revision in use (<see cref="CurrentRevision"/>) is what edits, re-recognition and later steps build on.
+/// Edits must start from it and become it. A new raw revision becomes it only while nothing chosen by the user
+/// would be hidden: a full job that finishes after the user edited (a resumed or late job) leaves the edits in use.
+/// Without <c>current.json</c> (sessions from before it existed) the latest revision is the one in use.
+/// </remarks>
 public sealed class TranscriptStore
 {
     public const string FolderName = "transcripts";
@@ -21,6 +48,7 @@ public sealed class TranscriptStore
     public const string RawTextFileName = "transcript.raw.txt";
     public const string EditedFileName = "transcript.edited.json";
     public const string MarkdownFileName = "transcript.md";
+    public const string CurrentFileName = "current.json";
 
     // One writer per session folder at a time (the job runner and UI edits can race for the next number).
     private static readonly ConcurrentDictionary<string, object> Gates = new(StringComparer.OrdinalIgnoreCase);
@@ -78,12 +106,45 @@ public sealed class TranscriptStore
 
     public TranscriptDocument? LoadLatest() => Revisions() is { Count: > 0 } r ? Load(r[^1]) : null;
 
+    /// <summary>The recorded choice, or null when there is none (or it points at a revision that does not exist).</summary>
+    public TranscriptAdoption? ReadAdoption()
+    {
+        var path = Path.Combine(RootDirectory, CurrentFileName);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            var adoption = JsonSerializer.Deserialize<TranscriptAdoption>(AtomicFile.ReadAllBytes(path), VoiceJournalJson.Options);
+            return adoption is { SchemaVersion: TranscriptAdoption.CurrentSchemaVersion } && Revisions().Contains(adoption.Revision) ? adoption : null;
+        }
+        catch (JsonException)
+        {
+            return null; // a broken pointer falls back to the latest revision; the revisions themselves are intact
+        }
+    }
+
+    /// <summary>The revision in use: the recorded choice, else the latest; null when there is no transcript.</summary>
+    public int? CurrentRevision() => ReadAdoption()?.Revision ?? (Revisions() is { Count: > 0 } r ? r[^1] : null);
+
+    public TranscriptDocument? LoadCurrent() => CurrentRevision() is { } revision ? Load(revision) : null;
+
+    /// <summary>Makes an existing revision the one in use (the user's choice) and re-renders <c>transcript.md</c> from it.</summary>
+    /// <exception cref="FileNotFoundException">The revision does not exist.</exception>
+    public void Adopt(int revision, DateTimeOffset nowUtc)
+    {
+        lock (Gates.GetOrAdd(_sessionDirectory, _ => new object()))
+        {
+            if (!Revisions().Contains(revision)) throw new FileNotFoundException($"Transcript revision {revision} does not exist.");
+            WriteAdoption(Load(revision), TranscriptAdoptedBy.User, nowUtc);
+        }
+    }
+
     /// <summary>
     /// Writes a new revision. Fails when the revision already exists (revisions are immutable), when it is not the
-    /// next number, or when the segments are invalid. Then re-renders <c>transcript.md</c> from this revision.
+    /// next number, when the segments are invalid, or when an edited revision does not start from the revision in use.
+    /// Returns whether the new revision became the one in use (see the class remarks); <c>transcript.md</c> follows it.
     /// </summary>
     /// <param name="durationMs">Session length; segments must end within it. Null skips that check.</param>
-    public void Save(TranscriptDocument document, long? durationMs = null)
+    public bool Save(TranscriptDocument document, long? durationMs = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         Validate(document, durationMs);
@@ -92,6 +153,21 @@ public sealed class TranscriptStore
             var expected = NextRevision();
             if (document.Revision != expected)
                 throw new InvalidOperationException($"Transcript revision {document.Revision} cannot be saved; the next revision is {expected}.");
+            var adoption = ReadAdoption();
+            var current = adoption?.Revision ?? (expected > 1 ? expected - 1 : (int?)null);
+            bool adopt;
+            if (document.Kind == TranscriptRevisionKind.Edited)
+            {
+                if (document.ParentRevision != current)
+                    throw new InvalidOperationException($"Transcript revision {document.Revision} starts from revision {document.ParentRevision}, but revision {current} is in use.");
+                adopt = true;
+            }
+            else
+            {
+                adopt = adoption is null
+                    ? current is null || Load(current.Value).Kind == TranscriptRevisionKind.Raw
+                    : adoption.By == TranscriptAdoptedBy.Automatic;
+            }
             var dir = RevisionDirectory(document.Revision);
             // No document yet (it is next), so anything here is left over from a save that crashed midway.
             if (Directory.Exists(dir))
@@ -102,8 +178,20 @@ public sealed class TranscriptStore
             // The JSON is written last: a revision exists only once its document does.
             WriteNew(Path.Combine(dir, document.Kind == TranscriptRevisionKind.Raw ? RawFileName : EditedFileName),
                 JsonSerializer.SerializeToUtf8Bytes(document, VoiceJournalJson.Options));
-            AtomicFile.WriteAllBytes(Path.Combine(_sessionDirectory, MarkdownFileName), Encoding.UTF8.GetBytes(TranscriptRendering.ToMarkdown(document)));
+            if (adopt)
+                WriteAdoption(document, document.Kind == TranscriptRevisionKind.Edited ? TranscriptAdoptedBy.User : TranscriptAdoptedBy.Automatic, document.CreatedAtUtc);
+            else if (adoption is null && current is { } kept)
+                // No choice on file meant "the latest", which is now this raw revision: write down the edits that stay in use.
+                WriteAdoption(Load(kept), TranscriptAdoptedBy.User, document.CreatedAtUtc);
+            return adopt;
         }
+    }
+
+    private void WriteAdoption(TranscriptDocument document, TranscriptAdoptedBy by, DateTimeOffset nowUtc)
+    {
+        var adoption = new TranscriptAdoption { Revision = document.Revision, By = by, AdoptedAtUtc = nowUtc };
+        AtomicFile.WriteAllBytes(Path.Combine(RootDirectory, CurrentFileName), JsonSerializer.SerializeToUtf8Bytes(adoption, VoiceJournalJson.Options));
+        AtomicFile.WriteAllBytes(Path.Combine(_sessionDirectory, MarkdownFileName), Encoding.UTF8.GetBytes(TranscriptRendering.ToMarkdown(document)));
     }
 
     /// <exception cref="ArgumentException">The segments break the contract (detail spec 8.2).</exception>
@@ -176,7 +264,7 @@ public static class TranscriptRendering
         return text.ToString();
     }
 
-    /// <summary>The readable transcript (latest revision) with quality flags shown inline.</summary>
+    /// <summary>The readable transcript (revision in use) with quality flags shown inline.</summary>
     public static string ToMarkdown(TranscriptDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);

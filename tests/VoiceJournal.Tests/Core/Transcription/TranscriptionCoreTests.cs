@@ -348,6 +348,60 @@ public sealed class TranscriptRevisionTests : IDisposable
         Assert.Throws<ArgumentException>(() => store.Save(T.Raw(_session, 2, dup, dup), 10_000));
     }
 
+    private string Markdown() => File.ReadAllText(Path.Combine(_dir.Path, TranscriptStore.MarkdownFileName), Encoding.UTF8);
+
+    [Fact]
+    public void ANewRawRevision_IsUsed_UntilTheUserEdits_ThenALateRawDoesNotHideTheEdits()
+    {
+        var (store, _) = SavedRaw();
+        Assert.Equal(1, store.CurrentRevision());
+        Assert.True(store.Save(T.Raw(_session, 2, T.Seg(0, 1_000, "再処理の原文")), 10_000)); // nothing chosen yet
+        Assert.Equal(2, store.CurrentRevision());
+        Assert.Equal(TranscriptAdoptedBy.Automatic, store.ReadAdoption()!.By);
+
+        var segment = store.Load(2).Segments[0].SegmentId;
+        Assert.True(store.Save(TranscriptEditing.EditText(store.Load(2), 3, segment, "利用者の修正", Now), 10_000));
+        Assert.Equal(TranscriptAdoptedBy.User, store.ReadAdoption()!.By);
+
+        // A full job that ends later (queued before the edit, or resumed after a restart) adds its revision beside the edits.
+        Assert.False(store.Save(T.Raw(_session, 4, T.Seg(0, 1_000, "遅れて終わった原文")), 10_000));
+        Assert.Equal([1, 2, 3, 4], store.Revisions());
+        Assert.Equal(4, store.LoadLatest()!.Revision);
+        Assert.Equal(3, store.CurrentRevision());
+        Assert.Contains("利用者の修正", Markdown(), StringComparison.Ordinal);
+        Assert.DoesNotContain("遅れて終わった原文", Markdown(), StringComparison.Ordinal);
+
+        // Edits start from the revision in use, never from another one.
+        var fromOther = TranscriptEditing.EditText(store.Load(4), 5, store.Load(4).Segments[0].SegmentId, "使っていない版への修正", Now);
+        Assert.Throws<InvalidOperationException>(() => store.Save(fromOther, 10_000));
+        Assert.Equal([1, 2, 3, 4], store.Revisions());
+
+        // The user may choose the new raw revision; a chosen revision is not replaced by the next job either.
+        store.Adopt(4, Now);
+        Assert.Equal(4, store.CurrentRevision());
+        Assert.Contains("遅れて終わった原文", Markdown(), StringComparison.Ordinal);
+        Assert.False(store.Save(T.Raw(_session, 5, T.Seg(0, 1_000, "さらに別の原文")), 10_000));
+        Assert.Equal(4, store.CurrentRevision());
+        Assert.Throws<FileNotFoundException>(() => store.Adopt(9, Now));
+    }
+
+    [Fact]
+    public void WithoutAChoiceOnFile_TheLatestIsInUse_AndAnEditedLatestStaysInUse_WhenARawArrives()
+    {
+        var (store, raw) = SavedRaw();
+        store.Save(TranscriptEditing.EditText(raw, 2, raw.Segments[0].SegmentId, "以前の修正", Now), 10_000);
+        var pointer = Path.Combine(store.RootDirectory, TranscriptStore.CurrentFileName);
+        File.Delete(pointer); // a session written before the choice was recorded
+        Assert.Equal(2, store.CurrentRevision());
+
+        Assert.False(store.Save(T.Raw(_session, 3, T.Seg(0, 1_000, "新しい原文")), 10_000));
+        Assert.Equal(2, store.CurrentRevision()); // written down now, so "latest" no longer decides
+
+        File.WriteAllText(pointer, "{ 壊れた");
+        Assert.Null(store.ReadAdoption());
+        Assert.Equal(3, store.CurrentRevision()); // a broken pointer falls back to the latest; no revision is lost
+    }
+
     [Fact]
     public void Save_CleansUpWhatACrashedSaveLeftBehind()
     {

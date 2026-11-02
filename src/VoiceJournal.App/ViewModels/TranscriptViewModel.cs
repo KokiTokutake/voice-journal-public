@@ -105,7 +105,8 @@ public enum SourceFilter
 
 /// <summary>
 /// UI-06 transcript (detail spec 8.2, 18.2): source label, time, text, quality flags and history; segment playback,
-/// editing, revert and range re-recognition. Older revisions are read-only; every change is a new revision (AT-07).
+/// editing, revert and range re-recognition. Only the revision in use can be changed, and every change is a new
+/// revision that becomes the one in use (AT-07). Other revisions are read-only until the user chooses one.
 /// </summary>
 public sealed partial class TranscriptViewModel : ObservableObject
 {
@@ -164,9 +165,10 @@ public sealed partial class TranscriptViewModel : ObservableObject
     [ObservableProperty]
     public partial bool FlaggedOnly { get; set; }
 
+    /// <summary>The shown revision is the one in use (editable). Others are read-only and can be chosen.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RevertCommand), nameof(ReRecognizeCommand))]
-    public partial bool IsLatest { get; set; }
+    [NotifyCanExecuteChangedFor(nameof(RevertCommand), nameof(ReRecognizeCommand), nameof(AdoptCommand))]
+    public partial bool IsCurrent { get; set; }
 
     [ObservableProperty]
     public partial string? ProvenanceText { get; set; }
@@ -192,7 +194,7 @@ public sealed partial class TranscriptViewModel : ObservableObject
         Show(value.Revision);
     }
 
-    /// <summary>Opens the latest revision of a session.</summary>
+    /// <summary>Opens the revision in use of a session.</summary>
     public void Open(string sessionDirectory, string title)
     {
         ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
@@ -226,23 +228,26 @@ public sealed partial class TranscriptViewModel : ObservableObject
             _document = null;
             _rows = [];
             ApplyFilter();
-            IsLatest = false;
+            IsCurrent = false;
             ProvenanceText = null;
             UnrecognizedText = null;
             Message = "まだ文字起こしがありません。ライブラリの「文字起こし」で開始できます。";
             return;
         }
-        Show(revision ?? revisions[^1]);
+        Show(revision ?? _store.CurrentRevision() ?? revisions[^1]);
     }
+
+    private const string InUseMark = "　［使用中］";
 
     private string Label(int revision)
     {
         try
         {
             var doc = _store!.Load(revision);
-            return doc.Kind == TranscriptRevisionKind.Raw
+            var label = doc.Kind == TranscriptRevisionKind.Raw
                 ? $"Rev {revision}  原文（{UserMessages.ModelLabel(doc.Provenance?.ModelName ?? "?")}）"
                 : $"Rev {revision}  修正（{ChangeName(doc.Changes.Count > 0 ? doc.Changes[0].Kind : null)}）";
+            return revision == _store.CurrentRevision() ? label + InUseMark : label;
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException)
         {
@@ -264,10 +269,9 @@ public sealed partial class TranscriptViewModel : ObservableObject
         {
             var doc = _store!.Load(revision);
             var raw = doc.Kind == TranscriptRevisionKind.Raw ? doc : _store.Load(doc.RawRevision);
-            var latest = _store.Revisions()[^1];
             _document = doc;
-            IsLatest = revision == latest;
-            _rows = [.. doc.Segments.Select(s => new SegmentRowViewModel(s, IsLatest ? SaveEdit : null))];
+            IsCurrent = revision == _store.CurrentRevision();
+            _rows = [.. doc.Segments.Select(s => new SegmentRowViewModel(s, IsCurrent ? SaveEdit : null))];
             _switching = true;
             SelectedRevision = Revisions.FirstOrDefault(r => r.Revision == revision);
             _switching = false;
@@ -275,7 +279,7 @@ public sealed partial class TranscriptViewModel : ObservableObject
             var parameters = p?.Parameters ?? new Dictionary<string, string>();
             ProvenanceText = $"原文 Rev {raw.Revision}: {UserMessages.ModelLabel(p?.ModelName ?? "?")}、VAD {(parameters.TryGetValue("vad", out var vad) && vad == "on" ? "あり" : "なし")}、" +
                 $"{p?.EngineName} {p?.EngineVersion}、{raw.CreatedAtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture)} 作成" +
-                (IsLatest ? string.Empty : "　※ 古い Revision は表示のみです（修正は最新の Revision で行います）");
+                (IsCurrent ? string.Empty : "　※ 使用中ではない Revision は表示のみです（修正するときは「この Revision を使う」）");
             var unrecognized = raw.Sources.SelectMany(s => s.UnrecognizedRanges.Select(r => $"{UserMessages.SourceName(s.Source)} {TranscriptRendering.Time(r.StartMs, false)}–{TranscriptRendering.Time(r.EndMs, false)}")).ToList();
             UnrecognizedText = unrecognized.Count == 0 ? null : "認識されなかった範囲（STT-003）: " + string.Join("、", unrecognized);
             ApplyFilter();
@@ -304,14 +308,18 @@ public sealed partial class TranscriptViewModel : ObservableObject
     /// <summary>Saves an edit as the next revision; returns false (and shows why) when it cannot.</summary>
     private bool SaveEdit(SegmentRowViewModel row, string text)
     {
-        if (_store is null || _document is null || !IsLatest) return false;
+        if (_store is null || _document is null || !IsCurrent) return false;
         try
         {
+            var previous = _document.Revision;
             var next = TranscriptEditing.EditText(_document, _store.NextRevision(), row.SegmentId, text, _time.GetUtcNow());
             _store.Save(next);
             _document = next;
             row.Update(next.Find(row.SegmentId)!);
             _switching = true;
+            // Not a reload: this runs inside the grid's cell commit, which must not have its rows replaced.
+            var index = Revisions.IndexOf(Revisions.First(r => r.Revision == previous));
+            Revisions[index] = new RevisionItem(previous, Label(previous));
             Revisions.Insert(0, new RevisionItem(next.Revision, Label(next.Revision)));
             SelectedRevision = Revisions[0];
             _switching = false;
@@ -321,13 +329,13 @@ public sealed partial class TranscriptViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException or UnauthorizedAccessException)
         {
-            // InvalidOperationException: another revision was written meanwhile (e.g. a re-recognition finished).
-            Message = $"保存できませんでした（{ex.Message}）。最新の Revision を開き直してから修正してください。";
+            // InvalidOperationException: another revision was written or chosen meanwhile (e.g. a re-recognition finished).
+            Message = $"保存できませんでした（{ex.Message}）。使用中の Revision を開き直してから修正してください。";
             return false;
         }
     }
 
-    private bool CanRevert() => IsLatest && Selected?.IsEdited == true;
+    private bool CanRevert() => IsCurrent && Selected?.IsEdited == true;
 
     [RelayCommand(CanExecute = nameof(CanRevert))]
     private void Revert()
@@ -348,7 +356,7 @@ public sealed partial class TranscriptViewModel : ObservableObject
         }
     }
 
-    private bool CanReRecognize(IList? selection) => IsLatest;
+    private bool CanReRecognize(IList? selection) => IsCurrent;
 
     /// <summary>Re-recognizes the time span of the selected segments of one source (AT-07).</summary>
     [RelayCommand(CanExecute = nameof(CanReRecognize))]
@@ -383,6 +391,27 @@ public sealed partial class TranscriptViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             Message = $"再認識を始められませんでした（{ex.Message}）。";
+        }
+    }
+
+    private bool CanAdopt() => _document is not null && !IsCurrent;
+
+    /// <summary>Makes the shown revision the one in use: later edits, re-recognition and summaries build on it.</summary>
+    [RelayCommand(CanExecute = nameof(CanAdopt))]
+    private void Adopt()
+    {
+        if (_store is null || _document is null || _directory is null) return;
+        var revision = _document.Revision;
+        try
+        {
+            _store.Adopt(revision, _time.GetUtcNow());
+            Reload(revision);
+            Message = $"Rev {revision} を使用中にしました。修正と区間の再認識は、この Revision から続けます（ほかの Revision は残っています）。";
+            _ = _transcription.RevisionSavedAsync(_directory);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Message = $"Rev {revision} を使用中にできませんでした（{ex.Message}）。";
         }
     }
 
@@ -433,10 +462,21 @@ public sealed partial class TranscriptViewModel : ObservableObject
                 Message = UserMessages.SttError(job.Error);
             }
         }
-        else if (job.Kind == SttJobKind.Full && job.State == ProcessingState.Transcribed)
+        else if (job.Kind == SttJobKind.Full && job.State == ProcessingState.Transcribed && _store is not null)
         {
-            Reload(null);
-            Message = $"新しい原文 Rev {job.ResultRevision} ができました。";
+            var current = _store.CurrentRevision();
+            if (current == job.ResultRevision)
+            {
+                Reload(null);
+                Message = $"新しい原文 Rev {job.ResultRevision} ができました。";
+            }
+            else
+            {
+                // Edits (or a choice) are in use: list the new raw revision without switching away from them.
+                Reload(_document?.Revision);
+                Message = $"新しい原文 Rev {job.ResultRevision} ができました。使用中の Rev {current}（修正または選んだ版）はそのままです。" +
+                    "新しい原文を使うときは、Revision で選んで「この Revision を使う」を押してください。";
+            }
         }
     }
 }

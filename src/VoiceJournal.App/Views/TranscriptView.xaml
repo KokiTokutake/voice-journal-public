@@ -28,7 +28,9 @@
                 <WrapPanel>
                     <Label Content="Revision(_V)" Target="{Binding ElementName=RevisionBox}" VerticalAlignment="Center" Padding="0,0,8,0" />
                     <ComboBox x:Name="RevisionBox" MinWidth="280" ItemsSource="{Binding Revisions}" SelectedItem="{Binding SelectedRevision}"
-                              DisplayMemberPath="Label" AutomationProperties.Name="表示する Revision" Margin="0,0,20,0" />
+                              DisplayMemberPath="Label" AutomationProperties.Name="表示する Revision" Margin="0,0,8,0" />
+                    <Button Content="この Revision を使う(_U)" Tag="&#xE73E;" Command="{Binding AdoptCommand}" Style="{StaticResource ActionButton}" Margin="0,0,20,0"
+                            ToolTip="表示している Revision を使用中にします。修正と区間の再認識は使用中の Revision から続けます（ほかの Revision は消えません）" />
                     <Border Style="{StaticResource SegmentHost}" Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton Content="両方" GroupName="Src" Style="{StaticResource Segment}" Tag="&#xE8F2;"
@@ -70,10 +72,10 @@
 
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" />
 
-            <!-- Segments: the text column is editable on the latest revision -->
+            <!-- Segments: the text column is editable on the revision in use -->
             <Border Style="{StaticResource Card}" Padding="0">
                 <DataGrid x:Name="SegmentGrid" ItemsSource="{Binding Segments}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False"
-                          IsReadOnly="{Binding IsLatest, Converter={StaticResource Inverse}}" SelectionMode="Extended" SelectionUnit="FullRow"
+                          IsReadOnly="{Binding IsCurrent, Converter={StaticResource Inverse}}" SelectionMode="Extended" SelectionUnit="FullRow"
                           HeadersVisibility="Column" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False"
                           GridLinesVisibility="Horizontal" BorderThickness="0" Background="Transparent"
                           EnableRowVirtualization="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"

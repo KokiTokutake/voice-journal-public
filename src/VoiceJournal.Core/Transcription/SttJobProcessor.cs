@@ -180,10 +180,10 @@ public sealed class SttJobProcessor
             throw new InvalidDataException("A range job needs a range, a source and a parent revision.");
         var jobDir = SttJobStore.JobDirectory(sessionDirectory, job.JobId);
         var store = new TranscriptStore(sessionDirectory);
-        var latest = store.LoadLatest() ?? throw new InvalidDataException("The session has no transcript to re-recognize.");
-        if (latest.Changes.Any(c => c.Provenance?.JobId == job.JobId))
+        var current = store.LoadCurrent() ?? throw new InvalidDataException("The session has no transcript to re-recognize.");
+        if (current.Changes.Any(c => c.Provenance?.JobId == job.JobId))
         {
-            job.ResultRevision = latest.Revision; // applied before a crash
+            job.ResultRevision = current.Revision; // applied before a crash
             return;
         }
 
@@ -222,14 +222,23 @@ public sealed class SttJobProcessor
         piece.State = recognized.Count == 0 ? SttPieceState.NoSpeech : SttPieceState.Done;
         SttJobStore.Save(sessionDirectory, job);
 
-        // Re-read: the user may have edited while the recognizer ran.
-        latest = store.LoadLatest()!;
+        // Re-read: the user may have edited, or chosen another revision, while the recognizer ran. The result goes on
+        // top of the revision in use, and only if the range there is still what the user asked to re-recognize.
+        current = store.LoadCurrent()!;
         var parent = store.Load(parentRevision);
-        if (!SameInRange(parent, latest, source, range))
+        if (!SameInRange(parent, current, source, range))
             throw new SttException(SttErrorCode.Conflict, "The range was edited while it was being re-recognized.");
         var flagged = QualityFlagger.Apply(recognized, Contexts(sessionDirectory, input));
-        var next = TranscriptEditing.ReplaceRange(latest, store.NextRevision(), source, range, flagged, Provenance(job), _time.GetUtcNow());
-        store.Save(next, input.DurationMs);
+        var next = TranscriptEditing.ReplaceRange(current, store.NextRevision(), source, range, flagged, Provenance(job), _time.GetUtcNow());
+        try
+        {
+            store.Save(next, input.DurationMs);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Another revision was saved or chosen between the check and the save.
+            throw new SttException(SttErrorCode.Conflict, ex.Message);
+        }
         job.ResultRevision = next.Revision;
     }
 

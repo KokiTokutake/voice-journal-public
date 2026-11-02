@@ -117,7 +117,8 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         var dir = await Transcribed();
         var vm = Transcript();
         vm.Open(dir, "テスト");
-        Assert.True(vm.IsLatest);
+        Assert.True(vm.IsCurrent);
+        Assert.False(vm.AdoptCommand.CanExecute(null));
         Assert.Contains("small", vm.ProvenanceText, StringComparison.Ordinal);
         var row = vm.Segments[0];
 
@@ -129,10 +130,11 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal("修正", row.EditedText);
         Assert.Equal("数字・期日・人名", row.HintText);
         Assert.Equal(2, vm.SelectedRevision!.Revision);
-        Assert.Equal(["Rev 2  修正（本文）", "Rev 1  原文（small（既定・速い））"], vm.Revisions.Select(r => r.Label));
+        Assert.Equal(["Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（既定・速い））"], vm.Revisions.Select(r => r.Label));
 
         vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 1);
-        Assert.False(vm.IsLatest);
+        Assert.False(vm.IsCurrent);
+        Assert.Contains("この Revision を使う", vm.ProvenanceText, StringComparison.Ordinal);
         Assert.False(vm.Segments[0].IsEditable);
         vm.Segments[0].Text = "古い版への修正";
         Assert.Equal([1, 2], store.Revisions()); // nothing saved from an old revision
@@ -179,6 +181,37 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal(TranscriptChangeKind.ReRecognized, change.Kind);
         Assert.Equal("ggml-medium.bin", change.Provenance!.ModelName);
         Assert.Equal(new TimeRange(micRows[0].Segment.StartMs, micRows[1].Segment.EndMs), change.Range);
+    }
+
+    [Fact]
+    public async Task Transcript_ARawRevisionThatEndsAfterAnEdit_DoesNotHideTheEdit_UntilTheUserChoosesIt()
+    {
+        var dir = await Transcribed();
+        var vm = Transcript();
+        vm.Open(dir, "テスト");
+        var id = vm.Segments[0].SegmentId;
+        vm.Segments[0].Text = "利用者の修正";
+
+        _coordinator.Enqueue(dir); // e.g. a job queued earlier, or resumed after a restart
+        await WaitFor(() => vm.Message?.Contains("新しい原文 Rev 3", StringComparison.Ordinal) == true, "late raw revision reported");
+
+        Assert.Contains("使用中の Rev 2", vm.Message, StringComparison.Ordinal);
+        Assert.Equal(2, vm.SelectedRevision!.Revision);
+        Assert.True(vm.IsCurrent);
+        Assert.Equal("利用者の修正", vm.Segments.Single(s => s.SegmentId == id).Text);
+        Assert.Equal(["Rev 3  原文（small（既定・速い））", "Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（既定・速い））"], vm.Revisions.Select(r => r.Label));
+
+        vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 3);
+        Assert.False(vm.IsCurrent);
+        Assert.True(vm.AdoptCommand.CanExecute(null));
+        vm.AdoptCommand.Execute(null);
+
+        Assert.True(vm.IsCurrent);
+        Assert.Contains("Rev 3 を使用中にしました", vm.Message, StringComparison.Ordinal);
+        Assert.Equal(3, new TranscriptStore(dir).CurrentRevision());
+        Assert.Equal("Rev 3  原文（small（既定・速い））　［使用中］", vm.Revisions.Single(r => r.Revision == 3).Label);
+        vm.Segments[0].Text = "新しい原文への修正";
+        Assert.Equal(3, new TranscriptStore(dir).Load(4).ParentRevision);
     }
 
     [Fact]

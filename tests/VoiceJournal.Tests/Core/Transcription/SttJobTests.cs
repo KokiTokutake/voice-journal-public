@@ -317,6 +317,40 @@ public sealed class SttJobProcessorTests : IDisposable
     }
 
     [Fact]
+    public async Task RangeJob_BuildsOnTheRevisionInUse_NotOnANewerRawThatIsNotUsed()
+    {
+        await Run(JobSession.NewJob(_sessionId));
+        var store = new TranscriptStore(_session);
+        var edited = store.Load(1).Segments.First(s => s.Source == AudioSource.Mic && s.StartMs == 1_000);
+        store.Save(TranscriptEditing.EditText(store.Load(1), 2, edited.SegmentId, "利用者の修正", DateTimeOffset.UnixEpoch));
+        var late = await Run(JobSession.NewJob(_sessionId)); // e.g. resumed after a restart
+        Assert.Equal(3, late.ResultRevision);
+        Assert.Equal(2, store.CurrentRevision());
+
+        _engine.OnRun = r => FakeSttEngine.Utterance(r, 1_200, 3_000, "再認識");
+        var job = new SttJob
+        {
+            JobId = Guid.CreateVersion7(),
+            SessionId = _sessionId,
+            Kind = SttJobKind.Range,
+            Configuration = JobSession.Config,
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            RangeSource = AudioSource.Mic,
+            Range = new TimeRange(28_500, 32_000),
+            ParentRevision = 2,
+        };
+        await Run(job);
+
+        Assert.Equal(ProcessingState.Transcribed, job.State);
+        Assert.Equal(4, job.ResultRevision);
+        var next = store.Load(4);
+        Assert.Equal(2, next.ParentRevision);
+        Assert.Equal(1, next.RawRevision);
+        Assert.Equal("利用者の修正", next.Find(edited.SegmentId)!.Text);
+        Assert.Equal(4, store.CurrentRevision());
+    }
+
+    [Fact]
     public async Task RangeJob_DoesNotOverwrite_WhenTheRangeWasEditedMeanwhile()
     {
         await Run(JobSession.NewJob(_sessionId));
