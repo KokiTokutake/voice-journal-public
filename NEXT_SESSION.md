@@ -32,7 +32,8 @@
 - LM Studio はスキーマをプロンプトに入れない（文法で制約）。実際のプロンプトは見積もりの約 1/3
 - 時間を決めるのは出力の量。旧プロンプトでは抽出の出力が入力より多く、1 区間 約 65 秒（約 14 トークン/秒）
 - **llama-server のメモリ**: 並列 4・オフロード自動では作業セット 6.6 GB・プライベート 4.3 GB で、GPU にはモデルの一部しか載っていなかった（GPU 共有 841 MB）。並列 1・`--gpu max` で作業セット 5.3 GB・プライベート 3.0 GB・GPU 共有 2.8 GB、PC の空きは 4.8 → 6.1 GB。作業セットとプライベートの差（約 2.3 GB）は GGUF の mmap
-- 読み込み: `lms load gemma-3-4b-it -c 8192 --parallel 1 --gpu max --identifier gemma-3-4b-it -y`
+- その後、利用者が LM Studio のモデル設定で「Try mmap()」をオフにした。読み込み直後の作業セットは約 1.2 GB
+- 読み込み（現在の推奨）: `lms load gemma-3-4b-it -c 16384 --parallel 1 --gpu max --identifier gemma-3-4b-it -y`。詳細と速さの比較は `docs/environment-lock.md` 6 章
 
 ## 次の手順
 
