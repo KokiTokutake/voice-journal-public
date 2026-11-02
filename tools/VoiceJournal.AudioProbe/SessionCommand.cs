@@ -2,9 +2,15 @@
 //
 //   AudioProbe session <mic|loopback|both> <seconds> [--workspace <dir>] [--normal] [--chunk-seconds <n>] [--reconnect]
 //                      [--mic-device <id|name part>] [--loopback-device <id|name part>] [--title <text>] [--level-every <seconds>]
+//                      [--prompt-files <file>;<file>...] [--out <json>]
 //
 // --reconnect   when a device is lost, wait for the same endpoint to come back and resume it as new
 //               chunks (what the "reconnect" button will do in the app).
+// --prompt-files  (Phase C5 reading) once audio flows, shows each UTF-8 text file in turn and waits for Enter after
+//                 each; the session time of every Enter is reported as prompt_marks_ms and the recording stops after
+//                 the last one (<seconds> is then only the upper limit). Level lines are replaced by a warning when
+//                 the mic stays silent for a whole interval.
+// --out           also writes the JSON summary to this file.
 // Prints progress lines while recording, then one JSON summary (manifest + verification of every chunk).
 // Exit code: 0 = all completed chunks verified, 4 = verification failed.
 using System.Diagnostics;
@@ -39,6 +45,11 @@ internal static class SessionCommand
         var autoReconnect = args.Contains("--reconnect");
         var title = Option(args, "--title") ?? "B3 device check";
         var levelEvery = TimeSpan.FromSeconds(double.Parse(Option(args, "--level-every") ?? "1", CultureInfo.InvariantCulture));
+        var prompts = (Option(args, "--prompt-files") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var file in prompts)
+            if (!File.Exists(file)) throw new FileNotFoundException("prompt file not found", file);
+        var outFile = Option(args, "--out");
+        if (prompts.Length > 0) Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 
         using var catalog = new WasapiDeviceCatalog();
         var sources = new List<IAudioCaptureSource>();
@@ -84,6 +95,9 @@ internal static class SessionCommand
             var nextLevel = levelEvery;
             var memory = new List<object>();
             var nextMemory = TimeSpan.FromMinutes(1);
+            var marks = new List<long>();
+            var promptIndex = -1;
+            Task<string?>? enter = null;
             using var self = Process.GetCurrentProcess();
             while (clock.Elapsed < TimeSpan.FromSeconds(seconds) && session.State is not (CaptureState.Finalized or CaptureState.Failed))
             {
@@ -96,8 +110,33 @@ internal static class SessionCommand
                 if (clock.Elapsed >= nextLevel)
                 {
                     nextLevel += levelEvery;
-                    var levels = needed.Select(s => $"{s} {Dbfs(session.ReadPeak(s)),6:0.0} dBFS");
-                    Console.WriteLine($"[{Stamp()}] {string.Join("  ", levels)}");
+                    var peaks = needed.Select(s => (Source: s, Dbfs: Dbfs(session.ReadPeak(s)))).ToList();
+                    if (prompts.Length == 0)
+                        Console.WriteLine($"[{Stamp()}] {string.Join("  ", peaks.Select(p => $"{p.Source} {p.Dbfs,6:0.0} dBFS"))}");
+                    else if (peaks.Any(p => p.Dbfs < SilentDbfs))
+                        Console.WriteLine($"[{Stamp()}] 注意: {levelEvery.TotalSeconds:0} 秒間、声が届いていません（{string.Join(", ", peaks.Select(p => $"{p.Source} {p.Dbfs:0.0} dBFS"))}）。休憩中でなければマイクを確認してください");
+                }
+                if (prompts.Length > 0 && flowingReported)
+                {
+                    if (promptIndex < 0)
+                    {
+                        promptIndex = 0;
+                        ShowPrompt(prompts, promptIndex);
+                        enter = Task.Run(Console.ReadLine);
+                    }
+                    else if (enter!.IsCompleted)
+                    {
+                        if (enter.Result is null)
+                        {
+                            Console.WriteLine($"[{Stamp()}] 入力が閉じられたため、録音を止めます");
+                            break;
+                        }
+                        marks.Add((long)session.Elapsed.TotalMilliseconds);
+                        Console.WriteLine($"[{Stamp()}] 原稿 {promptIndex + 1} の終わりを記録しました");
+                        if (++promptIndex >= prompts.Length) break;
+                        ShowPrompt(prompts, promptIndex);
+                        enter = Task.Run(Console.ReadLine);
+                    }
                 }
                 if (clock.Elapsed >= nextMemory)
                 {
@@ -112,8 +151,10 @@ internal static class SessionCommand
             Console.WriteLine($"[{Stamp()}] stopping");
             var wallMs = (long)clock.Elapsed.TotalMilliseconds;
             await session.StopAsync().ConfigureAwait(false);
-            var (summary, ok) = Summarize(session.Directory, wallMs, memory);
-            Console.WriteLine(JsonSerializer.Serialize(summary, json));
+            var (summary, ok) = Summarize(session.Directory, wallMs, memory, marks);
+            var text = JsonSerializer.Serialize(summary, json);
+            Console.WriteLine(text);
+            if (outFile is not null) File.WriteAllText(outFile, text, new System.Text.UTF8Encoding(false));
             return ok ? 0 : 4;
         }
         finally
@@ -145,7 +186,21 @@ internal static class SessionCommand
         }
     }
 
-    private static (object Summary, bool Ok) Summarize(string directory, long wallMs, IReadOnlyList<object> memory)
+    private const double SilentDbfs = -60;
+
+    private static void ShowPrompt(string[] prompts, int index)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"────────── 原稿 {index + 1} / {prompts.Length} ──────────");
+        Console.WriteLine();
+        Console.WriteLine(File.ReadAllText(prompts[index]).Trim());
+        Console.WriteLine();
+        Console.WriteLine(index + 1 < prompts.Length
+            ? $"── 読み終えたら Enter を押してください（次の原稿 {index + 2} を表示します。休憩してから読み始めてもかまいません）"
+            : "── 読み終えたら Enter を押してください（録音を終えます）");
+    }
+
+    private static (object Summary, bool Ok) Summarize(string directory, long wallMs, IReadOnlyList<object> memory, IReadOnlyList<long> marks)
     {
         var manifest = SessionManifest.Load(directory);
         var ok = true;
@@ -214,6 +269,7 @@ internal static class SessionCommand
             manifest.MicMode,
             manifest.CaptureState,
             wall_ms = wallMs,
+            prompt_marks_ms = marks,
             memory_per_minute = memory,
             tracks,
             verified = ok,

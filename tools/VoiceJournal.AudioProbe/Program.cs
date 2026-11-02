@@ -4,6 +4,7 @@
 //   AudioProbe record <mic|loopback> <seconds> <outBase> [--device <endpointId>] [--raw]
 //   AudioProbe positions <mic|loopback> <seconds> [--raw]      (B3: device / QPC position units and clock rate)
 //   AudioProbe session <mic|loopback|both> <seconds> [...]     (B3: real pipeline, see SessionCommand.cs)
+//   AudioProbe transcribe <sessionDir> [...] / cer <sessionDir> --refs ... (C5: see EvaluateCommands.cs)
 //
 // record writes:
 //   <outBase>.orig.wav   native WASAPI shared-mode format, untouched (原音)
@@ -45,6 +46,8 @@ internal static class Program
                 "beeps" when args.Length >= 2 => SyncCommands.Beeps(args, JsonOptions),
                 "devices" => SyncCommands.Devices(JsonOptions),
                 "analyze-sync" when args.Length >= 2 => SyncCommands.Analyze(args, JsonOptions),
+                "transcribe" when args.Length >= 2 => EvaluateCommands.TranscribeAsync(args, JsonOptions).GetAwaiter().GetResult(),
+                "cer" when args.Length >= 2 => EvaluateCommands.Cer(args, JsonOptions),
                 _ => Usage(),
             };
         }
