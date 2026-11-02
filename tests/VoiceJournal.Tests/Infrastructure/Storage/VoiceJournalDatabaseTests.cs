@@ -27,13 +27,14 @@ public sealed class VoiceJournalDatabaseTests : IDisposable
     }
 
     [Fact]
-    public void Migrations_CreateThePhaseBAndCTables_AndAreRecorded()
+    public void Migrations_CreateThePhaseBCAndDTables_AndAreRecorded()
     {
         var db = VoiceJournalDatabase.Open(DbPath, new DatabaseOptions { AppVersion = "1.2.3" });
 
         using var c = db.OpenConnection();
         var tables = Strings(c, "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name");
-        Assert.Equal(["audio_chunks", "audio_events", "audio_tracks", "jobs", "schema_migrations", "segments", "sessions", "transcript_revisions", "workspaces"], tables);
+        Assert.Equal(["analyses", "audio_chunks", "audio_events", "audio_tracks", "candidates", "jobs", "record_jobs", "records", "schema_migrations", "segments", "sessions", "transcript_revisions", "workspaces"], tables);
+        Assert.Contains("transcript_current_revision", Strings(c, "SELECT name FROM pragma_table_info('sessions')"));
 
         using var cmd = c.CreateCommand();
         cmd.CommandText = "SELECT version, name, app_version, migration_hash FROM schema_migrations";
@@ -47,6 +48,10 @@ public sealed class VoiceJournalDatabaseTests : IDisposable
         Assert.Equal(2, r.GetInt32(0));
         Assert.Equal("jobs_and_transcripts", r.GetString(1));
         Assert.Equal(Migrations.All[1].Hash, r.GetString(3));
+        Assert.True(r.Read());
+        Assert.Equal(3, r.GetInt32(0));
+        Assert.Equal("records", r.GetString(1));
+        Assert.Equal(Migrations.All[2].Hash, r.GetString(3));
         Assert.False(r.Read());
     }
 
@@ -64,11 +69,11 @@ public sealed class VoiceJournalDatabaseTests : IDisposable
     public void LaterMigrations_AreAppliedInOrder()
     {
         var db = VoiceJournalDatabase.Open(DbPath);
-        var next = Migrations.All.Append(new Migration(3, "add_notes", "CREATE TABLE notes (id TEXT PRIMARY KEY) STRICT;")).ToList();
+        var next = Migrations.All.Append(new Migration(4, "add_notes", "CREATE TABLE notes (id TEXT PRIMARY KEY) STRICT;")).ToList();
 
         Assert.Equal(1, Migrator.Apply(db, TimeProvider.System, next));
         using var c = db.OpenConnection();
-        Assert.Equal([1L, 2L, 3L], Longs(c, "SELECT version FROM schema_migrations ORDER BY version"));
+        Assert.Equal([1L, 2L, 3L, 4L], Longs(c, "SELECT version FROM schema_migrations ORDER BY version"));
     }
 
     [Fact]
