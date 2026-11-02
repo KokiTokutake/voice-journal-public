@@ -239,6 +239,7 @@ public sealed class RecordGenerator
 
         var (analysis, notes) = AnalysisAssembler.Assemble(transcript.SessionId, transcript.Revision, record, pieces, appWarnings);
         analysis = analysis with { Warnings = [.. analysis.Warnings.Concat(AnalysisValidator.SuspiciousText(analysis)).Distinct().Take(100)] };
+        progress?.Report(new GenerationProgress("validate", 0, 1));
         var issues = AnalysisValidator.Validate(analysis, transcript).Select(i => $"{i.Path}: {i.Code}")
             .Concat(_schema.Validate(JsonSerializer.Serialize(analysis, AnalysisJson.Options))).ToList();
         if (issues.Count > 0)
@@ -315,7 +316,8 @@ public sealed class RecordGenerator
         if (AnalysisFiles.TryRead<GenerationWorkPlan>(path) is { } saved && saved.TranscriptRevision == transcript.Revision && saved.ConfigHash == configHash)
             return saved.Plan;
         if (Directory.Exists(work))
-            foreach (var stale in Directory.EnumerateFiles(work, "*.json")) File.Delete(stale); // other input: nothing is reusable
+            foreach (var stale in Directory.EnumerateFiles(work, "*.json").Where(f => !Path.GetFileName(f).Equals(RecordJobStore.FileName, StringComparison.Ordinal)))
+                File.Delete(stale); // other input: no piece is reusable (the job ledger stays)
         var plan = AnalysisPlanner.Plan(transcript, budget, estimator);
         AnalysisFiles.Write(path, new GenerationWorkPlan { TranscriptRevision = transcript.Revision, ConfigHash = configHash, InputTokenBudget = budget, Plan = plan });
         return plan;

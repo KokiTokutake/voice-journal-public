@@ -25,12 +25,16 @@ public sealed class SttJobRunner : IAsyncDisposable
     private bool _recording;
     private int _disposed;
 
-    public SttJobRunner(SttJobProcessor processor, TimeProvider? time = null)
+    public SttJobRunner(SttJobProcessor processor, TimeProvider? time = null, Analysis.InferenceGate? inference = null)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _time = time ?? TimeProvider.System;
+        _inference = inference;
         _worker = Task.Run(WorkAsync);
     }
+
+    // Shared with the record queue so the recognizer and the LLM never run at the same time (detail spec 3.2).
+    private readonly Analysis.InferenceGate? _inference;
 
     /// <summary>A job was queued, changed state, or finished.</summary>
     public event EventHandler<SttJobChange>? JobChanged;
@@ -177,6 +181,22 @@ public sealed class SttJobRunner : IAsyncDisposable
             {
                 return;
             }
+
+            lock (_gate)
+                if (_recording || _queue.Count == 0) continue; // woken again when recording ends or a job is added
+            IDisposable? slot = null;
+            if (_inference is not null)
+            {
+                try
+                {
+                    slot = await _inference.EnterAsync(token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+            using var held = slot;
 
             (string Dir, Guid JobId) next;
             lock (_gate)
