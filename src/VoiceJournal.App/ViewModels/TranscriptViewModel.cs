@@ -1,42 +1,16 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VoiceJournal.App.Services;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Playback;
 using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Stt;
 
 namespace VoiceJournal.App.ViewModels;
-
-/// <summary>What review should look at closely (detail spec 8.2): numbers, dates, negation, names. A hint, never a judgement.</summary>
-internal static partial class ReviewHints
-{
-    [GeneratedRegex(@"[0-9０-９]|[〇一二三四五六七八九十百千万]+(?:時|分|日|月|年|円|人|件|個|回|割|％|%)")]
-    private static partial Regex Number();
-
-    [GeneratedRegex(@"来週|今週|再来週|先週|明日|明後日|昨日|月末|週末|期限|締め切り|まで(?:に)?|[月火水木金土日]曜")]
-    private static partial Regex Date();
-
-    [GeneratedRegex(@"ない|ません|なかった|ず[、。]|ではなく|じゃなく|しないで|やめ")]
-    private static partial Regex Negation();
-
-    [GeneratedRegex(@"\p{IsCJKUnifiedIdeographs}{1,4}(?:さん|様|氏|部長|課長)")]
-    private static partial Regex Person();
-
-    public static string For(string text)
-    {
-        var hints = new List<string>(4);
-        if (Number().IsMatch(text)) hints.Add("数字");
-        if (Date().IsMatch(text)) hints.Add("期日");
-        if (Negation().IsMatch(text)) hints.Add("否定");
-        if (Person().IsMatch(text)) hints.Add("人名");
-        return string.Join("・", hints);
-    }
-}
 
 /// <summary>One segment in UI-06. Setting <see cref="Text"/> asks the owner to save a new revision.</summary>
 public sealed partial class SegmentRowViewModel : ObservableObject

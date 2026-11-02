@@ -1,0 +1,565 @@
+using System.Text;
+using System.Text.Json;
+using Corvus.Json;
+using Corvus.Json.Validator;
+using VoiceJournal.Core.Analysis;
+using VoiceJournal.Core.Transcription;
+using VoiceJournal.Tests.Core.Transcription;
+
+namespace VoiceJournal.Tests.Core.Analysis;
+
+internal static class A
+{
+    public static readonly DateOnly Monday = new(2026, 11, 2);
+
+    public static TranscriptDocument Transcript(params string[] texts)
+    {
+        var segments = texts.Select((t, i) => T.Seg(i * 5_000L, i * 5_000L + 4_000, t)).ToArray();
+        return T.Raw(Guid.NewGuid(), 3, segments);
+    }
+
+    public static AnalysisPiece WholePiece(TranscriptDocument transcript) =>
+        AnalysisPlanner.Plan(transcript, 100_000, new TokenEstimator()).Pieces.Single();
+
+    public static WireEvidence Ev(string segment, string quote) => new() { Segment = segment, Quote = quote };
+
+    public static WireStatement St(string text, string segment, string quote, Certainty certainty = Certainty.Stated) =>
+        new() { Text = text, Certainty = certainty, Evidence = [Ev(segment, quote)] };
+
+    public static WireCandidate Task(string title, string segment, string quote, string? assignee = null, string? due = null, string? dueDate = null,
+        ItemStatus? status = null, Certainty certainty = Certainty.Stated, CandidateKind kind = CandidateKind.Task) => new()
+        {
+            Kind = kind,
+            Title = title,
+            Description = "",
+            Status = status,
+            Priority = null,
+            Assignee = assignee,
+            DueExpression = due,
+            DueDate = dueDate,
+            Certainty = certainty,
+            Evidence = [Ev(segment, quote)],
+            Rationale = "会話で述べられた",
+        };
+
+    public static ExtractionOutput Output(IReadOnlyList<WireStatement>? summary = null, IReadOnlyList<WireTopic>? topics = null, IReadOnlyList<WireCandidate>? candidates = null) => new()
+    {
+        SummaryPoints = summary ?? [],
+        Topics = topics ?? [],
+        Candidates = candidates ?? [],
+        Warnings = [],
+    };
+
+    public static DraftCandidate Check(TranscriptDocument transcript, WireCandidate candidate) =>
+        ExtractionConverter.Convert(Output(candidates: [candidate]), WholePiece(transcript), transcript, Monday).Candidates.Single();
+}
+
+public sealed class JsonGuardTests
+{
+    [Fact]
+    public void ValidJson_Passes() => Assert.Null(JsonGuard.Check("""{"a":[1,{"b":null}]}"""));
+
+    [Theory]
+    [InlineData("""{"a":1,"a":2}""")]
+    [InlineData("""{"x":{"a":1,"a":2}}""")]
+    [InlineData("""{"a":1""")]
+    [InlineData("")]
+    [InlineData("""{"a":1} {"b":2}""")]
+    public void DuplicateKeysAndBrokenJson_AreRejected(string json) => Assert.NotNull(JsonGuard.Check(json));
+
+    [Fact]
+    public void SameKeyInSiblingObjects_IsFine() => Assert.Null(JsonGuard.Check("""[{"a":1},{"a":2}]"""));
+
+    [Fact]
+    public void DeepNesting_IsRejected()
+    {
+        var deep = new string('[', 40) + new string(']', 40);
+        Assert.NotNull(JsonGuard.Check(deep));
+        Assert.Null(JsonGuard.Check(new string('[', 30) + new string(']', 30)));
+    }
+
+    [Fact]
+    public void HugeAnswer_IsRejected()
+    {
+        var huge = "\"" + new string('a', JsonGuard.MaxBytes) + "\"";
+        Assert.NotNull(JsonGuard.Check(huge));
+    }
+}
+
+public sealed class EvidenceTextTests
+{
+    [Theory]
+    [InlineData("ログの調査", "来週までにログの調査を進めます")]
+    [InlineData("ログの 調査", "来週までにログの調査を進めます")] // spaces ignored
+    [InlineData("「ログの調査」", "来週までにログの調査を進めます")] // quote marks at the ends ignored
+    [InlineData("ＡＢＣ社", "ABC社の件です")] // NFKC
+    [InlineData("はい", "はい")] // short, but the whole segment
+    public void Substrings_Match(string quote, string text) => Assert.True(EvidenceText.IsQuoteOf(quote, text));
+
+    [Theory]
+    [InlineData("ログを調べる", "来週までにログの調査を進めます")] // paraphrase
+    [InlineData("の調", "来週までにログの調査を進めます")] // too short to prove anything
+    [InlineData("", "来週までにログの調査を進めます")]
+    [InlineData("ログの調査を進めます。来週", "来週までにログの調査を進めます")]
+    public void ParaphrasesAndFragments_DoNotMatch(string quote, string text) => Assert.False(EvidenceText.IsQuoteOf(quote, text));
+}
+
+public sealed class RelativeDatesTests
+{
+    // 2026-11-02 is a Monday.
+    [Theory]
+    [InlineData("来週の金曜まで", "2026-11-13")]
+    [InlineData("来週金曜日までに", "2026-11-13")]
+    [InlineData("今週の金曜日", "2026-11-06")]
+    [InlineData("再来週の月曜", "2026-11-16")]
+    [InlineData("11月9日", "2026-11-09")]
+    [InlineData("十一月九日まで", "2026-11-09")]
+    [InlineData("11/9", "2026-11-09")]
+    [InlineData("2026年12月1日", "2026-12-01")]
+    [InlineData("今月末", "2026-11-30")]
+    [InlineData("月末まで", "2026-11-30")]
+    [InlineData("来月末", "2026-12-31")]
+    [InlineData("来月10日", "2026-12-10")]
+    [InlineData("明日", "2026-11-03")]
+    [InlineData("明後日", "2026-11-04")]
+    [InlineData("今日中", "2026-11-02")]
+    [InlineData("3日後", "2026-11-05")]
+    [InlineData("2週間後", "2026-11-16")]
+    [InlineData("20日まで", "2026-11-20")]
+    public void ClearExpressions_Resolve(string expression, string expected)
+    {
+        var r = RelativeDates.Resolve(expression, A.Monday);
+        Assert.Equal(DateResolutionKind.Resolved, r.Kind);
+        Assert.Equal(DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), r.DueDate);
+    }
+
+    [Theory]
+    [InlineData("金曜", DateResolutionKind.Ambiguous)] // this week or next
+    [InlineData("金曜かも", DateResolutionKind.Hedged)]
+    [InlineData("来週の金曜くらい", DateResolutionKind.Hedged)]
+    [InlineData("15日頃", DateResolutionKind.Hedged)]
+    [InlineData("週末", DateResolutionKind.Ambiguous)]
+    [InlineData("来週中", DateResolutionKind.Ambiguous)]
+    [InlineData("週明け", DateResolutionKind.Ambiguous)]
+    [InlineData("1日まで", DateResolutionKind.Ambiguous)] // the 1st of this month has passed
+    [InlineData("10月20日", DateResolutionKind.Past)]
+    [InlineData("4月3日", DateResolutionKind.Ambiguous)] // next April or last spring
+    [InlineData("2026年2月30日", DateResolutionKind.Unparsed)]
+    [InlineData("いつか", DateResolutionKind.Unparsed)]
+    [InlineData(null, DateResolutionKind.Unparsed)]
+    public void UnclearExpressions_HaveNoDueDate(string? expression, DateResolutionKind kind)
+    {
+        var r = RelativeDates.Resolve(expression, A.Monday);
+        Assert.Equal(kind, r.Kind);
+        Assert.Null(r.DueDate);
+    }
+
+    [Fact]
+    public void YearBoundaries_AreCrossed()
+    {
+        var wednesday = new DateOnly(2026, 12, 30);
+        Assert.Equal(new DateOnly(2027, 1, 4), RelativeDates.Resolve("来週の月曜", wednesday).DueDate);
+        Assert.Equal(new DateOnly(2027, 1, 10), RelativeDates.Resolve("1月10日", wednesday).DueDate);
+        Assert.Equal(new DateOnly(2027, 1, 31), RelativeDates.Resolve("来月末", wednesday).DueDate);
+        Assert.Equal(DateResolutionKind.Past, RelativeDates.Resolve("今週の月曜", wednesday).Kind);
+    }
+
+    [Fact]
+    public void WeekdayName_IsJapanese()
+    {
+        Assert.Equal("月曜日", RelativeDates.WeekdayName(A.Monday));
+        Assert.Equal("日曜日", RelativeDates.WeekdayName(A.Monday.AddDays(6)));
+    }
+}
+
+public sealed class AnalysisPlannerTests
+{
+    [Fact]
+    public void Plan_SplitsByBudget_AndCoversEverySegmentOnce()
+    {
+        var silent = T.Seg(60_000, 61_000, "ご視聴ありがとうございました").WithFlag(SegmentQuality.Silence);
+        var segments = Enumerable.Range(0, 10).Select(i => T.Seg(i * 5_000L, i * 5_000L + 4_000, new string('あ', 40))).Append(T.Seg(55_000, 56_000, "  ")).Append(silent).ToArray();
+        var transcript = T.Raw(Guid.NewGuid(), 2, segments);
+
+        var plan = AnalysisPlanner.Plan(transcript, 3 * (40 + AnalysisPlanner.SegmentOverheadTokens), new TokenEstimator());
+
+        Assert.Equal([3, 3, 3, 1], plan.Pieces.Select(p => p.SegmentIds.Count));
+        Assert.Equal([1, 2, 3, 4], plan.Pieces.Select(p => p.Index));
+        var covered = plan.Pieces.SelectMany(p => p.SegmentIds).Concat(plan.Skipped.Select(s => s.SegmentId)).ToList();
+        Assert.Equal(transcript.Segments.Count, covered.Count);
+        Assert.Equal(transcript.Segments.Select(s => s.SegmentId).Order(), covered.Order());
+        Assert.Contains(plan.Skipped, s => s.Status == CoverageStatus.Silence && s.SegmentId == silent.SegmentId);
+        Assert.Contains(plan.Skipped, s => s.Status == CoverageStatus.Empty);
+    }
+
+    [Fact]
+    public void Plan_OversizeSegment_IsItsOwnPiece()
+    {
+        var transcript = T.Raw(Guid.NewGuid(), 1, T.Seg(0, 1_000, "短い"), T.Seg(1_000, 9_000, new string('長', 500)), T.Seg(9_000, 10_000, "短い"));
+
+        var plan = AnalysisPlanner.Plan(transcript, 200, new TokenEstimator());
+
+        Assert.Equal([false, true, false], plan.Pieces.Select(p => p.Oversize));
+    }
+
+    [Fact]
+    public void Plan_NothingToAnalyse_IsEmpty()
+    {
+        var transcript = T.Raw(Guid.NewGuid(), 1, T.Seg(0, 1_000, "ご視聴ありがとうございました").WithFlag(SegmentQuality.Silence));
+        Assert.True(AnalysisPlanner.Plan(transcript, 1_000, new TokenEstimator()).IsEmpty);
+    }
+
+    [Fact]
+    public void BuildInput_UsesShortIds_AndAppTimes()
+    {
+        var transcript = A.Transcript("おはようございます", "議題は二つです");
+        var input = AnalysisPlanner.BuildInput(A.WholePiece(transcript), transcript, AnalysisPlanner.Session(new DateTimeOffset(2026, 11, 2, 1, 0, 0, TimeSpan.Zero), TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"), null));
+
+        Assert.Equal(["S0001", "S0002"], input.Segments.Select(s => s.Id));
+        Assert.Equal("00:00:05", input.Segments[1].Time);
+        Assert.Equal("2026-11-02T10:00:00+09:00", input.Session.RecordedAt);
+        Assert.Equal("月曜日", input.Session.Weekday);
+        var json = JsonSerializer.Serialize(input, AnalysisJson.Compact);
+        Assert.DoesNotContain(transcript.Segments[0].SegmentId.ToString(), json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Budget_FollowsTheSpecFormula()
+    {
+        var budget = new ContextBudget(8192, 4096, 1500);
+        Assert.Equal(6553 - 4096 - 1500, budget.InputTokens);
+        Assert.Throws<InvalidOperationException>(() => budget.RequireInputTokens(2_000));
+    }
+
+    [Fact]
+    public void Estimator_CountsJapaneseAsOneTokenPerCharacter()
+    {
+        var e = new TokenEstimator();
+        Assert.Equal(5, e.Estimate("あいうえお"));
+        Assert.Equal(4, e.Estimate("abcdefghij"));
+        Assert.Equal(10, new TokenEstimator(2.0).Estimate("あいうえお"));
+    }
+}
+
+public sealed class ExtractionConverterTests
+{
+    [Fact]
+    public void ShortIds_MapBackToSegments_AndBadEvidenceIsDropped()
+    {
+        var transcript = A.Transcript("今日は新しい録音の仕組みについて話します", "保存先はローカルに限定することに決めました");
+        var output = A.Output(
+            summary: [A.St("録音の仕組みを話した", "S0001", "新しい録音の仕組み"), A.St("でっちあげ", "S0002", "クラウドに保存")],
+            topics:
+            [
+                new WireTopic { SectionKind = SectionKind.Decision, Heading = "決定事項", Statements = [new WireStatement { Text = "保存先はローカル", Certainty = Certainty.Stated, Evidence = [A.Ev("S0002", "ローカルに限定する"), A.Ev("S0009", "ローカル"), A.Ev("X1", "ローカル")] }] },
+                new WireTopic { SectionKind = SectionKind.Topic, Heading = "空の話題", Statements = [A.St("根拠なし", "S0003", "何か")] },
+                new WireTopic { SectionKind = SectionKind.Custom, Heading = "要約", Statements = [A.St("見出しが予約語", "S0001", "録音の仕組み")] },
+            ]);
+
+        var result = ExtractionConverter.Convert(output, A.WholePiece(transcript), transcript, A.Monday);
+
+        var summary = Assert.Single(result.SummaryPoints);
+        Assert.Equal(transcript.Segments[0].SegmentId, summary.Evidence.Single().SegmentId);
+        Assert.Equal(["決定事項", "要約（本文）"], result.Topics.Select(t => t.Heading));
+        Assert.Equal(transcript.Segments[1].SegmentId, result.Topics[0].Statements.Single().Evidence.Single().SegmentId);
+        Assert.Equal(4, result.DroppedEvidence); // fake quote, S0009, X1, S0003
+        Assert.Equal(["でっちあげ", "根拠なし"], result.Dropped.Select(d => d.Text));
+    }
+
+    [Fact]
+    public void Candidate_WithoutEvidence_IsDroppedNotKept()
+    {
+        var transcript = A.Transcript("ログを調査します");
+        var result = ExtractionConverter.Convert(A.Output(candidates: [A.Task("ログを調査", "S0001", "メモリを調査")]), A.WholePiece(transcript), transcript, A.Monday);
+        Assert.Empty(result.Candidates);
+        Assert.Equal("candidate", Assert.Single(result.Dropped).Kind);
+    }
+}
+
+/// <summary>AT-09 and the inference rules of detail spec 9.3 / 12.1.</summary>
+public sealed class CandidateCheckerTests
+{
+    [Fact]
+    public void ClearTask_KeepsAssigneeAndAppResolvedDate()
+    {
+        var t = A.Transcript("来週の金曜日までに田中さんがログ収集の方式を調べます");
+        var c = A.Check(t, A.Task("ログ収集方式の調査", "S0001", "田中さんがログ収集の方式を調べます", assignee: "田中さん", due: "来週の金曜まで", dueDate: "2026-11-13"));
+
+        Assert.Equal(Certainty.Stated, c.Certainty);
+        Assert.Equal("田中さん", c.Fields.Assignee);
+        Assert.Equal(new DateOnly(2026, 11, 13), c.Fields.DueDate);
+        Assert.DoesNotContain(CandidateConcern.DueDateNeedsCheck, c.Flags);
+    }
+
+    [Fact]
+    public void RefusedTask_IsNotConfirmed_AndHasNoDueDate()
+    {
+        var t = A.Transcript("その資料の作り直しは来週までにやる必要はないです");
+        var c = A.Check(t, A.Task("資料の作り直し", "S0001", "来週までにやる必要はない", due: "来週まで", dueDate: "2026-11-09"));
+
+        Assert.Equal(Certainty.Unclear, c.Certainty);
+        Assert.Contains(CandidateConcern.Negation, c.Flags);
+        Assert.Null(c.Fields.DueDate);
+        Assert.Contains(CandidateConcern.DueDateNeedsCheck, c.Flags);
+    }
+
+    [Fact]
+    public void NotFinished_IsNeverDone()
+    {
+        var t = A.Transcript("移行の作業はまだ完了していません");
+        var c = A.Check(t, A.Task("移行の作業", "S0001", "まだ完了していません", status: ItemStatus.Done));
+
+        Assert.Null(c.Fields.Status);
+        Assert.Contains(CandidateConcern.StatusDropped, c.Flags);
+    }
+
+    [Fact]
+    public void Finished_IsKeptButFlaggedForIndividualCheck()
+    {
+        var t = A.Transcript("設定画面の修正は昨日終わりました");
+        var c = A.Check(t, A.Task("設定画面の修正", "S0001", "設定画面の修正は昨日終わりました", status: ItemStatus.Done));
+
+        Assert.Equal(ItemStatus.Done, c.Fields.Status);
+        Assert.Contains(CandidateConcern.TerminalStatus, c.Flags);
+    }
+
+    [Fact]
+    public void MaybeFriday_HasNoDueDate_AndIsTentative()
+    {
+        var t = A.Transcript("見積もりの提出は金曜かもしれません");
+        var c = A.Check(t, A.Task("見積もりの提出", "S0001", "見積もりの提出は金曜かもしれません", due: "金曜かも", dueDate: "2026-11-06"));
+
+        Assert.Equal(Certainty.Tentative, c.Certainty);
+        Assert.Null(c.Fields.DueDate);
+        Assert.Contains(CandidateConcern.Doubtful, c.Flags);
+        Assert.Contains(CandidateConcern.DueDateNeedsCheck, c.Flags);
+        Assert.Contains(CandidateConcern.DueDateDropped, c.Flags);
+    }
+
+    [Fact]
+    public void Suggestion_IsTentative()
+    {
+        var t = A.Transcript("その件は山田さんに聞いてみようか");
+        var c = A.Check(t, A.Task("山田さんに確認する", "S0001", "山田さんに聞いてみようか", assignee: "山田さん"));
+
+        Assert.Equal(Certainty.Tentative, c.Certainty);
+        Assert.Contains(CandidateConcern.Doubtful, c.Flags);
+    }
+
+    [Fact]
+    public void UnknownAssignee_IsDropped()
+    {
+        var t = A.Transcript("ログの調査を誰かにお願いしたいです");
+        var c = A.Check(t, A.Task("ログの調査", "S0001", "ログの調査を誰かにお願いしたい", assignee: "佐藤さん"));
+
+        Assert.Null(c.Fields.Assignee);
+        Assert.Contains(CandidateConcern.AssigneeDropped, c.Flags);
+    }
+
+    [Fact]
+    public void ModelDate_WithoutExpression_OrDisagreeing_IsDropped()
+    {
+        var t = A.Transcript("来週の金曜までに見積もりを出します");
+        var noExpression = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", dueDate: "2026-11-13"));
+        var disagreeing = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", due: "来週の金曜まで", dueDate: "2026-11-20"));
+        var invented = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", due: "11月20日"));
+
+        Assert.Null(noExpression.Fields.DueDate);
+        Assert.Contains(CandidateConcern.DueDateDropped, noExpression.Flags);
+        Assert.Null(disagreeing.Fields.DueDate);
+        Assert.Null(invented.Fields.DueDate); // the expression is not in the transcript
+        Assert.Contains(CandidateConcern.DueDateNeedsCheck, invented.Flags);
+    }
+
+    [Fact]
+    public void ImpossibleDate_IsDropped()
+    {
+        var t = A.Transcript("2月30日までに出します");
+        var c = A.Check(t, A.Task("提出", "S0001", "2月30日までに出します", due: "2月30日", dueDate: "2026-02-30"));
+        Assert.Null(c.Fields.DueDate);
+        Assert.Null(CandidateChecker.ParseDate("2026-02-30"));
+    }
+
+    [Fact]
+    public void IssueCannotBeDone()
+    {
+        var t = A.Transcript("ログが欠ける問題は解決しました");
+        var c = A.Check(t, A.Task("ログが欠ける問題", "S0001", "ログが欠ける問題は解決しました", status: ItemStatus.Done, kind: CandidateKind.Issue));
+        Assert.Null(c.Fields.Status);
+        Assert.Contains(CandidateConcern.StatusDropped, c.Flags);
+    }
+}
+
+public sealed class IntegrationAndAssemblyTests
+{
+    private static (TranscriptDocument Transcript, PieceAnalysis Piece) Piece()
+    {
+        var t = A.Transcript("録音の保存先はローカルに決めました", "暗号化はまだ検討中かもしれません", "来週の金曜までに田中さんが手順書を書きます");
+        var output = A.Output(
+            summary: [A.St("保存先をローカルに決めた", "S0001", "ローカルに決めました")],
+            topics: [new WireTopic { SectionKind = SectionKind.OpenQuestion, Heading = "未決", Statements = [A.St("暗号化は検討中", "S0002", "暗号化はまだ検討中", Certainty.Tentative)] }],
+            candidates: [A.Task("手順書を書く", "S0003", "田中さんが手順書を書きます", "田中さん", "来週の金曜まで"), A.Task("手順書を書く", "S0003", "手順書を書きます")]);
+        return (t, ExtractionConverter.Convert(output, A.WholePiece(t), t, A.Monday));
+    }
+
+    [Fact]
+    public void Integration_TakesEvidenceFromItems_AndNeverStrengthensCertainty()
+    {
+        var (_, piece) = Piece();
+        var items = IntegrationConverter.Items([piece]);
+        Assert.Equal(["I0001", "I0002"], items.Select(i => i.Item.Id));
+        Assert.Null(items[0].Item.SectionKind);
+        Assert.Equal(SectionKind.OpenQuestion, items[1].Item.SectionKind);
+
+        var output = new IntegrationOutput
+        {
+            RecordTypes = [RecordType.Meeting, RecordType.Meeting],
+            Title = "保存先の決定",
+            Summary = [new WireDerived { Text = "保存先と暗号化について話した", Certainty = Certainty.Stated, From = ["I0001", "I0002"] }, new WireDerived { Text = "作り話", Certainty = Certainty.Stated, From = ["I0099"] }],
+            Sections = [new WireIntegratedSection { SectionKind = SectionKind.Decision, Heading = "決定事項", Statements = [new WireDerived { Text = "保存先はローカル", Certainty = Certainty.Stated, From = ["I0001"] }] }],
+            Warnings = [],
+        };
+        var record = IntegrationConverter.Convert(output, items, 1);
+
+        var s = record.Summary.Single();
+        Assert.Equal(Certainty.Tentative, s.Certainty); // one source was tentative
+        Assert.Equal(2, s.Evidence.Count);
+        Assert.Equal("作り話", record.Dropped.Single().Text);
+        Assert.Equal([RecordType.Meeting], record.RecordTypes);
+    }
+
+    [Fact]
+    public void Group_SplitsItemsForHierarchicalIntegration()
+    {
+        var (_, piece) = Piece();
+        var many = Enumerable.Repeat(piece, 6).Select((p, i) => p with { Piece = i + 1 });
+        var groups = IntegrationConverter.Group(IntegrationConverter.Items(many), 100, new TokenEstimator());
+        Assert.True(groups.Count > 1);
+        Assert.All(groups, g => Assert.Equal("I0001", g[0].Item.Id));
+        Assert.Equal(12, groups.Sum(g => g.Count));
+    }
+
+    [Fact]
+    public void Assembled_Analysis_PassesValidation_AndMatchesTheFullSchema()
+    {
+        var (t, piece) = Piece();
+        var items = IntegrationConverter.Items([piece]);
+        var record = IntegrationConverter.Convert(new IntegrationOutput
+        {
+            RecordTypes = [RecordType.Meeting],
+            Title = "保存先の決定",
+            Summary = [new WireDerived { Text = "保存先をローカルに決めた", Certainty = Certainty.Stated, From = ["I0001"] }],
+            Sections = [new WireIntegratedSection { SectionKind = SectionKind.OpenQuestion, Heading = "未決事項", Statements = [new WireDerived { Text = "暗号化は検討中", Certainty = Certainty.Stated, From = ["I0002"] }] }],
+            Warnings = [],
+        }, items, 1);
+
+        var (analysis, notes) = AnalysisAssembler.Assemble(t.SessionId, t.Revision, record, [piece], []);
+
+        var candidate = Assert.Single(analysis.Candidates); // same kind and title: merged
+        Assert.Equal("C0001", candidate.CandidateId);
+        Assert.Equal(CandidateAction.Create, candidate.Action);
+        Assert.Equal("田中さん", candidate.Fields.Assignee);
+        Assert.Equal(new DateOnly(2026, 11, 13), candidate.Fields.DueDate);
+        Assert.Contains(CandidateConcern.Merged, notes.Single().Flags);
+        Assert.Empty(AnalysisValidator.Validate(analysis, t));
+
+        var json = JsonSerializer.Serialize(analysis, AnalysisJson.Options);
+        Assert.Contains("\"suggested_target_id\": null", json, StringComparison.Ordinal);
+        Assert.Contains("\"open_question\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"due_date\": \"2026-11-13\"", json, StringComparison.Ordinal);
+        var result = FullSchema.Validate(json);
+        Assert.True(result.IsValid, string.Join("\n", result.Results.Select(r => $"{r.Location}: {r.Message}")));
+        Assert.Equal(analysis, JsonSerializer.Deserialize<AnalysisResult>(json, AnalysisJson.Options), new AnalysisJsonComparer());
+    }
+
+    private sealed class AnalysisJsonComparer : IEqualityComparer<AnalysisResult?>
+    {
+        public bool Equals(AnalysisResult? x, AnalysisResult? y) =>
+            JsonSerializer.Serialize(x, AnalysisJson.Compact) == JsonSerializer.Serialize(y, AnalysisJson.Compact);
+
+        public int GetHashCode(AnalysisResult? obj) => 0;
+    }
+}
+
+/// <summary>AT-10: the validator rejects what the schema cannot see.</summary>
+public sealed class AnalysisValidatorTests
+{
+    private static readonly TranscriptDocument Transcript = A.Transcript("保存先はローカルに決めました");
+
+    private static AnalysisResult Valid() => new()
+    {
+        SessionId = Transcript.SessionId,
+        TranscriptRevision = Transcript.Revision,
+        RecordTypes = [RecordType.Work],
+        Title = "保存先",
+        Summary = [new Statement { Text = "保存先を決めた", Certainty = Certainty.Stated, Evidence = [new Evidence { SegmentId = Transcript.Segments[0].SegmentId, Quote = "ローカルに決めました" }] }],
+        Sections = [],
+        Candidates = [],
+        Warnings = [],
+    };
+
+    private static Candidate Candidate(string id, CandidateAction action = CandidateAction.Create) => new()
+    {
+        CandidateId = id,
+        Kind = CandidateKind.Task,
+        Action = action,
+        SuggestedTargetId = action == CandidateAction.Create ? null : Guid.NewGuid(),
+        ParentIssueCandidateId = null,
+        ParentIssueItemId = null,
+        Fields = new CandidateFields { Title = "手順書", Description = "", Status = null, Priority = null, Assignee = null, DueDate = null },
+        ChangedFields = action == CandidateAction.Update ? [ItemField.Title] : [],
+        Certainty = Certainty.Stated,
+        DueExpression = null,
+        Evidence = [new Evidence { SegmentId = Transcript.Segments[0].SegmentId, Quote = "ローカルに決めました" }],
+        Rationale = "r",
+    };
+
+    [Fact]
+    public void Valid_HasNoIssues() => Assert.Empty(AnalysisValidator.Validate(Valid(), Transcript));
+
+    public static TheoryData<string, AnalysisResult> Broken()
+    {
+        var v = Valid();
+        var s = v.Summary[0];
+        return new TheoryData<string, AnalysisResult>
+        {
+            { "session_mismatch", v with { SessionId = Guid.NewGuid() } },
+            { "revision_mismatch", v with { TranscriptRevision = 99 } },
+            { "unknown_segment", v with { Summary = [s with { Evidence = [new Evidence { SegmentId = Guid.NewGuid(), Quote = "ローカルに決めました" }] }] } },
+            { "quote_mismatch", v with { Summary = [s with { Evidence = [new Evidence { SegmentId = s.Evidence[0].SegmentId, Quote = "クラウドに決めました" }] }] } },
+            { "evidence_count", v with { Summary = [s with { Evidence = [] }] } },
+            { "blank_text", v with { Title = "   " } },
+            { "summary_count", v with { Summary = [] } },
+            { "duplicate_candidate", v with { Candidates = [Candidate("C0001"), Candidate("C0001")] } },
+            { "candidate_id", v with { Candidates = [Candidate("C1")] } },
+            { "unknown_target", v with { Candidates = [Candidate("C0001", CandidateAction.Update)] } },
+            { "reserved_heading", v with { Sections = [new Section { SectionKind = SectionKind.Custom, Heading = "要約", Statements = [s] }] } },
+            { "duplicate_heading", v with { Sections = [new Section { SectionKind = SectionKind.Topic, Heading = "A", Statements = [s] }, new Section { SectionKind = SectionKind.Topic, Heading = "A", Statements = [s] }] } },
+            { "control_character", v with { Title = "題名\u0007" } },
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(Broken))]
+    public void Broken_IsRejected(string code, AnalysisResult analysis) =>
+        Assert.Contains(AnalysisValidator.Validate(analysis, Transcript), i => i.Code == code);
+
+    [Fact]
+    public void SuspiciousText_IsAWarningNotARejection()
+    {
+        var v = Valid() with { Title = "javascript:alert(1) と <!-- vj:begin --> の話" };
+        Assert.Empty(AnalysisValidator.Validate(v, Transcript));
+        Assert.Equal(2, AnalysisValidator.SuspiciousText(v).Count);
+    }
+}
+
+internal static class FullSchema
+{
+    private static readonly JsonSchema Schema = JsonSchema.FromText(AnalysisSchema.Json, "https://voicejournal.invalid/schemas/analysis-1.0.json");
+
+    public static ValidationContext Validate(string json)
+    {
+        using var doc = JsonDocument.Parse(Encoding.UTF8.GetBytes(json));
+        return Schema.Validate(doc.RootElement, ValidationLevel.Detailed);
+    }
+}

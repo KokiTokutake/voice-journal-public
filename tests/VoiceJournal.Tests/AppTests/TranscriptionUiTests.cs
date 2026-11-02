@@ -1,5 +1,6 @@
 using VoiceJournal.App.Services;
 using VoiceJournal.App.ViewModels;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Sessions;
 using VoiceJournal.Core.Transcription;

@@ -274,6 +274,8 @@ public static class TranscriptRendering
         text.Append(CultureInfo.InvariantCulture, $"- 作成: {document.CreatedAtUtc:yyyy-MM-dd HH:mm:ss}Z\n\n");
         foreach (var s in document.Segments)
         {
+            // Stable anchor for evidence links from the record (detail spec 10.3): transcript.md#seg-<segment id>.
+            text.Append(CultureInfo.InvariantCulture, $"<a id=\"seg-{s.SegmentId:D}\"></a>\n");
             text.Append("**").Append(Time(s.StartMs, false)).Append(' ').Append(SourceLabel(s.Source)).Append("**");
             if (s.QualityFlags.Count > 0) text.Append(" ⚠").Append(string.Join("・", s.QualityFlags.Select(FlagLabel)));
             text.Append("  \n").Append(s.Text.Trim()).Append("\n\n");
