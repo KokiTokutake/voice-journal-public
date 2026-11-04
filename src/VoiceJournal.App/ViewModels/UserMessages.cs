@@ -1,5 +1,7 @@
 using System.Globalization;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Capture;
+using VoiceJournal.Core.Records;
 using VoiceJournal.Core.Transcription;
 
 namespace VoiceJournal.App.ViewModels;
@@ -44,7 +46,90 @@ internal static class UserMessages
         ProcessingState.Transcribed => revision is null ? "文字起こし済み" : $"済み（Rev {revision}）",
         ProcessingState.Failed => "失敗",
         ProcessingState.Cancelled => "取り消し",
+        ProcessingState.Organizing => "記録を作成中",
+        ProcessingState.Validating => "記録を検証中",
+        ProcessingState.ReadyForReview => "記録のレビュー待ち",
+        ProcessingState.NotAnalyzable => "記録にする内容なし",
         _ => state.ToString(),
+    };
+
+    /// <summary>Review state of a session's record (library, UI-07).</summary>
+    public static string RecordStateName(RecordReviewState state) => state switch
+    {
+        RecordReviewState.None => "記録なし",
+        RecordReviewState.Draft => "草稿（未承認）",
+        RecordReviewState.Deferred => "保留",
+        RecordReviewState.Approved => "承認済み",
+        RecordReviewState.ApprovedOutdated => "承認済み（古い）",
+        _ => state.ToString(),
+    };
+
+    /// <summary>Error code (detail spec 19) of a record job and what the user can do.</summary>
+    public static string RecordError(RecordJobError? error, string? detail) => error switch
+    {
+        null => string.Empty,
+        RecordJobError.LlmUnavailable => "LLM-001: LM Studio に接続できないか、モデルが読み込まれていません。文字起こしは残っています。" +
+            "LM Studio を起動してサーバーを開始し（Developer の「Status: Running」）、設定画面の「接続を確認」で確かめてから「やり直す」を押してください。" +
+            (string.IsNullOrEmpty(detail) ? string.Empty : $"（{detail}）"),
+        RecordJobError.GenerationFailed => "LLM-002/003: 記録を作れませんでした。終わった区間は残っています。「やり直す」で残りだけ実行します。" +
+            (string.IsNullOrEmpty(detail) ? string.Empty : $"（{detail}）"),
+        RecordJobError.NoTranscript => "文字起こしがまだありません。先に文字起こしをしてください。",
+        RecordJobError.Cancelled => "取り消しました。終わった区間と文字起こしは残っています。",
+        _ => error.ToString()!,
+    };
+
+    public static string OriginName(TextOrigin origin) => origin switch
+    {
+        TextOrigin.Ai => "AI",
+        TextOrigin.UserEdited => "修正",
+        TextOrigin.UserWritten => "手入力",
+        _ => origin.ToString(),
+    };
+
+    public static string CertaintyName(Certainty certainty) => certainty switch
+    {
+        Certainty.Tentative => "案・未確定",
+        Certainty.Unclear => "不明確",
+        _ => string.Empty,
+    };
+
+    public static string CandidateKindName(CandidateKind kind) => kind == CandidateKind.Issue ? "課題" : "タスク";
+
+    public static string ItemStatusName(ItemStatus status) => status switch
+    {
+        ItemStatus.Open => "未対応",
+        ItemStatus.Todo => "未着手",
+        ItemStatus.InProgress => "対応中",
+        ItemStatus.Blocked => "停滞",
+        ItemStatus.Resolved => "解決",
+        ItemStatus.Closed => "終了",
+        ItemStatus.Done => "完了",
+        ItemStatus.Cancelled => "中止",
+        _ => status.ToString(),
+    };
+
+    public static string PriorityName(ItemPriority priority) => priority switch
+    {
+        ItemPriority.Low => "低",
+        ItemPriority.Medium => "中",
+        ItemPriority.High => "高",
+        ItemPriority.Critical => "緊急",
+        _ => priority.ToString(),
+    };
+
+    /// <summary>What the app checked about a candidate (shown as 要確認).</summary>
+    public static string ConcernName(CandidateConcern concern) => concern switch
+    {
+        CandidateConcern.Doubtful => "推測・提案の言い方",
+        CandidateConcern.Negation => "否定を含む",
+        CandidateConcern.DueDateNeedsCheck => "期限を確認",
+        CandidateConcern.DueDateDropped => "根拠のない期限を外した",
+        CandidateConcern.AssigneeDropped => "根拠のない担当を外した",
+        CandidateConcern.TerminalStatus => "完了などの状態を確認",
+        CandidateConcern.StatusDropped => "否定と矛盾する状態を外した",
+        CandidateConcern.CheckAudio => "数字・日付・名前を音声で確認",
+        CandidateConcern.Merged => "複数の区間から統合",
+        _ => concern.ToString(),
     };
 
     /// <summary>Error code (detail spec 19) and what the user can do.</summary>

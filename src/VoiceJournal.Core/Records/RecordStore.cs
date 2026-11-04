@@ -165,15 +165,18 @@ public sealed class RecordStore
     }
 
     /// <summary>
-    /// Approves a revision: <c>record.md</c> becomes its rendering (from <c>records/rev-NNNN/record.md</c>).
+    /// Approves a revision: <c>record.md</c> becomes its rendering — <paramref name="render"/> of the revision (so the
+    /// front matter says approved), or the draft rendering in <c>records/rev-NNNN/record.md</c> when none is given.
     /// An existing <c>record.md</c> that differs from what the app last wrote is moved to <c>records/external/</c> first.
     /// </summary>
-    public ApprovalResult Approve(int revision, int transcriptRevisionInUse, DateTimeOffset nowUtc)
+    public ApprovalResult Approve(int revision, int transcriptRevisionInUse, DateTimeOffset nowUtc, Func<RecordDocument, string>? render = null)
     {
         lock (Gates.GetOrAdd(_sessionDirectory, _ => new object()))
         {
             if (!Revisions().Contains(revision)) throw new FileNotFoundException($"Record revision {revision} does not exist.");
-            var markdown = AtomicFile.ReadAllBytes(Path.Combine(RevisionDirectory(revision), MarkdownFileName));
+            var markdown = render is null
+                ? AtomicFile.ReadAllBytes(Path.Combine(RevisionDirectory(revision), MarkdownFileName))
+                : Encoding.UTF8.GetBytes(render(Load(revision)));
             var review = ReadReview();
             var preserved = PreserveExternalEdit(review.Approved, nowUtc);
             AtomicFile.WriteAllBytes(ApprovedMarkdownPath, markdown);

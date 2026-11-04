@@ -176,7 +176,7 @@ public static partial class ExtractionConverter
             SummaryPoints = summary,
             Topics = topics,
             Candidates = candidates,
-            Warnings = [.. output.Warnings.Select(Clean).Where(w => w.Length > 0)],
+            Warnings = [.. output.Warnings.Select(Clean).Where(w => w.Length > 0 && !AnalysisPrompts.EchoesInstructions(w))],
             Dropped = dropped,
             DroppedEvidence = droppedEvidence,
         };
@@ -445,7 +445,7 @@ public static partial class IntegrationConverter
             Title = ExtractionConverter.Clean(output.Title),
             Summary = summary,
             Sections = sections,
-            Warnings = [.. output.Warnings.Select(ExtractionConverter.Clean).Where(w => w.Length > 0)],
+            Warnings = [.. output.Warnings.Select(ExtractionConverter.Clean).Where(w => w.Length > 0 && !AnalysisPrompts.EchoesInstructions(w))],
             Dropped = dropped,
         };
     }

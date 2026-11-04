@@ -211,6 +211,21 @@ public sealed class RecordStoreTests
     }
 
     [Fact]
+    public void TheApprovedFile_IsRenderedAsApproved_WhileTheRevisionKeepsItsDraftRendering()
+    {
+        using var dir = new TempDirectory();
+        var (t, a) = R.Analysis();
+        var store = new RecordStore(dir.Path);
+        store.Save(RecordFactory.FromAnalysis(t.SessionId, a, 1, R.Now), d => RecordMarkdown.Render(d, R.Context(t)));
+
+        store.Approve(1, 3, R.Now, d => RecordMarkdown.Render(d, R.Context(t) with { Approved = true }));
+
+        Assert.Contains("review_status: \"approved\"", File.ReadAllText(store.ApprovedMarkdownPath), StringComparison.Ordinal);
+        Assert.Contains("review_status: \"draft\"", File.ReadAllText(Path.Combine(store.RevisionDirectory(1), "record.md")), StringComparison.Ordinal);
+        Assert.False(store.HasExternalEdit());
+    }
+
+    [Fact]
     public void ExternalEdit_IsKept_BeforeANewApproval()
     {
         using var dir = new TempDirectory();

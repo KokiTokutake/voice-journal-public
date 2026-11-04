@@ -283,7 +283,8 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         _engine.Runs.Clear();
         _engine.OnRun = null;
         processing.RetryCommand.Execute(null);
-        await WaitFor(() => SttJobStore.Load(dir, job.JobId).State == ProcessingState.Transcribed, "retried job");
+        await WaitFor(() => SttJobStore.Load(dir, job.JobId).State == ProcessingState.Transcribed
+            && _transcripts.RecentJobs(50).Any(j => j.JobId == job.JobId && j.State == ProcessingState.Transcribed), "retried job");
 
         Assert.Equal(["loopback-0002", "mic-0003", "loopback-0003"], _engine.Runs.Select(r => r.OutputName)); // finished pieces kept
         await processing.RefreshAsync();

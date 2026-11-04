@@ -149,6 +149,8 @@ public partial class App : Application
             () => sp.GetRequiredService<ILlmSettingsStore>().Load().ToGeneration(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<ISttSettingsStore>(new JsonSttSettingsStore(JsonSttSettingsStore.DefaultPath));
         services.AddSingleton<TranscriptViewModel>();
+        services.AddSingleton(sp => new RecordReviewViewModel(sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<IAudioPlayer>(),
+            sp.GetRequiredService<IUiDispatcher>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<ProcessingViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<RecordingViewModel>();

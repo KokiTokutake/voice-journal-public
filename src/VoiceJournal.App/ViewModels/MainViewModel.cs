@@ -10,6 +10,7 @@ public enum AppPage
     Recording,
     Library,
     Transcript,
+    Record,
     Management,
     Processing,
     Settings,
@@ -22,17 +23,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         RecordingViewModel recording, LibraryViewModel library, IDialogService dialogs,
-        TranscriptViewModel? transcript = null, ProcessingViewModel? processing = null, SettingsViewModel? settings = null)
+        TranscriptViewModel? transcript = null, ProcessingViewModel? processing = null, SettingsViewModel? settings = null,
+        RecordReviewViewModel? record = null)
     {
         Recording = recording;
         Library = library;
         Transcript = transcript;
+        Record = record;
         Processing = processing;
         Settings = settings;
         _dialogs = dialogs;
         Recording.PropertyChanged += OnRecordingChanged;
         Recording.RecordingCompleted += async (_, _) => await Library.RefreshAsync();
         Library.OpenTranscriptRequested += (_, row) => OpenTranscript(row);
+        Library.OpenRecordRequested += (_, row) => OpenRecord(row);
     }
 
     public RecordingViewModel Recording { get; }
@@ -43,6 +47,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ProcessingViewModel? Processing { get; }
 
+    public RecordReviewViewModel? Record { get; }
+
     public SettingsViewModel? Settings { get; }
 
     /// <summary>UI-06 for the session chosen in the library.</summary>
@@ -52,6 +58,15 @@ public sealed partial class MainViewModel : ObservableObject
         if (Transcript is null) return;
         Transcript.Open(row.Directory, $"{row.TitleText}（{row.StartedText}）");
         CurrentPage = AppPage.Transcript;
+    }
+
+    /// <summary>UI-07 for the session chosen in the library.</summary>
+    public void OpenRecord(SessionRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (Record is null) return;
+        Record.Open(row.Directory, $"{row.TitleText}（{row.StartedText}）");
+        CurrentPage = AppPage.Record;
     }
 
     partial void OnCurrentPageChanged(AppPage value)

@@ -30,6 +30,8 @@
                     <Button Content="文字起こし(_A)" Tag="&#xE8D2;" Command="{Binding TranscribeCommand}" Style="{StaticResource ActionButton}"
                             ToolTip="今の設定で文字起こしします。文字起こし済みなら、以前の結果を残したまま新しい原文を作ります" />
                     <Button Content="文字起こしを開く(_E)" Tag="&#xE8A5;" Command="{Binding OpenTranscriptCommand}" Style="{StaticResource AccentActionButton}" />
+                    <Button Content="記録を開く(_O)" Tag="&#xE7C3;" Command="{Binding OpenRecordCommand}" Style="{StaticResource AccentActionButton}"
+                            ToolTip="要約・章・課題とタスクの候補を確かめて承認する画面を開きます（記録がなければそこで作れます）" />
                 </WrapPanel>
                 <TextBlock Text="{Binding NowPlaying}" VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
                            Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
@@ -53,6 +55,7 @@
                     <DataGridTextColumn Header="状態" Binding="{Binding StateText}" Width="140" />
                     <DataGridTextColumn Header="欠損" Binding="{Binding LossText}" Width="110" />
                     <DataGridTextColumn Header="文字起こし" Binding="{Binding ProcessingText}" Width="130" />
+                    <DataGridTextColumn Header="記録" Binding="{Binding RecordText}" Width="120" />
                 </DataGrid.Columns>
             </DataGrid>
         </Border>

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using VoiceJournal.App.ViewModels;
 using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Sessions;
@@ -6,6 +7,24 @@ using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Storage;
 
 namespace VoiceJournal.App.Services;
+
+/// <summary>What the record screens need from the record queue (UI-07, processing).</summary>
+public interface IRecordService
+{
+    /// <summary>A record job changed (raised on a worker thread, after the index was updated).</summary>
+    event EventHandler<RecordJobChange>? JobChanged;
+
+    event EventHandler<GenerationProgress>? Progress;
+
+    /// <summary>The job running now, if any.</summary>
+    Guid? CurrentJobId { get; }
+
+    /// <summary>Queues a record from the transcript in use, with the current settings.</summary>
+    RecordJob Enqueue(string sessionDirectory);
+
+    /// <summary>A record was edited, approved or deferred from the UI: index it off the UI thread.</summary>
+    Task RecordSavedAsync(string sessionDirectory);
+}
 
 /// <summary>
 /// Connects transcription and record generation (detail spec 3.1, 3.2, 18.3): stops the LLM while a recording is
@@ -17,7 +36,7 @@ namespace VoiceJournal.App.Services;
 /// already has a record does not regenerate it (the user decides, D4); a session recorded before Phase D gets one
 /// when it is transcribed. A request lost to a crash between the two steps is made again from the screen.
 /// </remarks>
-public sealed class RecordCoordinator : IDisposable
+public sealed class RecordCoordinator : IRecordService, IDisposable
 {
     private readonly RecordingViewModel _recording;
     private readonly TranscriptionCoordinator _transcription;
@@ -64,6 +83,8 @@ public sealed class RecordCoordinator : IDisposable
     public event EventHandler<string>? RecordsChanged;
 
     public RecordJobRunner Runner => _runner;
+
+    public Guid? CurrentJobId => _runner.CurrentJobId;
 
     /// <summary>The settings a job queued now would use.</summary>
     public GenerationSettings CurrentConfiguration => _configuration();
@@ -136,8 +157,12 @@ public sealed class RecordCoordinator : IDisposable
         {
             IndexError?.Invoke(this, ex);
         }
-        JobChanged?.Invoke(this, change);
+        // The runner keeps changing the same ledger object; screens handle the event later on the UI thread.
+        JobChanged?.Invoke(this, change with { Job = Snapshot(change.Job) });
     }
+
+    private static RecordJob Snapshot(RecordJob job) =>
+        JsonSerializer.Deserialize<RecordJob>(JsonSerializer.SerializeToUtf8Bytes(job, AnalysisJson.Options), AnalysisJson.Options)!;
 
     private void IndexSession(string sessionDirectory)
     {

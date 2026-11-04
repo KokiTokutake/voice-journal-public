@@ -17,6 +17,27 @@ public sealed record RecordContext(DateTimeOffset StartedAtUtc, string TimeZoneI
 /// </summary>
 public static partial class RecordMarkdown
 {
+    /// <summary>
+    /// Renders a saved or edited record of a session: the session facts from <c>manifest.json</c> and the transcript
+    /// revision the record was built on (evidence links and times). A missing transcript renders without them.
+    /// </summary>
+    public static string RenderFor(string sessionDirectory, RecordDocument record, bool approved)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
+        ArgumentNullException.ThrowIfNull(record);
+        var manifest = Sessions.SessionManifest.Load(sessionDirectory);
+        TranscriptDocument? transcript;
+        try
+        {
+            transcript = new TranscriptStore(sessionDirectory).Load(record.TranscriptRevision);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            transcript = null;
+        }
+        return Render(record, new RecordContext(manifest.StartedAtUtc, manifest.TimeZoneId, transcript, approved));
+    }
+
     public static string Render(RecordDocument record, RecordContext context)
     {
         ArgumentNullException.ThrowIfNull(record);

@@ -36,7 +36,8 @@ public sealed record SessionSummary(
     bool HasAudioLoss,
     string RelativePath,
     ProcessingState ProcessingState = ProcessingState.None,
-    int? LatestTranscriptRevision = null);
+    int? LatestTranscriptRevision = null,
+    Records.RecordReviewState RecordState = Records.RecordReviewState.None);
 
 public sealed record IndexFailure(string RelativePath, string Reason);
 

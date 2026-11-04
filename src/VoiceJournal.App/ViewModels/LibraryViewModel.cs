@@ -48,6 +48,8 @@ public sealed class SessionRowViewModel
 
     public bool HasTranscript => Summary.LatestTranscriptRevision is not null;
 
+    public string RecordText => UserMessages.RecordStateName(Summary.RecordState);
+
     public bool IsProcessing => ProcessingStateMachine.IsActive(Summary.ProcessingState);
 
     /// <summary>
@@ -116,7 +118,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand), nameof(TranscribeCommand), nameof(OpenTranscriptCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand), nameof(TranscribeCommand), nameof(OpenTranscriptCommand), nameof(OpenRecordCommand))]
     public partial SessionRowViewModel? Selected { get; set; }
 
     [ObservableProperty]
@@ -164,6 +166,9 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>The user asked to open the transcript of a session (the main window switches to UI-06).</summary>
     public event EventHandler<SessionRowViewModel>? OpenTranscriptRequested;
 
+    /// <summary>The user asked to open the record of a session (the main window switches to UI-07).</summary>
+    public event EventHandler<SessionRowViewModel>? OpenRecordRequested;
+
     private void QueueRefresh()
     {
         lock (_all)
@@ -204,6 +209,13 @@ public sealed partial class LibraryViewModel : ObservableObject
     private void OpenTranscript()
     {
         if (Selected is { } row) OpenTranscriptRequested?.Invoke(this, row);
+    }
+
+    /// <summary>UI-07: also for a session without a record yet (the review screen offers to make one).</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenTranscript))]
+    private void OpenRecord()
+    {
+        if (Selected is { } row) OpenRecordRequested?.Invoke(this, row);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]

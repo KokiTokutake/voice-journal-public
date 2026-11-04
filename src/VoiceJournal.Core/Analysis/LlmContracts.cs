@@ -263,7 +263,7 @@ public static class LlmSchemas
 /// <summary>System prompts (detail spec 9.1, 9.3, 21.2). The version is recorded with every analysis.</summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "2026-11-02.2";
+    public const string Version = "2026-11-04.1";
 
     public const string Extraction = """
         あなたは、会話の文字起こしを記録に整理する補助者です。入力は JSON で、segments が文字起こしの区間です。
@@ -279,6 +279,7 @@ public static class AnalysisPrompts
           - assignee は、担当として名前が出た人だけ。due_expression は期限を表す原文の言葉（例「来週の金曜まで」）。due_date は年月日がはっきり言われたときだけ YYYY-MM-DD にし、それ以外は null にします。
           - status は「終わった」「完了した」とはっきり述べられたときだけ done または resolved にし、それ以外は null にします。
         - 出力は短くします。各文は 60 字以内で、同じことを繰り返しません。quote は根拠になる語句だけを 8〜30 字で切り出します。
+        - warnings: 文字起こしそのものの問題（聞き取れない、話が途中で切れている、誰の発言か分からない）があるときだけ短く書きます。なければ空の配列にします。要点・決定・この規則を warnings に書きません。
         - 日本語で書きます。
         """;
 
@@ -293,8 +294,32 @@ public static class AnalysisPrompts
         - sections: 内容に合った章立て。同じ話題の items はまとめ、重複は除きます。決定事項・未決事項・次にやることは、当てはまる items があるときだけ章にします。数値・条件・反対意見・未確定の事項を落としません。
         - certainty は、元の items より強くしません。
         - 各文は 80 字以内で、同じことを繰り返しません。
+        - warnings: まとめるうえで問題があったとき（items が矛盾している、話の一部が欠けている）だけ短く書きます。なければ空の配列にします。要点・決定・この規則を warnings に書きません。
         - 日本語で書きます。
         """;
+
+    /// <summary>
+    /// True when <paramref name="text"/> repeats a system prompt (a model sometimes copies its instructions into
+    /// <c>warnings</c>): it shares a run of 16 characters, ignoring spaces, with one of them.
+    /// </summary>
+    public static bool EchoesInstructions(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        const int Run = 16;
+        var flat = Flatten(text);
+        if (flat.Length < Run) return false;
+        for (var i = 0; i + Run <= flat.Length; i++)
+        {
+            var window = flat.Substring(i, Run);
+            if (FlatPrompts.Value.Contains(window, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
+
+    // Joined without separators: whitespace is dropped anyway, and a window spanning two prompts matches nothing real.
+    private static readonly Lazy<string> FlatPrompts = new(() => Flatten(Extraction + Integration + Repair));
+
+    private static string Flatten(string text) => string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
 
     public const string Repair = """
         直前の応答は、JSON として読めないか、指定のスキーマに合いませんでした。同じ内容を、スキーマに合う JSON だけで返してください。根拠を追加したり、事実を変えたりしないでください。

@@ -42,6 +42,9 @@
             <TabItem Header="文字起こし(_S)">
                 <views:TranscriptView DataContext="{Binding Transcript}" />
             </TabItem>
+            <TabItem Header="記録(_Y)">
+                <views:RecordReviewView DataContext="{Binding Record}" />
+            </TabItem>
             <TabItem Header="管理(_G)">
                 <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
             </TabItem>
