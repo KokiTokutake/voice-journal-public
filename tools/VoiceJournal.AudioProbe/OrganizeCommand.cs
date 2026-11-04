@@ -8,25 +8,32 @@ using VoiceJournal.Infrastructure.Llm;
 namespace VoiceJournal.AudioProbe;
 
 // Phase D2: build a record from a session's transcript in use with LM Studio, and print timing and sizes only.
-//   AudioProbe organize <sessionDir> [--model gemma-3-4b-it] [--context 8192] [--reserve 4096] [--url http://127.0.0.1:1234/v1]
-//                       [--factor 1.0] [--temperature 0.1] [--parallel 1] [--piece-tokens 2000] [--out <json>]
+//   AudioProbe organize <sessionDir> [--model gemma-3-4b-it] [--context 16384] [--reserve 3072] [--url http://127.0.0.1:1234/v1]
+//                       [--factor 1.0] [--temperature 0.1] [--parallel 1] [--piece-tokens 3000] [--out <json>]
 // The analysis and the record draft are saved in the session folder (analysis/, records/, record.draft.md).
 internal static class OrganizeCommand
 {
+    /// <summary>The generation options shared with eval-record. Defaults are the app's (docs/phase-d-plan.md 0).</summary>
+    public static GenerationSettings Settings(string[] args)
+    {
+        string Option(string name, string fallback) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
+        return new GenerationSettings
+        {
+            ModelId = Option("--model", "gemma-3-4b-it"),
+            ContextLength = int.Parse(Option("--context", "16384"), CultureInfo.InvariantCulture),
+            OutputReserve = int.Parse(Option("--reserve", "3072"), CultureInfo.InvariantCulture),
+            TokenFactor = double.Parse(Option("--factor", "1.0"), CultureInfo.InvariantCulture),
+            Temperature = double.Parse(Option("--temperature", "0.1"), CultureInfo.InvariantCulture),
+            Parallelism = int.Parse(Option("--parallel", "1"), CultureInfo.InvariantCulture),
+            MaxPieceTokens = int.Parse(Option("--piece-tokens", "3000"), CultureInfo.InvariantCulture),
+        };
+    }
+
     public static async Task<int> RunAsync(string[] args, JsonSerializerOptions json)
     {
         var sessionDir = Path.GetFullPath(args[1]);
         string Option(string name, string fallback) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
-        var settings = new GenerationSettings
-        {
-            ModelId = Option("--model", "gemma-3-4b-it"),
-            ContextLength = int.Parse(Option("--context", "8192"), CultureInfo.InvariantCulture),
-            OutputReserve = int.Parse(Option("--reserve", "4096"), CultureInfo.InvariantCulture),
-            TokenFactor = double.Parse(Option("--factor", "1.0"), CultureInfo.InvariantCulture),
-            Temperature = double.Parse(Option("--temperature", "0.1"), CultureInfo.InvariantCulture),
-            Parallelism = int.Parse(Option("--parallel", "1"), CultureInfo.InvariantCulture),
-            MaxPieceTokens = int.Parse(Option("--piece-tokens", "2000"), CultureInfo.InvariantCulture),
-        };
+        var settings = Settings(args);
         var manifest = SessionManifest.Load(sessionDir);
         var transcript = new TranscriptStore(sessionDir).LoadCurrent() ?? throw new InvalidOperationException("文字起こしがありません。");
         using var client = new LmStudioClient(LlmEndpoint.Parse(Option("--url", LlmEndpoint.Default)), TimeSpan.FromMinutes(10));
