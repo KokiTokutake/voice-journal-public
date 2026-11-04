@@ -182,7 +182,16 @@ internal static class EvaluateRecordCommand
         }
         var markdown = File.Exists(new RecordStore(sessionDir).DraftMarkdownPath) ? File.ReadAllText(new RecordStore(sessionDir).DraftMarkdownPath) : "";
         foreach (var bad in e.MarkdownMustNotContain)
-            if (markdown.Contains(bad, StringComparison.OrdinalIgnoreCase)) violations.Add($"Markdown に「{bad}」が含まれる");
+        {
+            // 「\[ここ\](javascript:…)」 is escaped text, not a link: only an unescaped occurrence counts.
+            var at = -1;
+            while ((at = markdown.IndexOf(bad, at + 1, StringComparison.OrdinalIgnoreCase)) >= 0)
+                if (at == 0 || markdown[at - 1] != '\\')
+                {
+                    violations.Add($"Markdown に「{bad}」が含まれる");
+                    break;
+                }
+        }
 
         // Candidates: forbidden first (title only), then expected and optional (title + description), one to one.
         var produced = record.Candidates.Select(rc => rc.Candidate).ToList();
@@ -212,8 +221,16 @@ internal static class EvaluateRecordCommand
         bool In(Func<Candidate, string> text, Candidate c, ExpectedCandidate exp) => exp.MatchAny.Any(m => text(c).Contains(Norm(m), StringComparison.Ordinal));
         foreach (var (exp, optional) in e.Candidates.Select(x => (x, false)).Concat(e.Optional.Select(x => (x, true))))
         {
-            var hit = produced.FirstOrDefault(c => !assigned.ContainsKey(c) && In(Title, c, exp))
-                ?? produced.FirstOrDefault(c => !assigned.ContainsKey(c) && In(Body, c, exp));
+            // Among equal matches, the one that meets the expected assignee and due date is the answer's candidate.
+            bool Meets(Candidate c) =>
+                (!exp.HasAssignee || (exp.Assignee is null ? c.Fields.Assignee is null : c.Fields.Assignee?.Contains(exp.Assignee, StringComparison.Ordinal) == true))
+                && (!exp.HasDueDate || exp.DueDates.Contains(Due(c)));
+            Candidate? Pick(Func<Candidate, string> text)
+            {
+                var open = produced.Where(c => !assigned.ContainsKey(c) && In(text, c, exp)).ToList();
+                return open.FirstOrDefault(Meets) ?? open.FirstOrDefault();
+            }
+            var hit = Pick(Title) ?? Pick(Body);
             if (hit is null)
             {
                 if (!optional) violations.Add($"候補「{string.Join("/", exp.MatchAny)}」が出ていない（recall）");

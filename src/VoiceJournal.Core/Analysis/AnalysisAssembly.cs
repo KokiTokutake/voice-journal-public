@@ -359,7 +359,8 @@ public static partial class CandidateChecker
     private static partial Regex Honorific();
 
     // 「不要」 only as a verdict (「不要です」), not 「不要品の処分」.
-    [GeneratedRegex("必要は?ない|必要ありません|やらない|しない|やめ|不要(?:です|だ|と|に|で)|見送")]
+    // 「作らないことにします」「やらないと決めた」 as well as 「やらない」「しない」.
+    [GeneratedRegex("必要は?ない|必要ありません|やらない|しない|ないことに(?:し|す|な)|ないと決め|やめ|不要(?:です|だ|と|に|で)|見送")]
     private static partial Regex RefusalPattern();
 
     /// <summary>
@@ -473,7 +474,8 @@ public static partial class IntegrationConverter
 
         Statement? ToStatement(WireDerived d, string kind)
         {
-            var text = ExtractionConverter.Clean(d.Text);
+            // The model sometimes writes the item ids into the text (「I0012 によって確認された」): they mean nothing to a reader.
+            var text = ExtractionConverter.Clean(ItemIdInText().Replace(d.Text, string.Empty));
             if (text.Length == 0) return null;
             var sources = d.From.Distinct(StringComparer.Ordinal).Select(id => byId.GetValueOrDefault(id)).OfType<Statement>().ToList();
             if (sources.Count == 0)
@@ -504,6 +506,10 @@ public static partial class IntegrationConverter
             Dropped = dropped,
         };
     }
+
+    // 「I0012」「(I0003, I0004)」 and a following 「によって確認された」.
+    [GeneratedRegex(@"[(（]?\s*I\d{4}(?:\s*[、,・]\s*I\d{4})*\s*[)）]?(?:\s*(?:によって|により|で)確認(?:された|されている|済み)[。]?)?")]
+    private static partial Regex ItemIdInText();
 }
 
 /// <summary>The final <see cref="AnalysisResult"/>: the integrated record plus the candidates of all pieces.</summary>

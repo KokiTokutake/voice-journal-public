@@ -360,7 +360,7 @@ public sealed class CandidateCheckerTests
     [Fact]
     public void WhatWasDecidedNotToDo_IsNoCandidate_ButStaysVisibleForReview()
     {
-        var t = A.Transcript("古いブラウザは今回は対応しないことにします", "ガスの立ち会いは、まだ予約していません", "この画面は直さないといけません", "不要品の処分は来週やります", "勉強会は今回は見送ります");
+        var t = A.Transcript("古いブラウザは今回は対応しないことにします", "ガスの立ち会いは、まだ予約していません", "この画面は直さないといけません", "不要品の処分は来週やります", "勉強会は今回は見送ります", "確認画面は今回は作らないことにします");
         var piece = ExtractionConverter.Convert(A.Output(candidates:
         [
             A.Task("古いブラウザへの対応", "S0001", "今回は対応しないことにします", kind: CandidateKind.Issue),
@@ -368,10 +368,11 @@ public sealed class CandidateCheckerTests
             A.Task("画面の修正", "S0003", "この画面は直さないといけません"),
             A.Task("不要品の処分", "S0004", "不要品の処分は来週やります"),
             A.Task("勉強会", "S0005", "勉強会は今回は見送ります"),
+            A.Task("確認画面の作成", "S0006", "確認画面は今回は作らないことにします"),
         ]), A.WholePiece(t), t, A.Monday);
 
         Assert.Equal(["ガスの立ち会いの予約", "画面の修正", "不要品の処分"], piece.Candidates.Select(c => c.Fields.Title));
-        Assert.Equal(["古いブラウザへの対応", "勉強会"], piece.Dropped.Select(d => d.Text));
+        Assert.Equal(["古いブラウザへの対応", "勉強会", "確認画面の作成"], piece.Dropped.Select(d => d.Text));
         Assert.All(piece.Dropped, d => Assert.Equal(ExtractionConverter.RefusedReason, d.Reason));
     }
 
@@ -506,13 +507,14 @@ public sealed class IntegrationAndAssemblyTests
         {
             RecordTypes = [RecordType.Meeting, RecordType.Meeting],
             Title = "保存先の決定",
-            Summary = [new WireDerived { Text = "保存先と暗号化について話した", Certainty = Certainty.Stated, From = ["I0001", "I0002"] }, new WireDerived { Text = "作り話", Certainty = Certainty.Stated, From = ["I0099"] }],
+            Summary = [new WireDerived { Text = "保存先と暗号化について話した（I0001、I0002）によって確認された", Certainty = Certainty.Stated, From = ["I0001", "I0002"] }, new WireDerived { Text = "作り話", Certainty = Certainty.Stated, From = ["I0099"] }],
             Sections = [new WireIntegratedSection { SectionKind = SectionKind.Decision, Heading = "決定事項", Statements = [new WireDerived { Text = "保存先はローカル", Certainty = Certainty.Stated, From = ["I0001"] }] }],
             Warnings = [],
         };
         var record = IntegrationConverter.Convert(output, items, 1);
 
         var s = record.Summary.Single();
+        Assert.Equal("保存先と暗号化について話した", s.Text); // item ids written into the text are removed
         Assert.Equal(Certainty.Tentative, s.Certainty); // one source was tentative
         Assert.Equal(2, s.Evidence.Count);
         Assert.Equal("作り話", record.Dropped.Single().Text);
