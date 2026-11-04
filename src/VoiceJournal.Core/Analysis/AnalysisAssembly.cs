@@ -114,6 +114,9 @@ public static partial class ExtractionConverter
     /// <summary>Headings the record renderer uses itself (detail spec 16.2-8: no reserved heading twice).</summary>
     public static readonly IReadOnlySet<string> ReservedHeadings = new HashSet<string>(StringComparer.Ordinal) { "要約", "課題・タスク候補", "関連資料" };
 
+    /// <summary>The reason shown for a candidate left out because the evidence decides not to do it.</summary>
+    public const string RefusedReason = "やらないと決めたことなので、候補にしません";
+
     public static PieceAnalysis Convert(ExtractionOutput output, AnalysisPiece piece, TranscriptDocument transcript, DateOnly sessionDate)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -171,6 +174,13 @@ public static partial class ExtractionConverter
                 dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = "根拠の区間または引用を確認できません" });
                 continue;
             }
+            // 「対応しないことにします」: what was decided not to do is a decision, not a candidate (2026-11-04, user).
+            // It stays visible to the reviewer in the 「根拠確認が必要」 list.
+            if (CandidateChecker.IsRefusal(evidence))
+            {
+                dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = RefusedReason });
+                continue;
+            }
             candidates.Add(CandidateChecker.Check(c, evidence, transcript, sessionDate, piece.Index));
         }
         return new PieceAnalysis
@@ -218,6 +228,17 @@ public static partial class CandidateChecker
 {
     private static readonly ItemStatus[] Terminal = [ItemStatus.Done, ItemStatus.Resolved, ItemStatus.Closed, ItemStatus.Cancelled];
 
+    /// <summary>
+    /// The evidence decides not to do it (「対応しないことにします」「やる必要はない」「今回は見送る」). An obligation
+    /// (「しないといけない」) is not a refusal.
+    /// </summary>
+    public static bool IsRefusal(IReadOnlyList<Evidence> evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        var quotes = string.Join("\n", evidence.Select(e => e.Quote));
+        return RefusalPattern().IsMatch(ReviewHints.WithoutObligation(quotes));
+    }
+
     public static DraftCandidate Check(WireCandidate c, IReadOnlyList<Evidence> evidence, TranscriptDocument transcript, DateOnly sessionDate, int piece)
     {
         ArgumentNullException.ThrowIfNull(c);
@@ -225,6 +246,7 @@ public static partial class CandidateChecker
         ArgumentNullException.ThrowIfNull(transcript);
         var flags = new List<CandidateConcern>();
         var segmentTexts = evidence.Select(e => transcript.Find(e.SegmentId)!.Text).Distinct().ToList();
+        // IsRefusal candidates never reach here from the converter; the certainty rule below stays for direct callers.
         var quotes = string.Join("\n", evidence.Select(e => e.Quote));
         var context = string.Join("\n", segmentTexts);
 
@@ -336,7 +358,8 @@ public static partial class CandidateChecker
     [GeneratedRegex("(?:さん|様|さま|氏|くん|君|ちゃん|部長|課長|係長|社長|先生)$")]
     private static partial Regex Honorific();
 
-    [GeneratedRegex("必要は?ない|やらない|しない|やめ|不要|見送")]
+    // 「不要」 only as a verdict (「不要です」), not 「不要品の処分」.
+    [GeneratedRegex("必要は?ない|必要ありません|やらない|しない|やめ|不要(?:です|だ|と|に|で)|見送")]
     private static partial Regex RefusalPattern();
 
     /// <summary>

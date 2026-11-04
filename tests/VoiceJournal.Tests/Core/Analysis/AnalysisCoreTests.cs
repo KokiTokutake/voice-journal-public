@@ -315,15 +315,14 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
-    public void RefusedTask_IsNotConfirmed_AndHasNoDueDate()
+    public void RefusedTask_IsNoCandidate_ButIsListedForReview()
     {
         var t = A.Transcript("その資料の作り直しは来週までにやる必要はないです");
-        var c = A.Check(t, A.Task("資料の作り直し", "S0001", "来週までにやる必要はない", due: "来週まで"));
+        var piece = ExtractionConverter.Convert(A.Output(candidates: [A.Task("資料の作り直し", "S0001", "来週までにやる必要はない", due: "来週まで")]), A.WholePiece(t), t, A.Monday);
 
-        Assert.Equal(Certainty.Unclear, c.Certainty);
-        Assert.Contains(CandidateConcern.Negation, c.Flags);
-        Assert.Null(c.Fields.DueDate);
-        Assert.Contains(CandidateConcern.DueDateNeedsCheck, c.Flags);
+        Assert.Empty(piece.Candidates);
+        var dropped = Assert.Single(piece.Dropped);
+        Assert.Equal(("candidate", "資料の作り直し", ExtractionConverter.RefusedReason), (dropped.Kind, dropped.Text, dropped.Reason));
     }
 
     [Fact]
@@ -359,6 +358,24 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
+    public void WhatWasDecidedNotToDo_IsNoCandidate_ButStaysVisibleForReview()
+    {
+        var t = A.Transcript("古いブラウザは今回は対応しないことにします", "ガスの立ち会いは、まだ予約していません", "この画面は直さないといけません", "不要品の処分は来週やります", "勉強会は今回は見送ります");
+        var piece = ExtractionConverter.Convert(A.Output(candidates:
+        [
+            A.Task("古いブラウザへの対応", "S0001", "今回は対応しないことにします", kind: CandidateKind.Issue),
+            A.Task("ガスの立ち会いの予約", "S0002", "まだ予約していません"),
+            A.Task("画面の修正", "S0003", "この画面は直さないといけません"),
+            A.Task("不要品の処分", "S0004", "不要品の処分は来週やります"),
+            A.Task("勉強会", "S0005", "勉強会は今回は見送ります"),
+        ]), A.WholePiece(t), t, A.Monday);
+
+        Assert.Equal(["ガスの立ち会いの予約", "画面の修正", "不要品の処分"], piece.Candidates.Select(c => c.Fields.Title));
+        Assert.Equal(["古いブラウザへの対応", "勉強会"], piece.Dropped.Select(d => d.Text));
+        Assert.All(piece.Dropped, d => Assert.Equal(ExtractionConverter.RefusedReason, d.Reason));
+    }
+
+    [Fact]
     public void KanjiDate_Said_MatchesDigitsWritten_AndMazuIsNoNegation()
     {
         var t = A.Transcript("まず、粗大ごみは十一月二十日までに申し込みます");
@@ -386,13 +403,11 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
-    public void RefusedIssue_IsNotConfirmed_ButAnObligationIsNoRefusal()
+    public void Obligation_IsNoRefusal()
     {
-        var t = A.Transcript("古いブラウザは今回は対応しないことにします", "この画面は直さないといけません");
-        var refused = A.Check(t, A.Task("古いブラウザ対応", "S0001", "今回は対応しないことにします", kind: CandidateKind.Issue));
-        var obliged = A.Check(t, A.Task("画面の修正", "S0002", "この画面は直さないといけません"));
+        var t = A.Transcript("この画面は直さないといけません");
+        var obliged = A.Check(t, A.Task("画面の修正", "S0001", "この画面は直さないといけません"));
 
-        Assert.Equal(Certainty.Unclear, refused.Certainty);
         Assert.Equal(Certainty.Stated, obliged.Certainty);
         Assert.DoesNotContain(CandidateConcern.Negation, obliged.Flags);
     }
