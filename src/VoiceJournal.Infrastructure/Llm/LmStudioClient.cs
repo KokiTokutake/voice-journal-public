@@ -132,6 +132,9 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
             ["temperature"] = request.Temperature,
             ["max_tokens"] = request.MaxTokens,
             ["stream"] = false,
+            // No thinking: Gemma 4 thinks by default in LM Studio and spends about three quarters of the output on it
+            // (2026-11-04). Only "reasoning_effort": "none" turns it off there; models without thinking ignore it.
+            ["reasoning_effort"] = "none",
             ["response_format"] = new JsonObject
             {
                 ["type"] = "json_schema",

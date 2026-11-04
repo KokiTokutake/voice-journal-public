@@ -63,7 +63,16 @@ if ($Test -eq 'Evaluate') {
     $runs = @()
     for ($n = 1; $n -le $Repeat; $n++) {
         # llama-server grows with every inference and does not give the memory back: start each run from a fresh load.
-        if (Get-Command lms -ErrorAction SilentlyContinue) { & { $ErrorActionPreference = 'Continue'; lms unload --all 2>$null | Out-Null } }
+        # Loaded explicitly with these settings: a just-in-time load uses the model's own defaults in LM Studio, which
+        # were set (16384, parallel 1) for gemma-3-4b-it only; another model could come up with its full 128K context.
+        if (Get-Command lms -ErrorAction SilentlyContinue) {
+            & {
+                $ErrorActionPreference = 'Continue'
+                lms unload --all 2>$null | Out-Null
+                lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null
+            }
+            if ($LASTEXITCODE -ne 0) { throw "モデル $Model を読み込めませんでした" }
+        }
         $suffix = if ($Repeat -gt 1) { "-r$n" } else { '' }
         $workspace = Join-Path $out "eval\$stamp-$Use-$tag$suffix"
         $result = Join-Path $out "eval-$stamp-$Use-$tag$suffix.json"

@@ -451,7 +451,7 @@ public static partial class CandidateChecker
     private static partial Regex SelfIntroduction();
 
     // 「皆さんも〜してください」 (a lecturer's advice) or 「私が」: words for people, not a name to put as assignee.
-    [GeneratedRegex("^(?:皆さん|皆様|みなさん|みんな|全員|各自|誰か|だれか|私|わたし|自分|僕|俺|担当者|話者)$")]
+    [GeneratedRegex("^(?:皆さん|皆様|みなさん|みんな|全員|各自|誰か|だれか|私|わたし|自分|僕|俺|担当者|話者|不明|未定|なし|null)$")]
     private static partial Regex NotAName();
 }
 
