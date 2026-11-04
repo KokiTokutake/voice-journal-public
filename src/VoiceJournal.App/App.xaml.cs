@@ -151,7 +151,8 @@ public partial class App : Application
         services.AddSingleton<TranscriptViewModel>();
         services.AddSingleton(sp => new RecordReviewViewModel(sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<IAudioPlayer>(),
             sp.GetRequiredService<IUiDispatcher>(), sp.GetRequiredService<TimeProvider>()));
-        services.AddSingleton<ProcessingViewModel>();
+        services.AddSingleton(sp => new ProcessingViewModel(sp.GetRequiredService<TranscriptionCoordinator>(), sp.GetRequiredService<TranscriptIndex>(),
+            sp.GetRequiredService<IUiDispatcher>(), sp.GetRequiredService<RecordingEnvironment>(), sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<RecordIndex>()));
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();

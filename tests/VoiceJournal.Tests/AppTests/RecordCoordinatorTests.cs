@@ -96,6 +96,33 @@ public sealed class RecordCoordinatorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheProcessingScreen_ListsTheRecordJob_NextToTheTranscription_AndCanRetryIt()
+    {
+        _llm.Unavailable = true; // LM Studio is not running (LLM-001)
+        var dir = await RecordTwoSeconds();
+        await JobSession.Until(() => RecordJobStore.List(dir).SingleOrDefault()?.State == ProcessingState.Failed
+            && _records.RecentJobs(10).Any(j => j.State == ProcessingState.Failed), "record job fails");
+        var processing = new ProcessingViewModel(_transcription, new TranscriptIndex(_workspace, _db), _ui, new RecordingEnvironment(_workspace.Root, 0), _coordinator, _records);
+
+        await processing.RefreshAsync();
+
+        Assert.Equal(["記録の作成", "文字起こし"], processing.Jobs.Select(j => j.KindText));
+        var row = processing.Jobs[0];
+        Assert.True(row.IsRecord);
+        Assert.Equal("失敗", row.StateText);
+        Assert.StartsWith("LLM-001", row.ErrorText, StringComparison.Ordinal);
+        Assert.Equal("gemma-3-4b-it", row.ModelText);
+
+        _llm.Unavailable = false; // the user started LM Studio
+        processing.Selected = row;
+        processing.RetryCommand.Execute(null);
+        await JobSession.Until(() => RecordJobStore.List(dir).Single().State == ProcessingState.ReadyForReview
+            && _records.RecentJobs(10).Any(j => j.State == ProcessingState.ReadyForReview), "retried record");
+        await processing.RefreshAsync();
+        Assert.StartsWith("完了（記録 Rev 1）", processing.Jobs[0].StateText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WithTheOptionOff_OnlyTheTranscriptIsMade_AndTheChoiceIsRemembered()
     {
         _vm.GenerateRecordAfterTranscription = false;

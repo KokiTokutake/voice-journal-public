@@ -1,6 +1,7 @@
 using VoiceJournal.App.Services;
 using VoiceJournal.Core.Analysis;
 using VoiceJournal.Infrastructure.Llm;
+using VoiceJournal.Tests.Core.Analysis;
 using VoiceJournal.Tests.TestSupport;
 
 namespace VoiceJournal.Tests.AppTests;
@@ -62,5 +63,71 @@ public sealed class LlmSettingsTests
         url = "http://127.0.0.1:9/v1"; // loopback, nothing listening (discard port)
         var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("m", CancellationToken.None));
         Assert.Contains("接続できません", ex.Message, StringComparison.Ordinal);
+    }
+}
+
+public sealed class LlmSettingsViewModelTests : IDisposable
+{
+    private readonly TempDirectory _dir = new("vj-llmset-");
+    private readonly MemoryLlmSettingsStore _store = new();
+    private readonly EchoLlm _llm = new() { LoadedContext = 8192 };
+    private readonly VoiceJournal.App.ViewModels.SettingsViewModel _vm;
+
+    public LlmSettingsViewModelTests()
+    {
+        _vm = new VoiceJournal.App.ViewModels.SettingsViewModel(new MemorySttSettingsStore(), new VoiceJournal.Tests.Core.Transcription.FakeSttEngine(),
+            VoiceJournal.Infrastructure.Stt.SttToolSettings.Defaults(_dir.Path), new RecordingEnvironment(_dir.Path, 0), _store, _llm);
+    }
+
+    public void Dispose() => _dir.Dispose();
+
+    [Fact]
+    public void TheSavedValues_AreShown_AndAChangeIsSavedForTheNextJob()
+    {
+        Assert.True(_vm.HasLlm);
+        Assert.Equal((LlmEndpoint.Default, "gemma-3-4b-it", 16384, 3072, 3000), (_vm.LlmUrl, _vm.LlmModelId, _vm.LlmContextLength, _vm.LlmOutputReserve, _vm.LlmPieceTokens));
+
+        _vm.LlmPieceTokens = 2000;
+
+        Assert.Equal(2000, _store.Current.MaxPieceTokens);
+        Assert.Contains("次に始める記録の作成から", _vm.LlmMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AUrlOffLoopback_IsNotSaved()
+    {
+        _vm.LlmUrl = "http://192.168.1.20:1234/v1";
+
+        Assert.Equal(LlmEndpoint.Default, _store.Current.Url);
+        Assert.Contains("保存していません", _vm.LlmMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnUnworkableValue_IsCorrected_AndShownCorrected()
+    {
+        _vm.LlmContextLength = 8192;
+        _vm.LlmOutputReserve = 6000; // more than half of C
+
+        Assert.Equal(3072, _store.Current.OutputReserve);
+        Assert.Equal(3072, _vm.LlmOutputReserve);
+        Assert.Contains("直して保存しました", _vm.LlmMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CheckingTheConnection_ReportsTheLoadedContext_AndWarnsWhenItIsShorter()
+    {
+        await _vm.CheckLlmCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("✓", _vm.LlmStatus, StringComparison.Ordinal);
+        Assert.Contains("コンテキスト長 8192", _vm.LlmStatus, StringComparison.Ordinal);
+        Assert.Contains("⚠", _vm.LlmStatus, StringComparison.Ordinal);
+
+        _llm.Unloaded = true;
+        await _vm.CheckLlmCommand.ExecuteAsync(null);
+        Assert.Contains("自動で読み込みます", _vm.LlmStatus, StringComparison.Ordinal);
+
+        _llm.Unavailable = true;
+        await _vm.CheckLlmCommand.ExecuteAsync(null);
+        Assert.StartsWith("✗ LLM-001", _vm.LlmStatus, StringComparison.Ordinal);
     }
 }

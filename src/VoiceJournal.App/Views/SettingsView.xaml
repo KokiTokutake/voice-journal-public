@@ -39,6 +39,53 @@
             </StackPanel>
         </Border>
 
+        <!-- Record generation (UI-12, detail spec 9.1 / 9.2) -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12" Visibility="{Binding HasLlm, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="記録の作成（LM Studio）" Style="{StaticResource SectionTitle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="150" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Content="URL(_U)" Target="{Binding ElementName=LlmUrlBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="LlmUrlBox" Grid.Row="0" Grid.Column="1" Margin="0,4" MaxWidth="360" HorizontalAlignment="Left" MinWidth="260"
+                             Text="{Binding LlmUrl, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="LM Studio の URL"
+                             ToolTip="この PC の中（127.0.0.1 または ::1）だけに接続します" />
+                    <Label Grid.Row="1" Content="モデル ID(_D)" Target="{Binding ElementName=LlmModelBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="LlmModelBox" Grid.Row="1" Grid.Column="1" Margin="0,4" MaxWidth="360" HorizontalAlignment="Left" MinWidth="260"
+                             Text="{Binding LlmModelId, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="LM Studio のモデル ID" />
+                    <Label Grid.Row="2" Content="コンテキスト長 C(_C)" Target="{Binding ElementName=LlmContextBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="LlmContextBox" Grid.Row="2" Grid.Column="1" Margin="0,4" Width="100" HorizontalAlignment="Left"
+                             Text="{Binding LlmContextLength, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="コンテキスト長"
+                             ToolTip="LM Studio でモデルを読み込んだときのコンテキスト長。LM Studio の値のほうが短ければ、そちらを使います" />
+                    <Label Grid.Row="3" Content="出力の予約 O(_O)" Target="{Binding ElementName=LlmReserveBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="LlmReserveBox" Grid.Row="3" Grid.Column="1" Margin="0,4" Width="100" HorizontalAlignment="Left"
+                             Text="{Binding LlmOutputReserve, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="出力の予約"
+                             ToolTip="1 回の応答に使えるトークン数。コンテキスト長の半分以下" />
+                    <Label Grid.Row="4" Content="区間の大きさ(_P)" Target="{Binding ElementName=LlmPieceBox}" VerticalAlignment="Center" Padding="0" />
+                    <TextBox x:Name="LlmPieceBox" Grid.Row="4" Grid.Column="1" Margin="0,4" Width="100" HorizontalAlignment="Left"
+                             Text="{Binding LlmPieceTokens, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="区間の大きさ（トークン）"
+                             ToolTip="長い文字起こしを分ける大きさ（トークン）。大きいほど速く、小さいほど細部が残ります" />
+                </Grid>
+                <TextBlock Margin="0,12,0,0" Style="{StaticResource Note}" TextWrapping="Wrap"
+                           Text="LM Studio のサーバーを開始し、モデルを読み込んでおいてください（推奨: lms load gemma-3-4b-it -c 16384 --parallel 1 --gpu max --ttl 600）。録音中と文字起こし中は、記録の作成を待たせます。" />
+                <TextBlock Margin="0,6,0,0" Text="{Binding LlmMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                           Visibility="{Binding LlmMessage, Converter={StaticResource TextToVisibility}}" />
+                <Button Content="接続を確認(_T)" Tag="&#xE703;" Command="{Binding CheckLlmCommand}" Style="{StaticResource ActionButton}"
+                        HorizontalAlignment="Left" Margin="0,10,0,6" />
+                <TextBlock Text="{Binding LlmStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                           Visibility="{Binding LlmStatus, Converter={StaticResource TextToVisibility}}" />
+            </StackPanel>
+        </Border>
+
         <!-- Tools -->
         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
             <StackPanel>
