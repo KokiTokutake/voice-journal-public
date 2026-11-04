@@ -22,13 +22,13 @@ public sealed class TranscriptionCoordinator : IDisposable
 
     public TranscriptionCoordinator(
         RecordingViewModel recording, SttJobProcessor processor, TranscriptIndex index, IUiSettingsStore settings,
-        Func<SttConfiguration> configuration, TimeProvider? time = null)
+        Func<SttConfiguration> configuration, TimeProvider? time = null, Core.Analysis.InferenceGate? inference = null)
     {
         _recording = recording ?? throw new ArgumentNullException(nameof(recording));
         _index = index ?? throw new ArgumentNullException(nameof(index));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _runner = new SttJobRunner(processor, time);
+        _runner = new SttJobRunner(processor, time, inference);
         _runner.JobChanged += OnJobChanged;
         _runner.Progress += (_, p) => Progress?.Invoke(this, p);
         _runner.JobError += (_, ex) => IndexError?.Invoke(this, ex);
@@ -99,7 +99,8 @@ public sealed class TranscriptionCoordinator : IDisposable
     /// <summary>The settings a job queued now would use.</summary>
     public SttConfiguration CurrentConfiguration => _configuration();
 
-    private static bool IsActive(RecorderStatus status) =>
+    /// <summary>Preparing, recording or saving: neither recognizer nor LLM may run (detail spec 3.1).</summary>
+    internal static bool IsActive(RecorderStatus status) =>
         status is RecorderStatus.Preparing or RecorderStatus.Recording or RecorderStatus.PartiallyStopped or RecorderStatus.Stopping;
 
     private void OnRecordingChanged(object? sender, PropertyChangedEventArgs e)

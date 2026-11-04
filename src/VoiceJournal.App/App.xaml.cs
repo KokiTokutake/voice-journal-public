@@ -3,11 +3,13 @@ using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using VoiceJournal.App.Services;
 using VoiceJournal.App.ViewModels;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Playback;
 using VoiceJournal.Core.Sessions;
 using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Audio;
+using VoiceJournal.Infrastructure.Llm;
 using VoiceJournal.Infrastructure.Storage;
 using VoiceJournal.Infrastructure.Stt;
 
@@ -69,11 +71,13 @@ public partial class App : Application
 
         var index = _services.GetRequiredService<ISessionIndex>();
         var transcription = _services.GetRequiredService<TranscriptionCoordinator>();
+        var records = _services.GetRequiredService<RecordCoordinator>();
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {
             var report = WorkspaceStartup.Run(workspace, index);
-            // After the sessions are indexed and recovered: jobs reference them.
+            // After the sessions are indexed and recovered: jobs reference them. Records reference transcripts.
             transcription.Startup();
+            records.Startup();
             return report;
         });
     }
@@ -119,9 +123,30 @@ public partial class App : Application
         services.AddSingleton<ISttInputBuilder, SttInputBuilder>();
         services.AddSingleton(sp => new SttJobProcessor(sp.GetRequiredService<ISttInputBuilder>(), sp.GetRequiredService<ISttEngine>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(new TranscriptIndex(workspace, database));
+        // One inference at a time across the recognizer and the LLM (detail spec 3.2).
+        services.AddSingleton<InferenceGate>();
         services.AddSingleton(sp => new TranscriptionCoordinator(
             sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<SttJobProcessor>(), sp.GetRequiredService<TranscriptIndex>(),
-            sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<InferenceGate>()));
+        services.AddSingleton<ILlmSettingsStore>(new JsonLlmSettingsStore(JsonLlmSettingsStore.DefaultPath));
+        services.AddSingleton<ILlmClient>(sp =>
+        {
+            var store = sp.GetRequiredService<ILlmSettingsStore>();
+            return new ConfiguredLlmClient(() =>
+            {
+                var settings = store.Load();
+                return (settings.Url, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
+            });
+        });
+        services.AddSingleton<IAnalysisSchemaValidator, AnalysisSchemaValidator>();
+        services.AddSingleton(sp => new RecordGenerator(sp.GetRequiredService<ILlmClient>(), sp.GetRequiredService<IAnalysisSchemaValidator>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new RecordJobProcessor(sp.GetRequiredService<RecordGenerator>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(new RecordIndex(workspace, database));
+        services.AddSingleton(sp => new RecordCoordinator(
+            sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<TranscriptionCoordinator>(), sp.GetRequiredService<RecordJobProcessor>(),
+            sp.GetRequiredService<InferenceGate>(), sp.GetRequiredService<RecordIndex>(), sp.GetRequiredService<IUiSettingsStore>(),
+            () => sp.GetRequiredService<ILlmSettingsStore>().Load().ToGeneration(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<ISttSettingsStore>(new JsonSttSettingsStore(JsonSttSettingsStore.DefaultPath));
         services.AddSingleton<TranscriptViewModel>();
         services.AddSingleton<ProcessingViewModel>();

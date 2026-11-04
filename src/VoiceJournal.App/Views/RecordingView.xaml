@@ -177,6 +177,8 @@
                         HorizontalAlignment="Left" Margin="0,16,0,0" />
                 <!-- Detail spec 18.3: "保存後 [✓]文字起こしをキューへ追加" -->
                 <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}" Content="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" />
+                <CheckBox Margin="0,8,0,0" IsChecked="{Binding GenerateRecordAfterTranscription}"
+                          Content="文字起こしの後に記録を作る(_K)（LM Studio で要約と課題・タスクの候補を作ります。記録のない録音だけ）" />
             </StackPanel>
         </Border>
     </StackPanel>

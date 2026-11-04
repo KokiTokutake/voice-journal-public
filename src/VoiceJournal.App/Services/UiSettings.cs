@@ -14,6 +14,9 @@ public sealed record UiSettings
 
     /// <summary>Queue transcription when a recording is saved (detail spec 18.3, on by default).</summary>
     public bool TranscribeAfterSaving { get; init; } = true;
+
+    /// <summary>Queue a record when a whole-session transcription finishes (detail spec 18.3, on by default).</summary>
+    public bool GenerateRecordAfterTranscription { get; init; } = true;
 }
 
 public interface IUiSettingsStore

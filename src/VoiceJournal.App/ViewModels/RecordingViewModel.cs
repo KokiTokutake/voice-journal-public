@@ -154,6 +154,10 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool TranscribeAfterSaving { get; set; } = true;
 
+    /// <summary>"文字起こしの後に記録を作る" (detail spec 18.3). Read by the record coordinator when a transcription finishes.</summary>
+    [ObservableProperty]
+    public partial bool GenerateRecordAfterTranscription { get; set; } = true;
+
     public string StatusText => UserMessages.StatusText(Status);
 
     /// <summary>One or two words for the mini bar.</summary>
