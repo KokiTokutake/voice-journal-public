@@ -36,6 +36,12 @@ public enum CandidateConcern
 
     /// <summary>Merged with a candidate of the same kind and title from another piece.</summary>
     Merged,
+
+    /// <summary>
+    /// The assignee or the due date was found in the segment just before or after the evidence (same source), not in
+    /// it: the model quoted the problem but not the sentence that named the person or the date.
+    /// </summary>
+    NearbyEvidence,
 }
 
 /// <summary>Something the model said that could not be tied to the transcript: shown as 「根拠確認が必要」, never approvable.</summary>
@@ -266,31 +272,54 @@ public static partial class CandidateChecker
             if (RefusalPattern().IsMatch(ReviewHints.WithoutObligation(quotes))) certainty = Certainty.Unclear;
         }
 
+        // The segments just before and after the evidence, same source. A 4B model often quotes the problem
+        // (「添付ファイルの移行が未完了です」) but not the next sentence with the person and the date
+        // (「山本さんが来週の水曜日までに終わらせます」). Taken from there only when that sentence is not a suggestion or a guess.
+        var nearby = Neighbors(evidence, transcript)
+            .Where(t => !ReviewHints.HasSuggestion(t) && !ReviewHints.HasHedge(t)).ToList();
+
         // Due date (detail spec 9.3): the app reads the words said; the model writes no date (a 4B model miscounts
-        // weekdays). Only words found in the evidence segments and naming one date fix it.
+        // weekdays). Only words found in the evidence segments (or next to them) and naming one date fix it.
         DateOnly? due = null;
         if (expression is not null)
         {
             var resolution = RelativeDates.Resolve(expression, sessionDate);
-            var supported = DateKey(context).Contains(DateKey(expression), StringComparison.Ordinal);
-            if (supported && resolution.DueDate is { } d)
+            var key = DateKey(expression);
+            var supported = DateKey(context).Contains(key, StringComparison.Ordinal);
+            var near = !supported && nearby.Any(t => DateKey(t).Contains(key, StringComparison.Ordinal));
+            if ((supported || near) && resolution.DueDate is { } d)
+            {
                 due = d;
+                if (near) flags.Add(CandidateConcern.NearbyEvidence);
+            }
             else
+            {
                 flags.Add(CandidateConcern.DueDateNeedsCheck);
+            }
         }
 
-        // Assignee: only a name that appears in the evidence segments, and not in a mere suggestion
+        // Assignee: only a name that appears in the evidence segments (or next to them), and not in a mere suggestion
         // (「山口さんにお願いしようか」「佐藤さんに聞いてみようか」: nobody has agreed to do it; detail spec 9.3).
         string? assignee = null;
         if (!string.IsNullOrWhiteSpace(c.Assignee))
         {
             var name = ExtractionConverter.Clean(c.Assignee);
             var core = Honorific().Replace(name, string.Empty);
-            if (core.Length > 0 && !ReviewHints.HasSuggestion(quotes) && !NotAName().IsMatch(name)
-                && (EvidenceText.Normalize(context).Contains(EvidenceText.Normalize(core), StringComparison.Ordinal) || IntroducedJustBefore(core, evidence, transcript)))
+            var target = EvidenceText.Normalize(core);
+            var usable = core.Length > 0 && !ReviewHints.HasSuggestion(quotes) && !NotAName().IsMatch(name);
+            if (usable && (EvidenceText.Normalize(context).Contains(target, StringComparison.Ordinal) || IntroducedJustBefore(core, evidence, transcript)))
+            {
                 assignee = name;
+            }
+            else if (usable && nearby.Any(t => NamedAsDoer(EvidenceText.Normalize(t), target)))
+            {
+                assignee = name;
+                if (!flags.Contains(CandidateConcern.NearbyEvidence)) flags.Add(CandidateConcern.NearbyEvidence);
+            }
             else
+            {
                 flags.Add(CandidateConcern.AssigneeDropped);
+            }
         }
 
         var status = c.Status;
@@ -362,6 +391,36 @@ public static partial class CandidateChecker
     // 「作らないことにします」「やらないと決めた」 as well as 「やらない」「しない」.
     [GeneratedRegex("必要は?ない|必要ありません|やらない|しない|ないことに(?:し|す|な)|ないと決め|やめ|不要(?:です|だ|と|に|で)|見送")]
     private static partial Regex RefusalPattern();
+
+    /// <summary>
+    /// In a neighbouring segment the name must be the one who acts (「山本さんが」「中村は」「木村さんお願いします」
+    /// 「鈴木さんにお願いする」), not a mere mention (「伊藤さんの件ですが」).
+    /// </summary>
+    private static bool NamedAsDoer(string text, string name)
+    {
+        for (var at = text.IndexOf(name, StringComparison.Ordinal); at >= 0; at = text.IndexOf(name, at + 1, StringComparison.Ordinal))
+            if (DoerAfterName().IsMatch(text.AsSpan(at + name.Length).ToString())) return true;
+        return false;
+    }
+
+    [GeneratedRegex("^(?:さん|様|さま|氏|くん|君)?(?:が|は|、?お願い|にお願い|に頼)")]
+    private static partial Regex DoerAfterName();
+
+    /// <summary>Texts of the segments right before and after each evidence segment, same source, not evidence themselves.</summary>
+    private static List<string> Neighbors(IReadOnlyList<Evidence> evidence, TranscriptDocument transcript)
+    {
+        var segments = transcript.Segments;
+        var ids = evidence.Select(e => e.SegmentId).ToHashSet();
+        var result = new List<string>();
+        for (var i = 0; i < segments.Count; i++)
+        {
+            if (!ids.Contains(segments[i].SegmentId)) continue;
+            foreach (var j in new[] { i - 1, i + 1 })
+                if (j >= 0 && j < segments.Count && segments[j].Source == segments[i].Source && !ids.Contains(segments[j].SegmentId))
+                    result.Add(segments[j].Text);
+        }
+        return result;
+    }
 
     /// <summary>
     /// The speaker named themself in one of the two segments before an evidence segment, from the same source

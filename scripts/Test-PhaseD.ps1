@@ -10,6 +10,7 @@
 .EXAMPLE
   .\scripts\Test-PhaseD.ps1 -Test Evaluate
   .\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning   # プロンプトの調整用の素材
+  .\scripts\Test-PhaseD.ps1 -Test Evaluate -Repeat 3     # 3 回測って合計で判定する
   .\scripts\Test-PhaseD.ps1 -Test Evaluate -Fixture negation,injection -PieceTokens 2000
   .\scripts\Test-PhaseD.ps1 -Test Meeting
 #>
@@ -18,6 +19,8 @@ param(
     # Evaluate: 素材の組（acceptance: 受入評価用、tuning: プロンプトの調整用）と、使う素材の id（省略時はその組のすべて）
     [ValidateSet('acceptance', 'tuning')] [string]$Use = 'acceptance',
     [string[]]$Fixture,
+    # Evaluate: 同じ条件で繰り返す回数（1 回ごとのばらつきが大きいので、判定は合計で行う。各回の前にモデルを解放する）
+    [ValidateRange(1, 10)] [int]$Repeat = 1,
     [string]$Model = 'gemma-3-4b-it',
     [int]$Context = 16384,
     [int]$Reserve = 3072,
@@ -57,29 +60,44 @@ if ($Test -eq 'Evaluate') {
         $j.use -eq $Use -and (-not $Fixture -or $Fixture -contains $j.id)
     }
     if (-not $files) { throw '評価素材が見つかりません' }
-    $workspace = Join-Path $out "eval\$stamp-$Use-$tag"
-    $result = Join-Path $out "eval-$stamp-$Use-$tag.json"
-    Write-Host "== 記録を作って照合（$($files.Count) 本、$tag）" -ForegroundColor Cyan
-    & $exe eval-record @($files.FullName) --workspace $workspace @common --out $result | Out-Null
-    if (-not (Test-Path $result)) { throw "照合の結果がありません（終了コード $LASTEXITCODE）" }
-    $r = Read-Json $result
-    foreach ($f in $r.fixtures) {
-        $c = $f.candidates
-        $g = $f.generation
-        Write-Host ("-- {0}: 候補 {1}（正解に当たった {2}）、正解 {3} 中 {4}、区間 {5}、{6} 秒" -f $f.id, $c.produced, $c.matched_produced, $c.expected, $c.recalled, $g.pieces, $g.elapsed_seconds)
-        foreach ($x in $c.list) {
-            Write-Host ("     {0,-10} {1} [{2}] 担当={3} 期限={4} 状態={5} 確度={6} 目印={7}" -f $x.match, $x.title, $x.kind, $x.assignee, $x.due_date, $x.status, $x.certainty, ($x.flags -join ','))
+    $runs = @()
+    for ($n = 1; $n -le $Repeat; $n++) {
+        # llama-server grows with every inference and does not give the memory back: start each run from a fresh load.
+        if (Get-Command lms -ErrorAction SilentlyContinue) { & { $ErrorActionPreference = 'Continue'; lms unload --all 2>$null | Out-Null } }
+        $suffix = if ($Repeat -gt 1) { "-r$n" } else { '' }
+        $workspace = Join-Path $out "eval\$stamp-$Use-$tag$suffix"
+        $result = Join-Path $out "eval-$stamp-$Use-$tag$suffix.json"
+        Write-Host "== 記録を作って照合（$($files.Count) 本、$tag、$n / $Repeat 回目）" -ForegroundColor Cyan
+        & $exe eval-record @($files.FullName) --workspace $workspace @common --out $result | Out-Null
+        if (-not (Test-Path $result)) { throw "照合の結果がありません（終了コード $LASTEXITCODE）" }
+        $r = Read-Json $result
+        foreach ($f in $r.fixtures) {
+            $c = $f.candidates
+            $g = $f.generation
+            Write-Host ("-- {0}: 候補 {1}（正解に当たった {2}）、正解 {3} 中 {4}、区間 {5}、{6} 秒" -f $f.id, $c.produced, $c.matched_produced, $c.expected, $c.recalled, $g.pieces, $g.elapsed_seconds)
+            foreach ($x in $c.list) {
+                Write-Host ("     {0,-10} {1} [{2}] 担当={3} 期限={4} 状態={5} 確度={6} 目印={7}" -f $x.match, $x.title, $x.kind, $x.assignee, $x.due_date, $x.status, $x.certainty, ($x.flags -join ','))
+            }
+            foreach ($v in $f.violations) { Write-Host "     違反: $v" -ForegroundColor Yellow }
         }
-        foreach ($v in $f.violations) { Write-Host "     違反: $v" -ForegroundColor Yellow }
-        Show $f.id ($f.violations.Count -eq 0) ("違反 {0} 件" -f $f.violations.Count)
+        $t = $r.total
+        Write-Host ("   {0} 回目: precision {1}（{2} / {3}）、recall {4}（{5} / {6}）、違反 {7} 件" -f $n, $t.precision, $t.matched_produced, $t.produced, $t.recall, $t.recalled, $t.expected, $t.violations)
+        Write-Host "   結果: $result"
+        $runs += $t
     }
-    $t = $r.total
-    Write-Host '== 判定' -ForegroundColor Cyan
-    Show 'precision' ($null -ne $t.precision -and $t.precision -ge 0.90) ("{0}（{1} / {2}。0.90 以上）" -f $t.precision, $t.matched_produced, $t.produced)
-    Show 'recall' ($null -ne $t.recall -and $t.recall -ge 0.80) ("{0}（{1} / {2}。0.80 以上）" -f $t.recall, $t.recalled, $t.expected)
-    Show '違反' ($t.violations -eq 0) ("{0} 件（期限・担当・状態・出してはいけない候補・要点・決定・Markdown の無害化）" -f $t.violations)
-    Write-Host "   結果: $result"
-    Write-Host "   記録: $workspace"
+    # Pooled over the runs (the counts are added up), with the spread of the single runs.
+    $produced = ($runs | Measure-Object produced -Sum).Sum
+    $matched = ($runs | Measure-Object matched_produced -Sum).Sum
+    $expected = ($runs | Measure-Object expected -Sum).Sum
+    $recalled = ($runs | Measure-Object recalled -Sum).Sum
+    $violations = ($runs | Measure-Object violations -Sum).Sum
+    $precision = if ($produced) { [math]::Round($matched / $produced, 3) } else { $null }
+    $recall = if ($expected) { [math]::Round($recalled / $expected, 3) } else { $null }
+    $spread = { param($key) $v = $runs | ForEach-Object { $_.$key }; '{0}〜{1}' -f ($v | Measure-Object -Minimum).Minimum, ($v | Measure-Object -Maximum).Maximum }
+    Write-Host "== 判定（$Repeat 回の合計）" -ForegroundColor Cyan
+    Show 'precision' ($null -ne $precision -and $precision -ge 0.90) ("{0}（{1} / {2}。0.90 以上。各回 {3}）" -f $precision, $matched, $produced, (& $spread 'precision'))
+    Show 'recall' ($null -ne $recall -and $recall -ge 0.80) ("{0}（{1} / {2}。0.80 以上。各回 {3}）" -f $recall, $recalled, $expected, (& $spread 'recall'))
+    Show '違反' ($violations -eq 0) ("{0} 件（{1} 回の合計。期限・担当・状態・出してはいけない候補・要点・決定・Markdown の無害化）" -f $violations, $Repeat)
 }
 else {
     if (-not (Test-Path (Join-Path $Session 'manifest.json'))) { throw "セッションが見つかりません: $Session" }

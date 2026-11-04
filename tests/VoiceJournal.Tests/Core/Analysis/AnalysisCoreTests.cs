@@ -3,6 +3,7 @@ using System.Text.Json;
 using Corvus.Json;
 using Corvus.Json.Validator;
 using VoiceJournal.Core.Analysis;
+using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Transcription;
 using VoiceJournal.Tests.Core.Transcription;
 
@@ -374,6 +375,49 @@ public sealed class CandidateCheckerTests
         Assert.Equal(["ガスの立ち会いの予約", "画面の修正", "不要品の処分"], piece.Candidates.Select(c => c.Fields.Title));
         Assert.Equal(["古いブラウザへの対応", "勉強会", "確認画面の作成"], piece.Dropped.Select(d => d.Text));
         Assert.All(piece.Dropped, d => Assert.Equal(ExtractionConverter.RefusedReason, d.Reason));
+    }
+
+    [Fact]
+    public void AssigneeAndDueDate_InTheNextSegment_AreTaken_AndMarked()
+    {
+        var t = A.Transcript("添付ファイルの移行が未完了です", "これは山本さんが引き続き対応して、来週の水曜日までに終わらせます");
+        var c = A.Check(t, A.Task("添付ファイルの移行", "S0001", "添付ファイルの移行が未完了です", assignee: "山本さん", due: "来週の水曜日まで"));
+
+        Assert.Equal("山本さん", c.Fields.Assignee);
+        Assert.Equal(new DateOnly(2026, 11, 11), c.Fields.DueDate);
+        Assert.Contains(CandidateConcern.NearbyEvidence, c.Flags);
+
+        var called = A.Transcript("まずテストの状況ですが、木村さんお願いします", "残りのテストは来週の月曜日までに終わらせて共有します");
+        var k = A.Check(called, A.Task("残りのテスト", "S0002", "残りのテストは来週の月曜日までに終わらせて", assignee: "木村さん", due: "来週の月曜日まで"));
+        Assert.Equal(("木村さん", new DateOnly(2026, 11, 9)), (k.Fields.Assignee, k.Fields.DueDate));
+    }
+
+    [Fact]
+    public void NextSegment_IsNotUsed_WhenItGuesses_IsFarther_OrIsTheOtherSource()
+    {
+        var guess = A.Transcript("説明会の準備が必要です", "金曜日にできるかもしれないので、来週の水曜日までに山本さんかな");
+        var g = A.Check(guess, A.Task("説明会の準備", "S0001", "説明会の準備が必要です", assignee: "山本さん", due: "来週の水曜日まで"));
+        Assert.Null(g.Fields.Assignee);
+        Assert.Null(g.Fields.DueDate);
+
+        var far = A.Transcript("説明会の準備が必要です", "ところで", "山本さんが来週の水曜日までにやります");
+        var f = A.Check(far, A.Task("説明会の準備", "S0001", "説明会の準備が必要です", assignee: "山本さん", due: "来週の水曜日まで"));
+        Assert.Null(f.Fields.Assignee);
+        Assert.Null(f.Fields.DueDate);
+
+        var other = new TranscriptDocument
+        {
+            SessionId = Guid.NewGuid(),
+            Revision = 1,
+            Kind = TranscriptRevisionKind.Raw,
+            RawRevision = 1,
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            Provenance = T.Provenance(),
+            Segments = TranscriptDocument.Order([T.Seg(0, 4_000, "説明会の準備が必要です"), T.Seg(5_000, 9_000, "山本さんが来週の水曜日までにやります", AudioSource.Loopback)]),
+        };
+        var o = A.Check(other, A.Task("説明会の準備", "S0001", "説明会の準備が必要です", assignee: "山本さん", due: "来週の水曜日まで"));
+        Assert.Null(o.Fields.Assignee);
+        Assert.Null(o.Fields.DueDate);
     }
 
     [Fact]

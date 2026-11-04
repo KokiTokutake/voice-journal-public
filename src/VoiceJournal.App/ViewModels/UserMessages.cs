@@ -129,6 +129,7 @@ internal static class UserMessages
         CandidateConcern.StatusDropped => "否定と矛盾する状態を外した",
         CandidateConcern.CheckAudio => "数字・日付・名前を音声で確認",
         CandidateConcern.Merged => "複数の区間から統合",
+        CandidateConcern.NearbyEvidence => "担当・期限は隣の区間から",
         _ => concern.ToString(),
     };
 
