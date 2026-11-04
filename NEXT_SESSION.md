@@ -29,6 +29,19 @@
   - 調整用 3 回: precision 0.85（34 / 40、各回 0.786〜0.9）、recall 0.633（19 / 30、各回 0.6〜0.7）。1 回だけの測定（0.929 / 0.80）より低く、1 回ごとのばらつきが大きい
   - 受入用 1 回目: precision 0.80（16 / 20）、recall 0.667（8 / 12）、違反 14 件。2 回目の途中で停止
   - 止まったときの空きは 0.9 GB。このセッション外の qemu-system（2.9 GB）と java（計 3.3 GB）が動いていた
+- **Gemma 4 E4B を試した（2026-11-04 夜、各 1 回、`9939771`）**
+
+  | | 調整用 3 本 | 受入用 5 本 | 違反（受入） |
+  |---|---|---|---|
+  | Gemma 3 4B（3 回の合計 / 1 回目） | 0.85 / 0.633 | 0.80 / 0.667 | 14 件 |
+  | Gemma 4 E4B（1 回） | 0.917 / 0.90 | 0.944 / 0.917 | 3 件 |
+
+  - 命令（AT-23）と否定（AT-09）の素材は違反 0 件。担当・期限（山本さん 11/11、鈴木さん 11/20）も取れた。学習の要点も残った
+  - 残る違反: 結合テスト（木村）の取りこぼし、田中さんへのメールの担当を田中さんにした・期限なし
+  - 思考は LM Studio で既定でオンだった。`reasoning_effort: "none"` だけが効く（クライアントで常に送る）
+  - 時間: 1 本 140〜240 秒。長めの素材では Gemma 3（130〜175 秒）より遅い。**25 分の会議（NFR-07）はまだ測っていない**
+  - メモリ: 読み込みで約 9 GB 使う（Gemma 3 は約 4 GB）。空き 13.4 GB → 4.3 GB。NFR-05（空き 4 GiB 以上）にぎりぎり
+  - 測る前に、Docker Desktop（`docker desktop stop`）・WSL（`wsl --shutdown`）・Gradle のデーモンを止めて空きを作った（利用者の了承済み）。戻すときは `docker desktop start`
 - **Gemma 4 E4B は取得済み**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y` で途中から再開できた。`lms ls` では `gemma-4-e4b-it`・`gemma4`・6.33 GB）。まだ一度も読み込んでいない
   - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
   - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
