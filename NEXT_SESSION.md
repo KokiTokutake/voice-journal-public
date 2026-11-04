@@ -18,7 +18,7 @@
 - 記録レビューの左は、記録の元になった文字起こしの版（根拠の区間はその版を指す）。使用中の版と違えば注記する
 - 承認は記録の元の文字起こしの版に結び付ける（承認直後でも、使用中の版が違えば「元の文字起こしが変わりました」と出る）
 - D2 の記録で、LLM が `warnings` にシステムプロンプトの言い換えや本文の文を入れていた。プロンプトに用途を書き、16 文字以上プロンプトと一致する警告は捨てる
-- gpt-oss（20b）は候補にしない（本体 12〜13 GB で、共有 RAM 32 GB には重い）。Gemma 4 は未評価。比べるなら D5 の評価セットで同じ条件で測る（`docs/phase-d-plan.md` 0 章）
+- gpt-oss（20b）は候補にしない（本体 12〜13 GB で、共有 RAM 32 GB には重い）。Gemma 4 は **E4B** を比較の候補にし、D5 の評価セットで Gemma 3 4B と同じ条件で測る。12B は余裕があれば品質の参考に 1 回だけ。26B A4B・31B は外す（`docs/phase-d-plan.md` 0 章）
 - アクセスキーは全画面で 26 文字を使い切っている。タブは G J L R S Y Z。新しいボタンは、そのタブの中で重ならない文字を選ぶ
 
 ## 次の手順
@@ -27,8 +27,9 @@
 ` が改行に化けた）ので直す
 2. D5: 評価セットの残り（独話・学習・混在。私が文字起こし相当のテキストを作る）。素材の形式は `tests/eval/phase-d/negation.json` に合わせる（`segments` と `expected`: 候補の `match_any`・担当・期限・状態、`forbidden_candidates`・`no_assignee`・`no_due_date`・`forbidden_status`・`markdown_must_not_contain`・`decisions`）
 3. D5: 素材を一時セッションにして生成し、正解と照合する道具（AudioProbe のコマンド）と `Test-PhaseD.ps1`、区間の大きさを決める、`docs/phase-d-report.md`、CLAUDE.md の更新
-4. 配布時のリスク: Corvus の実行時コンパイルは SDK の参照パックを前提にしている（Phase G で検討）
-5. カーネルのメモリ: 数日後に `Get-PoolTag.ps1 -Compare <boot の記録>` で比べる（記録は `%LOCALAPPDATA%\VoiceJournal\verify\pool\`）
+4. D5: Gemma 4 E4B との比較（LM Studio の対応・思考モードのオフ・日本語の質を先に確かめる）
+5. 配布時のリスク: Corvus の実行時コンパイルは SDK の参照パックを前提にしている（Phase G で検討）
+6. カーネルのメモリ: 数日後に `Get-PoolTag.ps1 -Compare <boot の記録>` で比べる（記録は `%LOCALAPPDATA%\VoiceJournal\verify\pool\`）
 
 ## LM Studio
 
