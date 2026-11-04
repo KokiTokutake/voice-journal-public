@@ -25,6 +25,14 @@
   - 受入用で残る主な問題: (1) モデルが問題の区間だけを根拠にし、担当・期限が言われた隣の区間を入れないため、アプリが担当・期限を落とす（木村・中村・山本・鈴木）。(2) 候補の取りこぼし（請求書、説明会の資料、ログの保存期間、テスト環境、演習問題）。(3) 学習の要点（B ツリー・選択性・EXPLAIN）が記録に残らない。(4) 命令が「AIへの指示実行」という候補になった（実行はされない）
   - 測るときは先に `lms unload --all` と `dotnet build-server shutdown` で空きを 10 GB 前後にする（llama-server は推論のたびに増え、空き 4 GB で Claude Code に止められた）
 
+- **3 回ずつの測定**（`3a3ad42`、担当・期限を隣の区間からも拾う版。`Test-PhaseD.ps1 -Repeat 3`）は、メモリ不足で Claude Code に止められ、途中まで
+  - 調整用 3 回: precision 0.85（34 / 40、各回 0.786〜0.9）、recall 0.633（19 / 30、各回 0.6〜0.7）。1 回だけの測定（0.929 / 0.80）より低く、1 回ごとのばらつきが大きい
+  - 受入用 1 回目: precision 0.80（16 / 20）、recall 0.667（8 / 12）、違反 14 件。2 回目の途中で停止
+  - 止まったときの空きは 0.9 GB。このセッション外の qemu-system（2.9 GB）と java（計 3.3 GB）が動いていた
+- **Gemma 4 E4B の取得**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y`、6.33 GB）も同じく 92.75% で停止。続きから取れるかは未確認
+  - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
+  - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
+
 ## 決めたこと（このセッション。計画書 0 章に記録済み）
 
 - 期限はアプリの解釈を採る。LLM には原文（`due_expression`）だけを書かせる。原文が根拠の区間にあり一意に解釈できれば、その日付にする
