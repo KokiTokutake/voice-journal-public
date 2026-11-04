@@ -1,0 +1,68 @@
+{
+  "id": "negation",
+  "purpose": "AT-09: 否定・未完了・推量の期限・担当不明・提案を、確定した候補・完了・期限・担当にしない",
+  "use": "acceptance",
+  "title": "社内ツール移行の打ち合わせ",
+  "started_at": "2026-11-04T10:00:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:03", "source": "mic", "text": "それでは社内ツールの移行について打ち合わせを始めます" },
+    { "t": "00:00:09", "source": "mic", "text": "まず旧サーバーのバックアップですが、これは今回はやらないことにしました" },
+    { "t": "00:00:16", "source": "mic", "text": "クラウド側で自動的に取られているので、別にバックアップを取る必要はないという判断です" },
+    { "t": "00:00:25", "source": "mic", "text": "次にデータ移行のスクリプトですが、まだ終わっていません" },
+    { "t": "00:00:31", "source": "mic", "text": "八割ぐらいはできているんですが、添付ファイルの移行が未完了です" },
+    { "t": "00:00:39", "source": "mic", "text": "これは山本さんが引き続き対応して、来週の水曜日までに終わらせます" },
+    { "t": "00:00:48", "source": "mic", "text": "それから利用者向けの説明会ですが、金曜日にできるかもしれません" },
+    { "t": "00:00:55", "source": "mic", "text": "会議室が空いているかどうかまだ分からないので、日程は確定ではないです" },
+    { "t": "00:01:03", "source": "mic", "text": "説明会の資料は誰かが作らないといけないんですが、担当はまだ決まっていません" },
+    { "t": "00:01:11", "source": "mic", "text": "あと、アカウントの棚卸しも必要ですね" },
+    { "t": "00:01:17", "source": "mic", "text": "これは佐藤さんに聞いてみようか、という話にとどめておきます" },
+    { "t": "00:01:24", "source": "mic", "text": "最後に古いツールの停止日ですが、十二月中を目安にしたいと思っています" },
+    { "t": "00:01:32", "source": "mic", "text": "ただし停止日は移行が終わってから改めて決めます" },
+    { "t": "00:01:39", "source": "mic", "text": "ライセンスの解約手続きは、先週もう完了しています" },
+    { "t": "00:01:46", "source": "mic", "text": "以上です。次回は移行スクリプトの状況を確認します" }
+  ],
+  "expected": {
+    "record_types": ["meeting"],
+    "candidates": [
+      {
+        "kind": "task",
+        "match_any": ["移行", "スクリプト", "添付"],
+        "assignee": "山本",
+        "due_date": "2026-11-11",
+        "status": null,
+        "note": "未完了の作業。担当と期限は明言されている"
+      },
+      {
+        "kind": "task",
+        "match_any": ["説明会", "資料"],
+        "assignee": null,
+        "due_date": null,
+        "status": null,
+        "note": "担当未定。期限なし"
+      }
+    ],
+    "optional_candidates": [
+      { "kind": "task", "match_any": ["棚卸"], "assignee": null, "note": "提案にとどまる。挙げるなら担当は null、確度は tentative" },
+      { "kind": "task", "match_any": ["停止日", "停止"], "assignee": null, "due_date": null, "note": "目安で未確定" },
+      { "kind": "task", "match_any": ["説明会"], "due_date": null, "note": "金曜は推量。挙げても期限は null" }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["バックアップ"], "reason": "やらないと決めたことをタスクにしない" }
+    ],
+    "forbidden_status": [
+      { "match_any": ["移行", "スクリプト", "添付"], "status": ["done", "resolved", "closed"], "reason": "まだ終わっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": ["説明会", "資料"], "reason": "担当はまだ決まっていない" },
+      { "match_any": ["棚卸"], "reason": "佐藤さんは聞く相手で、担当ではない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["説明会"], "reason": "金曜日はかもしれない" },
+      { "match_any": ["停止"], "reason": "目安で、改めて決める" }
+    ],
+    "decisions": [
+      { "match_any": ["バックアップ"], "evidence_t": "00:00:09" }
+    ]
+  }
+}

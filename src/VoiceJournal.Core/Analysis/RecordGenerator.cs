@@ -67,6 +67,12 @@ public sealed record GenerationRequest
     public required GenerationSettings Settings { get; init; }
 
     public string? ModelSha256 { get; init; }
+
+    /// <summary>
+    /// Regenerate only this section of the latest record (plan 3.6) from its evidence segments; then
+    /// <see cref="Transcript"/> is the revision the record was built on.
+    /// </summary>
+    public Guid? SectionId { get; init; }
 }
 
 public enum GenerationOutcome
@@ -163,6 +169,7 @@ public sealed class RecordGenerator
     public async Task<GenerationResult> GenerateAsync(GenerationRequest request, IProgress<GenerationProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.SectionId is { } sectionId) return await RegenerateSectionAsync(request, sectionId, progress, cancellationToken).ConfigureAwait(false);
         var watch = Stopwatch.StartNew();
         var settings = request.Settings;
         var appWarnings = new List<string>();
@@ -275,6 +282,82 @@ public sealed class RecordGenerator
         records.Save(recordDocument, d => RecordMarkdown.Render(d, new RecordContext(request.StartedAtUtc, request.TimeZoneId, transcript, Approved: false)));
         progress?.Report(new GenerationProgress("done", 1, 1));
         return Result(GenerationOutcome.Generated, document.Revision, recordDocument.Revision, plan, failed, stats, droppedEvidence, dropped.Count, estimator, watch, null);
+    }
+
+    /// <summary>Most statements one regenerated section keeps (a section is one topic, not a second record).</summary>
+    internal const int MaxSectionStatements = 12;
+
+    /// <summary>
+    /// Regenerates one section from the segments its statements rest on (and the segments between them, when they
+    /// fit one request): one extraction, then its statements replace the section's in a new record revision. The
+    /// heading, kind and candidates stay; nothing else of the record changes.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The section is gone, or has no evidence to start from.</exception>
+    private async Task<GenerationResult> RegenerateSectionAsync(GenerationRequest request, Guid sectionId, IProgress<GenerationProgress>? progress, CancellationToken cancellationToken)
+    {
+        var watch = Stopwatch.StartNew();
+        var records = new RecordStore(request.SessionDirectory);
+        var record = records.LoadLatest() ?? throw new InvalidOperationException("記録がまだありません。");
+        var section = record.Sections.FirstOrDefault(s => s.Id == sectionId) ?? throw new InvalidOperationException("作り直す章が記録にありません（削除された可能性があります）。");
+        var transcript = request.Transcript;
+        var evidence = section.Statements.SelectMany(s => s.Evidence).Select(e => e.SegmentId).ToHashSet();
+        var evidenceSegments = transcript.Segments.Where(s => evidence.Contains(s.SegmentId)).ToList();
+        if (evidenceSegments.Count == 0) throw new InvalidOperationException("この章には根拠の区間がないため、作り直せません（手入力の章など）。");
+
+        var settings = await PrepareModelAsync(request.Settings, [], cancellationToken).ConfigureAwait(false);
+        var estimator = new TokenEstimator(settings.TokenFactor);
+        var zone = FindZone(request.TimeZoneId);
+        var session = AnalysisPlanner.Session(request.StartedAtUtc, zone, request.Title);
+        var sessionDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(request.StartedAtUtc, zone).DateTime);
+        var budget = Math.Min(settings.MaxPieceTokens, new ContextBudget(settings.ContextLength, settings.OutputReserve,
+            Overhead(estimator, AnalysisPrompts.Extraction, LlmSchemas.Extraction) + estimator.Estimate(JsonSerializer.Serialize(session, AnalysisJson.Compact)) + 64).RequireInputTokens(200));
+
+        // The span from the first to the last evidence keeps what was said between them; too long, the evidence alone.
+        var from = evidenceSegments.Min(s => s.StartMs);
+        var to = evidenceSegments.Max(s => s.EndMs);
+        var span = transcript.Segments.Where(s => s.StartMs >= from && s.EndMs <= to && !string.IsNullOrWhiteSpace(s.Text) && !s.Has(SegmentQuality.Silence)).ToList();
+        static int Cost(IEnumerable<TranscriptSegment> segments, TokenEstimator e) => segments.Sum(s => e.Estimate(s.Text.Trim()) + AnalysisPlanner.SegmentOverheadTokens);
+        var chosen = Cost(span, estimator) <= budget ? span : evidenceSegments;
+        var piece = new AnalysisPiece
+        {
+            Index = 1,
+            SegmentIds = [.. chosen.Select(s => s.SegmentId)],
+            StartMs = chosen.Min(s => s.StartMs),
+            EndMs = chosen.Max(s => s.EndMs),
+            EstimatedTokens = Cost(chosen, estimator),
+        };
+
+        progress?.Report(new GenerationProgress("extract", 0, 1));
+        var stats = new List<RequestStat>();
+        var (result, failure) = await ExtractAsync(piece, transcript, session, sessionDate, settings, stats, 0, cancellationToken).ConfigureAwait(false);
+        progress?.Report(new GenerationProgress("extract", 1, 1));
+        var plan = new AnalysisPlan { SessionId = transcript.SessionId, TranscriptRevision = transcript.Revision, InputTokenBudget = budget, Pieces = [piece], Skipped = [] };
+        if (result is null)
+            return Result(GenerationOutcome.Failed, null, null, plan, failure is null ? [] : [failure], stats, 0, 0, estimator, watch, failure?.Reason ?? "章を作り直せませんでした。");
+
+        // Topics first (they carry the detail), then the summary points when the model put everything there.
+        var statements = result.Topics.SelectMany(t => t.Statements).Concat(result.Topics.Count == 0 ? result.SummaryPoints : [])
+            .Where(s => s.Evidence.Count > 0).Take(MaxSectionStatements).ToList();
+        if (statements.Count == 0)
+            return Result(GenerationOutcome.NotAnalyzable, null, null, plan, [], stats, result.DroppedEvidence, result.Dropped.Count, estimator, watch, null);
+
+        progress?.Report(new GenerationProgress("validate", 0, 1));
+        var replacement = new RecordSection
+        {
+            Id = section.Id,
+            Kind = section.Kind,
+            Heading = section.Heading,
+            HeadingOrigin = section.HeadingOrigin,
+            Statements = [.. statements.Select(RecordFactory.Statement)],
+        };
+        var provenance = record.Provenance with { ModelId = settings.ModelId, ModelSha256 = request.ModelSha256, PromptVersion = AnalysisPrompts.Version, ConfigHash = settings.ComputeHash(), JobId = request.JobId };
+        // The user may have edited the record while the model worked: replace the section in the latest revision.
+        var latest = records.LoadLatest()!;
+        if (latest.Sections.All(s => s.Id != sectionId)) throw new InvalidOperationException("作り直す章が記録にありません（削除された可能性があります）。");
+        var next = RecordEditing.ReplaceSection(latest, records.NextRevision(), sectionId, replacement, provenance, _time.GetUtcNow());
+        records.Save(next, d => RecordMarkdown.Render(d, new RecordContext(request.StartedAtUtc, request.TimeZoneId, transcript, Approved: false)));
+        progress?.Report(new GenerationProgress("done", 1, 1));
+        return Result(GenerationOutcome.Generated, null, next.Revision, plan, [], stats, result.DroppedEvidence, result.Dropped.Count, estimator, watch, null);
     }
 
     /// <summary>

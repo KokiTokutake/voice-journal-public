@@ -1,5 +1,6 @@
 using System.Text.Json;
 using VoiceJournal.Core.IO;
+using VoiceJournal.Core.Records;
 using VoiceJournal.Core.Sessions;
 using VoiceJournal.Core.Transcription;
 
@@ -39,6 +40,9 @@ public sealed class RecordJob
     public required GenerationSettings Settings { get; init; }
 
     public string? ModelSha256 { get; init; }
+
+    /// <summary>Only this section of the latest record is regenerated (plan 3.6); null for a whole record.</summary>
+    public Guid? SectionId { get; init; }
 
     public required DateTimeOffset CreatedAtUtc { get; init; }
 
@@ -172,10 +176,21 @@ public sealed class RecordJobProcessor
             changed(job);
         }
 
-        var transcript = new TranscriptStore(sessionDirectory).LoadCurrent();
+        TranscriptDocument? transcript;
+        try
+        {
+            // A section is regenerated from the transcript revision its record was built on (the evidence points there).
+            transcript = job.SectionId is null
+                ? new TranscriptStore(sessionDirectory).LoadCurrent()
+                : new RecordStore(sessionDirectory).LoadLatest() is { } record ? new TranscriptStore(sessionDirectory).Load(record.TranscriptRevision) : null;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException or DirectoryNotFoundException)
+        {
+            transcript = null;
+        }
         if (transcript is null)
         {
-            Fail(RecordJobError.NoTranscript, "文字起こしがまだありません。");
+            Fail(RecordJobError.NoTranscript, job.SectionId is null ? "文字起こしがまだありません。" : "記録の元の文字起こしを読み込めません。");
             return;
         }
         var manifest = SessionManifest.Load(sessionDirectory);
@@ -208,6 +223,7 @@ public sealed class RecordJobProcessor
                 JobId = job.JobId,
                 Settings = job.Settings,
                 ModelSha256 = job.ModelSha256,
+                SectionId = job.SectionId,
             }, reporter, cancellationToken).ConfigureAwait(false);
             job.PieceCount = result.PieceCount;
             job.FailedPieces.Clear();
@@ -236,9 +252,10 @@ public sealed class RecordJobProcessor
         {
             Fail(RecordJobError.LlmUnavailable, ex.Message);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("コンテキスト長", StringComparison.Ordinal))
+        catch (InvalidOperationException ex) when (ex.Message.Contains("コンテキスト長", StringComparison.Ordinal) || job.SectionId is not null)
         {
-            Fail(RecordJobError.GenerationFailed, ex.Message); // LLM-002: the settings leave no room for the transcript
+            // LLM-002: the settings leave no room for the transcript; or the section to regenerate is gone or has no evidence.
+            Fail(RecordJobError.GenerationFailed, ex.Message);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -323,7 +340,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
         get { lock (_lock) return _queue.Count; }
     }
 
-    public RecordJob Enqueue(string sessionDirectory, Guid sessionId, GenerationSettings settings, string? modelSha256 = null)
+    public RecordJob Enqueue(string sessionDirectory, Guid sessionId, GenerationSettings settings, string? modelSha256 = null, Guid? sectionId = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
         var job = new RecordJob
@@ -332,6 +349,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
             SessionId = sessionId,
             Settings = settings ?? throw new ArgumentNullException(nameof(settings)),
             ModelSha256 = modelSha256,
+            SectionId = sectionId,
             CreatedAtUtc = _time.GetUtcNow(),
         };
         RecordJobStore.Save(sessionDirectory, job);

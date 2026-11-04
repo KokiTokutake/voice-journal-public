@@ -219,7 +219,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTitleReadOnly))]
     [NotifyCanExecuteChangedFor(nameof(ApproveCommand), nameof(AddSectionCommand), nameof(AddStatementCommand), nameof(DeleteStatementCommand),
-        nameof(DeleteSectionCommand), nameof(MoveSectionUpCommand), nameof(MoveSectionDownCommand))]
+        nameof(DeleteSectionCommand), nameof(MoveSectionUpCommand), nameof(MoveSectionDownCommand), nameof(RegenerateSectionCommand))]
     public partial bool IsLatest { get; set; }
 
     public bool IsTitleReadOnly => !IsLatest;
@@ -281,7 +281,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     public partial string? JobText { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(GenerateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(RegenerateSectionCommand))]
     public partial bool IsGenerating { get; set; }
 
     [ObservableProperty]
@@ -705,6 +705,32 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             Message = $"記録の作成を始められませんでした（{ex.Message}）。";
+        }
+    }
+
+    private bool CanRegenerateSection() => IsLatest && HasRecord && !IsGenerating;
+
+    /// <summary>Regenerates one section from the segments its statements rest on; the rest of the record stays.</summary>
+    [RelayCommand(CanExecute = nameof(CanRegenerateSection))]
+    private void RegenerateSection(SectionRowViewModel? section)
+    {
+        if (_directory is null || section?.Id is not { } id) return;
+        if (section.Statements.All(s => s.Evidence.Count == 0))
+        {
+            Message = $"章「{section.Heading}」には根拠の区間がないため、作り直せません（手入力の章など）。";
+            return;
+        }
+        try
+        {
+            var job = _records.EnqueueSection(_directory, id);
+            _activeJob = job.JobId;
+            IsGenerating = true;
+            JobText = JobLabel(ProcessingState.Queued);
+            Message = $"章「{section.Heading}」の作り直しを順番待ちに入れました。根拠の区間だけを LM Studio に渡します。今の内容は前の Revision に残ります。";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Message = $"章の作り直しを始められませんでした（{ex.Message}）。";
         }
     }
 

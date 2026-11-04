@@ -159,6 +159,9 @@
                                                 <DockPanel>
                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
                                                                 Visibility="{Binding IsSectionEditable, Converter={StaticResource BoolToVisibility}}">
+                                                        <Button Content="&#xE72C;" FontFamily="{StaticResource IconFont}" Padding="6,3" Margin="2,0"
+                                                                Command="{Binding DataContext.RegenerateSectionCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                                ToolTip="この章だけを、根拠の区間から LM Studio で作り直します（今の内容は前の Revision に残ります）" AutomationProperties.Name="この章を作り直す" />
                                                         <Button Content="&#xE70E;" FontFamily="{StaticResource IconFont}" Padding="6,3" Margin="2,0"
                                                                 Command="{Binding DataContext.MoveSectionUpCommand, ElementName=Root}" CommandParameter="{Binding}"
                                                                 ToolTip="章を上へ" AutomationProperties.Name="章を上へ" />

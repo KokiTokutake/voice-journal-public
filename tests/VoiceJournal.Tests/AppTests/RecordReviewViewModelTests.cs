@@ -35,6 +35,14 @@ internal sealed class FakeRecordService : IRecordService
         };
     }
 
+    public List<Guid> Sections { get; } = [];
+
+    public RecordJob EnqueueSection(string sessionDirectory, Guid sectionId)
+    {
+        Sections.Add(sectionId);
+        return Enqueue(sessionDirectory);
+    }
+
     public Task RecordSavedAsync(string sessionDirectory)
     {
         Saved.Add(sessionDirectory);
@@ -275,6 +283,26 @@ public sealed class RecordReviewViewModelTests : IDisposable
         Assert.Null(_vm.JobText);
         Assert.Equal("作り直した記録", _vm.RecordTitle);
         Assert.Contains("記録 Rev 2 を作りました", _vm.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RegeneratingASection_QueuesItsId_AndASectionWithoutEvidenceIsRefused()
+    {
+        _vm.Open(_session, "会議");
+
+        _vm.RegenerateSectionCommand.Execute(_vm.Blocks[1]);
+
+        Assert.Equal([_vm.Blocks[1].Id!.Value], _records.Sections);
+        Assert.True(_vm.IsGenerating);
+        Assert.False(_vm.RegenerateSectionCommand.CanExecute(_vm.Blocks[2]));
+
+        _vm.IsGenerating = false;
+        _vm.NewSectionHeading = "補足";
+        _vm.NewSectionText = "手で書いた文";
+        _vm.AddSectionCommand.Execute(null);
+        _vm.RegenerateSectionCommand.Execute(_vm.Blocks[^1]);
+        Assert.Single(_records.Sections);
+        Assert.Contains("根拠の区間がない", _vm.Message, StringComparison.Ordinal);
     }
 
     [Fact]

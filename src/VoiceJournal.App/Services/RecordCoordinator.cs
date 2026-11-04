@@ -22,6 +22,9 @@ public interface IRecordService
     /// <summary>Queues a record from the transcript in use, with the current settings.</summary>
     RecordJob Enqueue(string sessionDirectory);
 
+    /// <summary>Queues the regeneration of one section of the latest record from its evidence (plan 3.6).</summary>
+    RecordJob EnqueueSection(string sessionDirectory, Guid sectionId);
+
     /// <summary>A record was edited, approved or deferred from the UI: index it off the UI thread.</summary>
     Task RecordSavedAsync(string sessionDirectory);
 }
@@ -102,6 +105,12 @@ public sealed class RecordCoordinator : IRecordService, IDisposable
     {
         var manifest = SessionManifest.Load(sessionDirectory);
         return _runner.Enqueue(sessionDirectory, manifest.SessionId, _configuration());
+    }
+
+    public RecordJob EnqueueSection(string sessionDirectory, Guid sectionId)
+    {
+        var manifest = SessionManifest.Load(sessionDirectory);
+        return _runner.Enqueue(sessionDirectory, manifest.SessionId, _configuration(), sectionId: sectionId);
     }
 
     public void Cancel(string sessionDirectory, Guid jobId) => _runner.Cancel(sessionDirectory, jobId);

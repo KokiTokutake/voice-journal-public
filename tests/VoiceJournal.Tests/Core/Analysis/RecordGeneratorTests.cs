@@ -127,6 +127,58 @@ public sealed class RecordGeneratorTests
     }
 
     [Fact]
+    public async Task ASection_IsRegeneratedFromItsEvidence_AndTheRestOfTheRecordStays()
+    {
+        using var dir = new TempDirectory();
+        var llm = new EchoLlm();
+        var transcript = Meeting(40);
+        var first = await Generator(llm).GenerateAsync(Request(dir, transcript), null, CancellationToken.None);
+        var store = new RecordStore(dir.Path);
+        var before = store.Load(first.RecordRevision!.Value);
+        var target = before.Sections[0];
+        var evidence = target.Statements.SelectMany(s => s.Evidence).Select(e => e.SegmentId).ToHashSet();
+        llm.Requests.Clear();
+
+        var result = await Generator(llm).GenerateAsync(Request(dir, transcript) with { SectionId = target.Id }, null, CancellationToken.None);
+
+        Assert.Equal(GenerationOutcome.Generated, result.Outcome);
+        var after = store.Load(result.RecordRevision!.Value);
+        Assert.Equal(RecordRevisionKind.SectionRegenerated, after.Kind);
+        Assert.Equal(before.Revision, after.ParentRevision);
+        var regenerated = after.Sections[0];
+        Assert.Equal((target.Id, target.Heading), (regenerated.Id, regenerated.Heading));
+        Assert.All(regenerated.Statements, s => Assert.Equal(TextOrigin.Ai, s.Origin));
+        Assert.True(regenerated.Statements.Count <= RecordGenerator.MaxSectionStatements);
+        static IEnumerable<(Guid, string)> Texts(IEnumerable<RecordStatement> statements) => statements.Select(x => (x.Id, x.Text));
+        Assert.Equal(Texts(before.Sections.Skip(1).SelectMany(x => x.Statements)), Texts(after.Sections.Skip(1).SelectMany(x => x.Statements))); // other sections untouched
+        Assert.Equal(Texts(before.Summary), Texts(after.Summary));
+        Assert.Equal(before.Candidates.Count, after.Candidates.Count);
+        // One extraction request, carrying only the section's span of the transcript.
+        var request = Assert.Single(llm.Requests, r => r.SchemaName == LlmSchemas.ExtractionName);
+        var input = JsonSerializer.Deserialize<ExtractionInput>(request.Messages.First(m => m.Role == LlmRole.User).Content, AnalysisJson.Options)!;
+        var span = transcript.Segments.Where(s => s.StartMs >= transcript.Segments.Where(x => evidence.Contains(x.SegmentId)).Min(x => x.StartMs)
+            && s.EndMs <= transcript.Segments.Where(x => evidence.Contains(x.SegmentId)).Max(x => x.EndMs)).ToList();
+        Assert.Equal(span.Count, input.Segments.Count);
+        Assert.DoesNotContain(llm.Requests, r => r.SchemaName == LlmSchemas.IntegrationName);
+    }
+
+    [Fact]
+    public async Task ASectionWithoutEvidence_CannotBeRegenerated()
+    {
+        using var dir = new TempDirectory();
+        var transcript = Meeting(10);
+        var first = await Generator(new EchoLlm()).GenerateAsync(Request(dir, transcript), null, CancellationToken.None);
+        var store = new RecordStore(dir.Path);
+        var record = store.Load(first.RecordRevision!.Value);
+        var added = RecordEditing.AddSection(record, record.Revision + 1, record.Sections.Count, "手入力", "メモ", DateTimeOffset.UnixEpoch);
+        store.Save(added, d => RecordMarkdown.Render(d, new RecordContext(DateTimeOffset.UnixEpoch, "Tokyo Standard Time", transcript, false)));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Generator(new EchoLlm()).GenerateAsync(Request(dir, transcript) with { SectionId = added.Sections[^1].Id }, null, CancellationToken.None));
+        Assert.Contains("根拠の区間がない", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Cancelled_Job_ResumesFromFinishedPieces()
     {
         using var dir = new TempDirectory();
