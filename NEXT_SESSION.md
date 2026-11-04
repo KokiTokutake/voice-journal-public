@@ -42,6 +42,12 @@
   - 時間: 1 本 140〜240 秒。長めの素材では Gemma 3（130〜175 秒）より遅い。**25 分の会議（NFR-07）はまだ測っていない**
   - メモリ: 読み込みで約 9 GB 使う（Gemma 3 は約 4 GB）。空き 13.4 GB → 4.3 GB。NFR-05（空き 4 GiB 以上）にぎりぎり
   - 測る前に、Docker Desktop（`docker desktop stop`）・WSL（`wsl --shutdown`）・Gradle のデーモンを止めて空きを作った（利用者の了承済み）。戻すときは `docker desktop start`
+- **Gemma 4 E4B の 3 回ずつの測定（2026-11-04 夜〜11-05）**: 調整用 precision 0.917（33 / 36）・recall 0.867（26 / 30）、受入用 precision 0.963（52 / 54）・recall 0.944（34 / 36）、受入の違反は 3 回で 7 件。回ごとの差が小さい
+  - 決まって起きる弱点: 要約が 1 項目の記録がある（短い素材）、講師の勧め「支出の書き出し」を確定の候補にする、木村さんの結合テストを落とすことがある
+- **NFR-07（Phase C の 25 分の会議、Gemma 4 E4B）: 1,675 秒で不合格（300 秒以内）**。4 区間・要求 11 回・入力 30,224・出力 27,998 トークン
+  - 出力が区間ごとに 2,200〜3,000 トークンと多く、O=3072 で 3 回切れて区間を半分にやり直した（約 9 分）。出力の速さは毎秒約 16 トークンで Gemma 3 と同じ。遅さの原因は出力の量
+  - Gemma 3 の 317 秒（D2）は、候補を控えめに出していた古いプロンプトでの値。今のプロンプトの Gemma 3 では未測定
+  - メモリ: 終了時に llama-server 11.3 GB、空き 3.2 GB（Gradle のデーモン 3.5 GB が戻っていた）。NFR-05 の空き 4 GiB を下回った
 - **Gemma 4 E4B は取得済み**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y` で途中から再開できた。`lms ls` では `gemma-4-e4b-it`・`gemma4`・6.33 GB）。まだ一度も読み込んでいない
   - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
   - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
