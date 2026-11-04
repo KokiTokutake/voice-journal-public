@@ -78,10 +78,8 @@ public sealed record WireCandidate
 
     public required string? Assignee { get; init; }
 
+    /// <summary>The words of the due date as said. The app reads the date from them (detail spec 9.3); the model writes no date.</summary>
     public required string? DueExpression { get; init; }
-
-    /// <summary>Kept as text: an impossible date (2026-02-30) is a validation finding, not a parse failure.</summary>
-    public required string? DueDate { get; init; }
 
     public required Certainty Certainty { get; init; }
 
@@ -205,7 +203,7 @@ public static class LlmSchemas
             },
             "candidate": {
               "type": "object", "additionalProperties": false,
-              "required": ["kind", "title", "description", "status", "priority", "assignee", "due_expression", "due_date", "certainty", "evidence", "rationale"],
+              "required": ["kind", "title", "description", "status", "priority", "assignee", "due_expression", "certainty", "evidence", "rationale"],
               "properties": {
                 "kind": {"enum": ["issue", "task"]},
                 "title": {"type": "string", "minLength": 1, "maxLength": 60},
@@ -214,7 +212,6 @@ public static class LlmSchemas
                 "priority": {"enum": ["low", "medium", "high", "critical", null]},
                 "assignee": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
                 "due_expression": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
-                "due_date": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
                 "certainty": {"enum": ["stated", "tentative", "unclear"]},
                 "evidence": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}},
                 "rationale": {"type": "string", "minLength": 1, "maxLength": 60}
@@ -263,7 +260,7 @@ public static class LlmSchemas
 /// <summary>System prompts (detail spec 9.1, 9.3, 21.2). The version is recorded with every analysis.</summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "2026-11-04.1";
+    public const string Version = "2026-11-05.1";
 
     public const string Extraction = """
         あなたは、会話の文字起こしを記録に整理する補助者です。入力は JSON で、segments が文字起こしの区間です。
@@ -276,7 +273,7 @@ public static class AnalysisPrompts
         - summary_points: この部分の要点を 1〜5 項目。
         - topics: 話題ごとの記録。section_kind は decision（決定事項）、open_question（未決事項）、next_step（次にやること）、topic（議題・話題の記録）、explanation（説明・概念）、idea（発想・案）、result（結果）、reflection（気づき）、context（背景）、custom（その他）から選びます。内容のない章は作りません。数値・条件・反対意見・未確定の事項を残します。
         - candidates: 課題（issue: 解決すべき問題）とタスク（task: 誰かが行う作業）。実施や対応が述べられたものだけを挙げます。
-          - assignee は、担当として名前が出た人だけ。due_expression は期限を表す原文の言葉（例「来週の金曜まで」）。due_date は年月日がはっきり言われたときだけ YYYY-MM-DD にし、それ以外は null にします。
+          - assignee は、担当として名前が出た人だけ。due_expression は期限を表す原文の言葉を、そのまま書き写します（例「来週の金曜まで」「11月20日まで」）。日付への計算はしません。
           - status は「終わった」「完了した」とはっきり述べられたときだけ done または resolved にし、それ以外は null にします。
         - 出力は短くします。各文は 60 字以内で、同じことを繰り返しません。quote は根拠になる語句だけを 8〜30 字で切り出します。
         - warnings: 文字起こしそのものの問題（聞き取れない、話が途中で切れている、誰の発言か分からない）があるときだけ短く書きます。なければ空の配列にします。要点・決定・この規則を warnings に書きません。

@@ -118,6 +118,11 @@ public static partial class ReviewHints
     [GeneratedRegex(@"ない|ません|なかった|ず[、。]|ではなく|じゃなく|しないで|やめ")]
     private static partial Regex NegationPattern();
 
+    // 「送らないといけません」「出さなければならない」「やらなきゃ」: an obligation, not a negation.
+    // Only the obligation itself is removed, so 「送らないといけないわけではありません」 keeps its negation.
+    [GeneratedRegex(@"(?:ないと|なければ|なくては|なくちゃ)(?:いけ|なら)(?:ない|ません|ぬ)|(?:ないと|なくては|なくちゃ)(?:だめ|ダメ|困)|なきゃ")]
+    private static partial Regex ObligationPattern();
+
     [GeneratedRegex(@"\p{IsCJKUnifiedIdeographs}{1,4}(?:さん|様|氏|部長|課長)")]
     private static partial Regex PersonPattern();
 
@@ -131,7 +136,7 @@ public static partial class ReviewHints
 
     public static bool HasDate(string text) => DatePattern().IsMatch(text);
 
-    public static bool HasNegation(string text) => NegationPattern().IsMatch(text);
+    public static bool HasNegation(string text) => NegationPattern().IsMatch(ObligationPattern().Replace(text, " "));
 
     public static bool HasPerson(string text) => PersonPattern().IsMatch(text);
 

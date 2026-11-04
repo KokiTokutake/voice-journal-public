@@ -26,7 +26,7 @@ internal static class A
     public static WireStatement St(string text, string segment, string quote, Certainty certainty = Certainty.Stated) =>
         new() { Text = text, Certainty = certainty, Evidence = [Ev(segment, quote)] };
 
-    public static WireCandidate Task(string title, string segment, string quote, string? assignee = null, string? due = null, string? dueDate = null,
+    public static WireCandidate Task(string title, string segment, string quote, string? assignee = null, string? due = null,
         ItemStatus? status = null, Certainty certainty = Certainty.Stated, CandidateKind kind = CandidateKind.Task) => new()
         {
             Kind = kind,
@@ -36,7 +36,6 @@ internal static class A
             Priority = null,
             Assignee = assignee,
             DueExpression = due,
-            DueDate = dueDate,
             Certainty = certainty,
             Evidence = [Ev(segment, quote)],
             Rationale = "会話で述べられた",
@@ -307,7 +306,7 @@ public sealed class CandidateCheckerTests
     public void ClearTask_KeepsAssigneeAndAppResolvedDate()
     {
         var t = A.Transcript("来週の金曜日までに田中さんがログ収集の方式を調べます");
-        var c = A.Check(t, A.Task("ログ収集方式の調査", "S0001", "田中さんがログ収集の方式を調べます", assignee: "田中さん", due: "来週の金曜まで", dueDate: "2026-11-13"));
+        var c = A.Check(t, A.Task("ログ収集方式の調査", "S0001", "田中さんがログ収集の方式を調べます", assignee: "田中さん", due: "来週の金曜まで"));
 
         Assert.Equal(Certainty.Stated, c.Certainty);
         Assert.Equal("田中さん", c.Fields.Assignee);
@@ -319,7 +318,7 @@ public sealed class CandidateCheckerTests
     public void RefusedTask_IsNotConfirmed_AndHasNoDueDate()
     {
         var t = A.Transcript("その資料の作り直しは来週までにやる必要はないです");
-        var c = A.Check(t, A.Task("資料の作り直し", "S0001", "来週までにやる必要はない", due: "来週まで", dueDate: "2026-11-09"));
+        var c = A.Check(t, A.Task("資料の作り直し", "S0001", "来週までにやる必要はない", due: "来週まで"));
 
         Assert.Equal(Certainty.Unclear, c.Certainty);
         Assert.Contains(CandidateConcern.Negation, c.Flags);
@@ -351,13 +350,25 @@ public sealed class CandidateCheckerTests
     public void MaybeFriday_HasNoDueDate_AndIsTentative()
     {
         var t = A.Transcript("見積もりの提出は金曜かもしれません");
-        var c = A.Check(t, A.Task("見積もりの提出", "S0001", "見積もりの提出は金曜かもしれません", due: "金曜かも", dueDate: "2026-11-06"));
+        var c = A.Check(t, A.Task("見積もりの提出", "S0001", "見積もりの提出は金曜かもしれません", due: "金曜かも"));
 
         Assert.Equal(Certainty.Tentative, c.Certainty);
         Assert.Null(c.Fields.DueDate);
         Assert.Contains(CandidateConcern.Doubtful, c.Flags);
         Assert.Contains(CandidateConcern.DueDateNeedsCheck, c.Flags);
-        Assert.Contains(CandidateConcern.DueDateDropped, c.Flags);
+    }
+
+    [Fact]
+    public void Obligation_IsNotANegation()
+    {
+        var t = A.Transcript("来週の月曜日までに請求書を送らないといけません");
+        var c = A.Check(t, A.Task("請求書を送る", "S0001", "請求書を送らないといけません", due: "来週の月曜日まで"));
+
+        Assert.DoesNotContain(CandidateConcern.Negation, c.Flags);
+        Assert.Equal(new DateOnly(2026, 11, 9), c.Fields.DueDate);
+        Assert.True(ReviewHints.HasNegation("請求書はまだ送っていません"));
+        Assert.True(ReviewHints.HasNegation("送らないといけないわけではありません")); // the obligation is itself denied
+        Assert.False(ReviewHints.HasNegation("出さなければならない"));
     }
 
     [Fact]
@@ -381,16 +392,16 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
-    public void ModelDate_WithoutExpression_OrDisagreeing_IsDropped()
+    public void DueDate_IsReadByTheApp_FromWordsInTheEvidence()
     {
         var t = A.Transcript("来週の金曜までに見積もりを出します");
-        var noExpression = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", dueDate: "2026-11-13"));
-        var disagreeing = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", due: "来週の金曜まで", dueDate: "2026-11-20"));
+        var said = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", due: "来週の金曜まで"));
+        var none = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します"));
         var invented = A.Check(t, A.Task("見積もり", "S0001", "見積もりを出します", due: "11月20日"));
 
-        Assert.Null(noExpression.Fields.DueDate);
-        Assert.Contains(CandidateConcern.DueDateDropped, noExpression.Flags);
-        Assert.Null(disagreeing.Fields.DueDate);
+        Assert.Equal(new DateOnly(2026, 11, 13), said.Fields.DueDate);
+        Assert.DoesNotContain(CandidateConcern.DueDateNeedsCheck, said.Flags);
+        Assert.Null(none.Fields.DueDate);
         Assert.Null(invented.Fields.DueDate); // the expression is not in the transcript
         Assert.Contains(CandidateConcern.DueDateNeedsCheck, invented.Flags);
     }
@@ -399,7 +410,7 @@ public sealed class CandidateCheckerTests
     public void ImpossibleDate_IsDropped()
     {
         var t = A.Transcript("2月30日までに出します");
-        var c = A.Check(t, A.Task("提出", "S0001", "2月30日までに出します", due: "2月30日", dueDate: "2026-02-30"));
+        var c = A.Check(t, A.Task("提出", "S0001", "2月30日までに出します", due: "2月30日"));
         Assert.Null(c.Fields.DueDate);
         Assert.Null(CandidateChecker.ParseDate("2026-02-30"));
     }

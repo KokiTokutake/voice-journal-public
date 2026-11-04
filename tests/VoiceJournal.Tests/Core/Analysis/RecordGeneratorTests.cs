@@ -55,7 +55,7 @@ internal sealed class EchoLlm : ILlmClient
             Topics = [new WireTopic { SectionKind = SectionKind.Topic, Heading = "話題 " + input.Segments[0].Id + input.Segments[0].Time, Statements = [.. input.Segments.Select(St)] }],
             Candidates = [.. input.Segments.Where(s => s.Text.Contains("します", StringComparison.Ordinal)).Select(s => new WireCandidate
             {
-                Kind = CandidateKind.Task, Title = s.Text, Description = "", Status = null, Priority = null, Assignee = null, DueExpression = null, DueDate = null,
+                Kind = CandidateKind.Task, Title = s.Text, Description = "", Status = null, Priority = null, Assignee = null, DueExpression = null,
                 Certainty = Certainty.Stated, Evidence = [new WireEvidence { Segment = s.Id, Quote = s.Text }], Rationale = "述べられた",
             })],
             Warnings = [],

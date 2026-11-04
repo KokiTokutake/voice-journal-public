@@ -16,7 +16,10 @@ public enum CandidateConcern
     /// <summary>A due date was mentioned but could not be fixed to one date (ambiguous, hedged, past, or not in the evidence).</summary>
     DueDateNeedsCheck,
 
-    /// <summary>The model's date differed from the app's reading or had nothing to support it; it was dropped.</summary>
+    /// <summary>
+    /// The model's date differed from the app's reading or had nothing to support it; it was dropped. Only in analyses
+    /// made before prompt 2026-11-05.1: since then the model writes no date and the app reads the expression alone.
+    /// </summary>
     DueDateDropped,
 
     /// <summary>The assignee is not named in the evidence; it was dropped.</summary>
@@ -240,24 +243,17 @@ public static partial class CandidateChecker
             if (c.Kind == CandidateKind.Task && RefusalPattern().IsMatch(quotes)) certainty = Certainty.Unclear;
         }
 
-        // Due date: the app reads the expression; the model's date alone never fixes it.
+        // Due date (detail spec 9.3): the app reads the words said; the model writes no date (a 4B model miscounts
+        // weekdays). Only words found in the evidence segments and naming one date fix it.
         DateOnly? due = null;
         if (expression is not null)
         {
             var resolution = RelativeDates.Resolve(expression, sessionDate);
             var supported = DateKey(context).Contains(DateKey(expression), StringComparison.Ordinal);
-            var modelDate = ParseDate(c.DueDate);
-            if (supported && resolution.DueDate is { } d && (modelDate is null || modelDate == d))
+            if (supported && resolution.DueDate is { } d)
                 due = d;
             else
-            {
                 flags.Add(CandidateConcern.DueDateNeedsCheck);
-                if (modelDate is not null) flags.Add(CandidateConcern.DueDateDropped);
-            }
-        }
-        else if (c.DueDate is not null)
-        {
-            flags.Add(CandidateConcern.DueDateDropped);
         }
 
         // Assignee: only a name that appears in the evidence segments.
