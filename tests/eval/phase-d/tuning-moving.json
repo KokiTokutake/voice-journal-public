@@ -1,0 +1,52 @@
+{
+  "id": "tuning-moving",
+  "purpose": "プロンプトの調整用（独話）: 引っ越しの準備の独り言。期限つきの作業、済んだこと、やめたこと、迷っていることを区別する",
+  "use": "tuning",
+  "title": "引っ越しの準備",
+  "started_at": "2026-11-08T20:00:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:02", "source": "mic", "text": "引っ越しの準備で、やることを整理しておきます" },
+    { "t": "00:00:08", "source": "mic", "text": "まず、不動産会社に鍵の受け取りの日を連絡します。これは明日やります" },
+    { "t": "00:00:16", "source": "mic", "text": "それから粗大ごみの申し込みです。十一月二十日までに申し込まないと間に合いません" },
+    { "t": "00:00:25", "source": "mic", "text": "電気の手続きは、先週もう終わっています" },
+    { "t": "00:00:31", "source": "mic", "text": "ガスの開栓の立ち会いは、まだ予約していません" },
+    { "t": "00:00:38", "source": "mic", "text": "新居の窓に合うカーテンを買うかもしれないけど、サイズを測ってから考えます" },
+    { "t": "00:00:46", "source": "mic", "text": "新聞は解約しないで、そのまま住所だけ変えることにしました" },
+    { "t": "00:00:54", "source": "mic", "text": "荷造りは、本と冬服から先に始めるのがよさそうです" },
+    { "t": "00:01:01", "source": "mic", "text": "引っ越し業者の見積もりは二社から取っていて、安いほうは四万八千円でした" },
+    { "t": "00:01:10", "source": "mic", "text": "どちらにするかは、週明けに決めます" },
+    { "t": "00:01:16", "source": "mic", "text": "整理は以上です" }
+  ],
+  "expected": {
+    "record_types": ["reflection", "work", "other", "idea", "mixed"],
+    "candidates": [
+      { "kind": "task", "match_any": ["不動産", "鍵"], "due_date": "2026-11-09", "status": null },
+      { "kind": "task", "match_any": ["粗大ごみ"], "due_date": "2026-11-20", "status": null },
+      { "kind": "task", "match_any": ["ガス"], "due_date": null, "status": null },
+      { "kind": ["task", "issue"], "match_any": ["業者", "見積もり"], "due_date": null, "status": null, "note": "週明けは一日に決まらない" }
+    ],
+    "optional_candidates": [
+      { "kind": "task", "match_any": ["カーテン", "サイズ"], "due_date": null, "note": "かもしれない" },
+      { "kind": "task", "match_any": ["荷造り"], "due_date": null },
+      { "kind": "task", "match_any": ["新聞", "住所"], "due_date": null, "note": "住所の変更なら可。解約はしない" },
+      { "kind": "task", "match_any": ["電気"], "note": "済んだこと。挙げるなら完了" }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["新聞の解約", "解約"], "reason": "解約しないと決めた" }
+    ],
+    "forbidden_status": [
+      { "match_any": ["不動産", "粗大ごみ", "ガス"], "status": ["done", "resolved", "closed"], "reason": "まだやっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": [""], "reason": "話者のほかに担当はいない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["ガス"], "reason": "期限の発言がない" },
+      { "match_any": ["業者", "見積もり"], "reason": "週明けは一日に決まらない" }
+    ],
+    "decisions": [
+      { "match_any": ["新聞"], "evidence_t": "00:00:46" }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "id": "tuning-lecture",
+  "purpose": "プロンプトの調整用（学習）: 家計の講座を聞きながらのメモ。講義の要点を残し、講師の勧めを利用者のタスクにしない",
+  "use": "tuning",
+  "title": "家計管理の講座",
+  "started_at": "2026-11-07T10:00:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:03", "source": "loopback", "text": "今日は家計管理の基本を三つお話しします" },
+    { "t": "00:00:09", "source": "loopback", "text": "一つ目は先取り貯蓄です。給料が入ったら、使う前に決まった額を別の口座に移します" },
+    { "t": "00:00:19", "source": "loopback", "text": "残ったお金で生活するので、意志の強さに頼らずに貯められます" },
+    { "t": "00:00:27", "source": "mic", "text": "なるほど、余ったら貯めるのではなく、先に分けるのか" },
+    { "t": "00:00:34", "source": "loopback", "text": "二つ目は固定費の見直しです。通信費や保険料は、一度見直すと効果が毎月続きます" },
+    { "t": "00:00:44", "source": "loopback", "text": "食費のような変動費を削るよりも、続けやすいのが特徴です" },
+    { "t": "00:00:52", "source": "loopback", "text": "三つ目は予備資金です。生活費の三か月分から六か月分を目安に、すぐ引き出せる形で持っておきます" },
+    { "t": "00:01:03", "source": "loopback", "text": "急な出費があっても、借金をせずに済むようにするためです" },
+    { "t": "00:01:11", "source": "mic", "text": "うちは予備資金がまだ二か月分くらいしかないな" },
+    { "t": "00:01:18", "source": "loopback", "text": "皆さんも、まずは一か月の支出を書き出すところから始めてみてください" },
+    { "t": "00:01:26", "source": "loopback", "text": "次回は、投資の基本と複利の考え方を扱います" },
+    { "t": "00:01:33", "source": "mic", "text": "明日、スマホの料金プランを比べてみよう" },
+    { "t": "00:01:39", "source": "mic", "text": "保険の明細も、今月中に一度見ておきたい" },
+    { "t": "00:01:46", "source": "mic", "text": "先取り貯蓄は、来月の給料から始めることにする" }
+  ],
+  "expected": {
+    "record_types": ["learning"],
+    "candidates": [
+      { "kind": "task", "match_any": ["料金プラン", "スマホ", "通信費"], "due_date": "2026-11-08", "status": null },
+      { "kind": "task", "match_any": ["保険"], "due_date": null, "status": null, "note": "今月中は一日に決まらない" }
+    ],
+    "optional_candidates": [
+      { "kind": "task", "match_any": ["先取り貯蓄"], "due_date": null, "note": "来月の給料から（日は言っていない）" },
+      { "kind": ["task", "issue"], "match_any": ["予備資金"], "due_date": null }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["支出を書き出", "書き出す"], "reason": "講師の一般的な勧めで、利用者が決めたことではない" },
+      { "match_any": ["複利", "投資"], "reason": "講師の次回予告" }
+    ],
+    "forbidden_status": [
+      { "match_any": [""], "status": ["done", "resolved", "closed"], "reason": "どれもまだやっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": [""], "reason": "講師を担当にしない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["保険"], "reason": "今月中は一日に決まらない" }
+    ],
+    "key_points": [
+      { "match_any": ["先取り貯蓄"] },
+      { "match_any": ["固定費"] },
+      { "match_any": ["予備資金"] },
+      { "match_any": ["三か月", "3か月", "六か月", "6か月", "3〜6", "三から六"] }
+    ],
+    "decisions": [
+      { "match_any": ["先取り貯蓄"], "evidence_t": "00:01:46" }
+    ]
+  }
+}

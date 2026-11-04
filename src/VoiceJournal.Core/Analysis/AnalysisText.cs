@@ -115,7 +115,8 @@ public static partial class ReviewHints
     [GeneratedRegex(@"来週|今週|再来週|先週|明日|明後日|昨日|月末|週末|期限|締め切り|まで(?:に)?|[月火水木金土日]曜")]
     private static partial Regex DatePattern();
 
-    [GeneratedRegex(@"ない|ません|なかった|ず[、。]|ではなく|じゃなく|しないで|やめ")]
+    // ず[、。] is 「行かず、」, not 「まず、」「必ず、」.
+    [GeneratedRegex(@"ない|ません|なかった|(?<![ま必])ず[、。]|ではなく|じゃなく|しないで|やめ")]
     private static partial Regex NegationPattern();
 
     // 「送らないといけません」「出さなければならない」「やらなきゃ」: an obligation, not a negation.
@@ -136,12 +137,21 @@ public static partial class ReviewHints
 
     public static bool HasDate(string text) => DatePattern().IsMatch(text);
 
-    public static bool HasNegation(string text) => NegationPattern().IsMatch(ObligationPattern().Replace(text, " "));
+    public static bool HasNegation(string text) => NegationPattern().IsMatch(WithoutObligation(text));
+
+    /// <summary>The text with obligations (「送らないといけません」) blanked out, so their ない is not read as a negation.</summary>
+    public static string WithoutObligation(string text) => ObligationPattern().Replace(text, " ");
 
     public static bool HasPerson(string text) => PersonPattern().IsMatch(text);
 
     /// <summary>Doubt or a mere suggestion: 「金曜かも」「聞いてみようか」. Such a statement is never a confirmed fact.</summary>
     public static bool HasDoubt(string text) => DoubtPattern().IsMatch(text);
+
+    /// <summary>A suggestion still to be agreed on (「お願いしようか」「聞いてみましょうか」): it names nobody as assignee.</summary>
+    public static bool HasSuggestion(string text) => SuggestionPattern().IsMatch(text);
+
+    [GeneratedRegex(@"ようか|ましょうか")]
+    private static partial Regex SuggestionPattern();
 
     /// <summary>Doubt, or a date that is only approximate or planned (「目安は金曜」「15日頃」): not a due date to record as fixed.</summary>
     public static bool HasHedge(string text) => HasDoubt(text) || ApproximatePattern().IsMatch(text);

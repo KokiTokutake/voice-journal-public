@@ -111,7 +111,8 @@ internal static class JobSession
         CreatedAtUtc = DateTimeOffset.UnixEpoch,
     };
 
-    public static async Task Until(Func<bool> condition, string what, int timeoutMs = 10_000)
+    // 30 s: the app-level tests take about 11 s while the long recording tests run beside them.
+    public static async Task Until(Func<bool> condition, string what, int timeoutMs = 30_000)
     {
         var deadline = System.Environment.TickCount64 + timeoutMs;
         while (!condition())

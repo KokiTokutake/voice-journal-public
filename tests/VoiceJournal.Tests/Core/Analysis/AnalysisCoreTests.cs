@@ -359,6 +359,45 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
+    public void KanjiDate_Said_MatchesDigitsWritten_AndMazuIsNoNegation()
+    {
+        var t = A.Transcript("まず、粗大ごみは十一月二十日までに申し込みます");
+        var c = A.Check(t, A.Task("粗大ごみの申し込み", "S0001", "粗大ごみは十一月二十日までに申し込みます", due: "11月20日まで"));
+
+        Assert.Equal(new DateOnly(2026, 11, 20), c.Fields.DueDate);
+        Assert.False(ReviewHints.HasNegation("まず、不動産会社に連絡します"));
+        Assert.True(ReviewHints.HasNegation("連絡せず、そのままにします"));
+    }
+
+    [Fact]
+    public void SelfIntroduction_JustBefore_GroundsTheAssignee()
+    {
+        var t = A.Transcript("伊藤です。ログイン画面の表示崩れは昨日直しました", "今日中にプルリクエストを出します");
+        var c = A.Check(t, A.Task("プルリクエスト", "S0002", "今日中にプルリクエストを出します", assignee: "伊藤", due: "今日中"));
+        Assert.Equal("伊藤", c.Fields.Assignee);
+
+        var mention = A.Transcript("伊藤さんの件ですが、まだ連絡がありません", "今日中にプルリクエストを出します");
+        var m = A.Check(mention, A.Task("プルリクエスト", "S0002", "今日中にプルリクエストを出します", assignee: "伊藤"));
+        Assert.Null(m.Fields.Assignee); // a mention is not a self-introduction
+
+        var advice = A.Transcript("皆さんも、まず一か月の支出を書き出してみてください");
+        var a = A.Check(advice, A.Task("支出の書き出し", "S0001", "一か月の支出を書き出してみてください", assignee: "皆さん"));
+        Assert.Null(a.Fields.Assignee);
+    }
+
+    [Fact]
+    public void RefusedIssue_IsNotConfirmed_ButAnObligationIsNoRefusal()
+    {
+        var t = A.Transcript("古いブラウザは今回は対応しないことにします", "この画面は直さないといけません");
+        var refused = A.Check(t, A.Task("古いブラウザ対応", "S0001", "今回は対応しないことにします", kind: CandidateKind.Issue));
+        var obliged = A.Check(t, A.Task("画面の修正", "S0002", "この画面は直さないといけません"));
+
+        Assert.Equal(Certainty.Unclear, refused.Certainty);
+        Assert.Equal(Certainty.Stated, obliged.Certainty);
+        Assert.DoesNotContain(CandidateConcern.Negation, obliged.Flags);
+    }
+
+    [Fact]
     public void Obligation_IsNotANegation()
     {
         var t = A.Transcript("来週の月曜日までに請求書を送らないといけません");
@@ -379,6 +418,8 @@ public sealed class CandidateCheckerTests
 
         Assert.Equal(Certainty.Tentative, c.Certainty);
         Assert.Contains(CandidateConcern.Doubtful, c.Flags);
+        Assert.Null(c.Fields.Assignee); // asked about, not agreed to do it
+        Assert.Contains(CandidateConcern.AssigneeDropped, c.Flags);
     }
 
     [Fact]

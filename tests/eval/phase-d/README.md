@@ -9,6 +9,11 @@
 | `monologue.json` | 独話 | AT-08。反省・アイデア・生活の予定が混ざる中のタスク、推量の期限 |
 | `learning.json` | 学習 | AT-08。講義の要点、講師の一般論をタスクにしない、曖昧な期限 |
 | `mixed.json` | 混在 | AT-08。会議と自分用のメモ、結果しだいの予定・先送り |
+| `tuning-standup.json` | 会議（調整用） | 担当と期限の多い朝会、やらない決定、済んだこと |
+| `tuning-lecture.json` | 学習（調整用） | 講座の要点、講師の勧めをタスクにしない |
+| `tuning-moving.json` | 独話（調整用） | 期限つきの作業、済んだこと・やめたこと・迷っていること |
+
+プロンプトは調整用（`use: tuning`）の素材で直し、受入用（`use: acceptance`）は調整の後に測るだけにする（`docs/phase-d-plan.md` 0 章）。
 
 会議の実際の認識誤りを含む入力は、Phase C の読み上げ録音（`verify\phase-c\eval-workspace`）で別に確かめる。
 
@@ -20,7 +25,7 @@
 
 ## 正解（`expected`）の読み方
 
-候補の照合は、生成された候補の題名・本文に `match_any` のどれかが含まれるかで行う（NFKC で正規化。空文字列はすべてに一致）。`forbidden_candidates` だけは題名で見る（本文の説明に出てくる語で誤りにしない）。出してはいけない候補に当たった生成候補は、正解に割り当てない。
+候補の照合は、生成された候補の題名・本文に `match_any` のどれかが含まれるかで行う（NFKC で正規化。空文字列はすべてに一致）。正解への割り当ては、題名で一致する生成候補を先に、本文だけで一致するものを後に選ぶ。`forbidden_candidates` だけは題名で見る（本文の説明に出てくる語で誤りにしない）。出してはいけない候補に当たった生成候補は、正解に割り当てない。
 
 道具は `AudioProbe eval-record <素材>... --workspace <dir>`（素材ごとに一時のセッションを作って生成し、照合する）。作ったセッションを照合し直すときは `--score <セッション>`。
 
@@ -29,7 +34,7 @@
 | `record_types` | 記録の種別がこのどれかを含めば合格 |
 | `candidates` | 必ず出てほしい候補（recall の分母）。1 つの生成候補は 1 つの正解にだけ割り当てる（`candidates` を先に、`optional_candidates` を後に） |
 | `optional_candidates` | 出ても出なくてもよい候補。出たら precision の分子に数え、付いている条件（期限・担当）は守る |
-| `forbidden_candidates` | 出てはいけない候補。出たら誤り |
+| `forbidden_candidates` | 出てはいけない候補。確度 stated で出たら違反。tentative / unclear（要確認）で出たら違反にはしないが、precision では外れに数える（AT-09「誤った確定候補を作らず、要確認として表示する」） |
 | `kind` | `task` / `issue`、または許す値の配列。照合の条件にはせず、違えば `kind_mismatch` に別に数える（違反にしない） |
 | `assignee` | 文字列: 担当にその名前が含まれる。`null`: 担当なし。キーが無ければ照合しない |
 | `due_date` | `YYYY-MM-DD`・`null`、または許す値の配列。キーが無ければ照合しない |

@@ -1,0 +1,58 @@
+{
+  "id": "tuning-standup",
+  "purpose": "プロンプトの調整用（会議）: 担当と期限のついた作業が多い朝会。全部を候補に挙げ、曖昧な期限・やらない決定・済んだことを区別する",
+  "use": "tuning",
+  "title": "開発チームの朝会",
+  "started_at": "2026-11-10T09:30:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:02", "source": "loopback", "text": "おはようございます。朝会を始めます。順番に進捗をお願いします" },
+    { "t": "00:00:08", "source": "loopback", "text": "伊藤です。ログイン画面の表示崩れは、昨日直してリリースしました" },
+    { "t": "00:00:15", "source": "loopback", "text": "今日は認証まわりの修正をやって、今日中にプルリクエストを出します" },
+    { "t": "00:00:23", "source": "loopback", "text": "渡辺です。問い合わせ対応のマニュアルを更新しています" },
+    { "t": "00:00:30", "source": "loopback", "text": "金曜日までには終わらせたいと思っています" },
+    { "t": "00:00:36", "source": "mic", "text": "加藤です。新しい設定画面のデザインレビューを、十一月十三日に行います" },
+    { "t": "00:00:44", "source": "mic", "text": "レビューの資料は私が前日までに共有します" },
+    { "t": "00:00:50", "source": "loopback", "text": "ありがとうございます。それと、ビルドがときどき失敗する件ですが" },
+    { "t": "00:00:57", "source": "loopback", "text": "原因がまだ分かっていなくて、誰が調べるかも決まっていません" },
+    { "t": "00:01:04", "source": "loopback", "text": "これは来週の定例で担当を決めましょう" },
+    { "t": "00:01:10", "source": "mic", "text": "古いブラウザへの対応はどうしますか" },
+    { "t": "00:01:15", "source": "loopback", "text": "利用者がほとんどいないので、今回は対応しないことにします" },
+    { "t": "00:01:22", "source": "loopback", "text": "最後に、来月の勉強会の発表者ですが、山口さんにお願いしようかと思っています" },
+    { "t": "00:01:30", "source": "loopback", "text": "まだ本人には聞いていないので、決まりではないです" },
+    { "t": "00:01:37", "source": "loopback", "text": "では、今日もよろしくお願いします" }
+  ],
+  "expected": {
+    "record_types": ["meeting", "work"],
+    "candidates": [
+      { "match_any": ["認証"], "assignee": "伊藤", "due_date": "2026-11-10", "status": null },
+      { "match_any": ["マニュアル"], "assignee": "渡辺", "due_date": null, "status": null, "note": "金曜日だけでは今週か来週か一意でない" },
+      { "match_any": ["デザインレビュー", "レビューの資料", "資料"], "assignee": "加藤", "status": null, "note": "期限は 11/13 か前日（11/12 は計算が要るので null でもよい）" },
+      { "kind": ["issue", "task"], "match_any": ["ビルド"], "assignee": null, "due_date": null, "status": null }
+    ],
+    "optional_candidates": [
+      { "match_any": ["勉強会", "発表"], "assignee": null, "due_date": null, "note": "お願いしようか（未確定）" },
+      { "match_any": ["担当者決定", "担当を決め", "担当者の決定", "担当の決定"], "assignee": null, "due_date": null, "note": "来週の定例でビルドの件の担当を決める（次にやること）" },
+      { "match_any": ["資料"], "assignee": "加藤", "due_date": null, "note": "レビューの資料を前日までに共有する（前日は計算が要るので null）" },
+      { "match_any": ["ログイン", "表示崩れ"], "note": "済んだこと。挙げるなら状態は完了" },
+      { "match_any": ["デザインレビュー"], "due_date": ["2026-11-13", null] }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["古いブラウザ", "ブラウザ"], "reason": "対応しないと決めた" }
+    ],
+    "forbidden_status": [
+      { "match_any": ["認証", "マニュアル", "ビルド"], "status": ["done", "resolved", "closed"], "reason": "まだ終わっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": ["ビルド"], "reason": "誰が調べるか決まっていない" },
+      { "match_any": ["勉強会", "発表"], "reason": "まだ本人に聞いていない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["マニュアル"], "reason": "金曜日だけでは一意でない" },
+      { "match_any": ["ビルド"], "reason": "期限の発言がない" }
+    ],
+    "decisions": [
+      { "match_any": ["ブラウザ"], "evidence_t": "00:01:15" }
+    ]
+  }
+}

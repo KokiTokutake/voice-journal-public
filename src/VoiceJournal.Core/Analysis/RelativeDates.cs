@@ -126,13 +126,15 @@ public static partial class RelativeDates
     // NFKC (全角数字), kanji numerals to digits, no spaces.
     private static string Prepare(string expression)
     {
-        var s = expression.Normalize(NormalizationForm.FormKC);
-        s = KanjiNumber().Replace(s, m => CerNormalizer.KanjiToNumber(m.Value));
+        var s = KanjiDigits(expression.Normalize(NormalizationForm.FormKC));
         var builder = new StringBuilder(s.Length);
         foreach (var c in s)
             if (!char.IsWhiteSpace(c)) builder.Append(c);
         return builder.ToString();
     }
+
+    /// <summary>Kanji numerals before a date unit as digits: 「十一月二十日」 → 「11月20日」.</summary>
+    public static string KanjiDigits(string text) => KanjiNumber().Replace(text, m => CerNormalizer.KanjiToNumber(m.Value));
 
     [GeneratedRegex("[〇一二三四五六七八九十]+(?=[年月日週か])")]
     private static partial Regex KanjiNumber();

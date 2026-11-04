@@ -4,17 +4,19 @@
   アプリと同じ記録の生成処理（RecordGenerator と LM Studio）で行う。
 .DESCRIPTION
   LM Studio のサーバーを起動しておく（モデルは要求で自動的に読み込まれる）。結果は %LOCALAPPDATA%\VoiceJournal\verify\phase-d\ に書く。
-  - Evaluate: 評価セット（tests\eval\phase-d\*.json のうち use が acceptance のもの）を素材ごとに一時のセッションにして記録を作り、
+  - Evaluate: 評価セット（tests\eval\phase-d\*.json のうち use が -Use のもの。既定は acceptance）を素材ごとに一時のセッションにして記録を作り、
               正解と照合する。候補の precision 0.90 以上・recall 0.80 以上、素材ごとの違反 0 件で合格（AT-08・09・23）
   - Meeting:  Phase C の読み上げ録音（約 25 分）の文字起こしから記録を作り、所要時間を測る（NFR-07: 5 分以内。区間の数を併記）
 .EXAMPLE
   .\scripts\Test-PhaseD.ps1 -Test Evaluate
+  .\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning   # プロンプトの調整用の素材
   .\scripts\Test-PhaseD.ps1 -Test Evaluate -Fixture negation,injection -PieceTokens 2000
   .\scripts\Test-PhaseD.ps1 -Test Meeting
 #>
 param(
     [Parameter(Mandatory)] [ValidateSet('Evaluate', 'Meeting')] [string]$Test,
-    # Evaluate: 使う素材の id（省略時は acceptance のすべて）
+    # Evaluate: 素材の組（acceptance: 受入評価用、tuning: プロンプトの調整用）と、使う素材の id（省略時はその組のすべて）
+    [ValidateSet('acceptance', 'tuning')] [string]$Use = 'acceptance',
     [string[]]$Fixture,
     [string]$Model = 'gemma-3-4b-it',
     [int]$Context = 16384,
@@ -52,11 +54,11 @@ $common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--
 if ($Test -eq 'Evaluate') {
     $files = Get-ChildItem (Join-Path $repo 'tests\eval\phase-d') -Filter '*.json' | Where-Object {
         $j = Read-Json $_.FullName
-        $j.use -eq 'acceptance' -and (-not $Fixture -or $Fixture -contains $j.id)
+        $j.use -eq $Use -and (-not $Fixture -or $Fixture -contains $j.id)
     }
     if (-not $files) { throw '評価素材が見つかりません' }
-    $workspace = Join-Path $out "eval\$stamp-$tag"
-    $result = Join-Path $out "eval-$stamp-$tag.json"
+    $workspace = Join-Path $out "eval\$stamp-$Use-$tag"
+    $result = Join-Path $out "eval-$stamp-$Use-$tag.json"
     Write-Host "== 記録を作って照合（$($files.Count) 本、$tag）" -ForegroundColor Cyan
     & $exe eval-record @($files.FullName) --workspace $workspace @common --out $result | Out-Null
     if (-not (Test-Path $result)) { throw "照合の結果がありません（終了コード $LASTEXITCODE）" }

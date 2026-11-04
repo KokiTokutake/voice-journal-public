@@ -192,16 +192,28 @@ internal static class EvaluateRecordCommand
         foreach (var c in produced)
             foreach (var f in e.Forbidden.Where(f => f.MatchAny.Any(m => Title(c).Contains(Norm(m), StringComparison.Ordinal))))
             {
-                violations.Add($"出してはいけない候補「{c.Fields.Title}」（{f.Reason}）");
-                assigned[c] = "forbidden";
+                // AT-09: no wrong *confirmed* candidate. Shown as unconfirmed it is no violation, but still a false positive.
+                if (c.Certainty == Certainty.Stated)
+                {
+                    violations.Add($"出してはいけない候補「{c.Fields.Title}」を確定で出した（{f.Reason}）");
+                    assigned[c] = "forbidden";
+                }
+                else
+                {
+                    assigned[c] = "forbidden-unconfirmed";
+                }
             }
         var recalled = 0;
         var kindMismatches = new List<string>();
         // The kind (issue / task) is not a matching condition: the line between them is fuzzy, and a wrong kind is
         // reported apart (kind_mismatch) rather than turning a found candidate into a miss and a false positive.
+        // A title match wins over a match in the description (「家計管理の課題」 whose description mentions 先取り貯蓄
+        // must not take the place of 「先取り貯蓄の開始」).
+        bool In(Func<Candidate, string> text, Candidate c, ExpectedCandidate exp) => exp.MatchAny.Any(m => text(c).Contains(Norm(m), StringComparison.Ordinal));
         foreach (var (exp, optional) in e.Candidates.Select(x => (x, false)).Concat(e.Optional.Select(x => (x, true))))
         {
-            var hit = produced.FirstOrDefault(c => !assigned.ContainsKey(c) && exp.MatchAny.Any(m => Body(c).Contains(Norm(m), StringComparison.Ordinal)));
+            var hit = produced.FirstOrDefault(c => !assigned.ContainsKey(c) && In(Title, c, exp))
+                ?? produced.FirstOrDefault(c => !assigned.ContainsKey(c) && In(Body, c, exp));
             if (hit is null)
             {
                 if (!optional) violations.Add($"候補「{string.Join("/", exp.MatchAny)}」が出ていない（recall）");
@@ -274,7 +286,16 @@ internal static class EvaluateRecordCommand
         if (name.Length == 0) return false;
         var texts = c.Evidence.Select(ev => ev.Quote)
             .Concat(transcript.Segments.Where(s => c.Evidence.Any(ev => ev.SegmentId == s.SegmentId)).Select(s => s.Text));
-        return texts.Any(t => Norm(t).Contains(name, StringComparison.Ordinal));
+        if (texts.Any(t => Norm(t).Contains(name, StringComparison.Ordinal))) return true;
+        // The app's rule: the speaker named themself (「伊藤です。」) in one of the two segments before, same source.
+        var segments = transcript.Segments;
+        for (var i = 0; i < segments.Count; i++)
+        {
+            if (c.Evidence.All(ev => ev.SegmentId != segments[i].SegmentId)) continue;
+            for (var j = i - 1; j >= 0 && j >= i - 2 && segments[j].Source == segments[i].Source; j--)
+                if (Norm(segments[j].Text).StartsWith(name + "です", StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     private static string Kind(Candidate c) => c.Kind.ToString().ToLowerInvariant();

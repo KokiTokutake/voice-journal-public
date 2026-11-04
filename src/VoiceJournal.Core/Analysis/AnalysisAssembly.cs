@@ -239,8 +239,9 @@ public static partial class CandidateChecker
         if (negation)
         {
             flags.Add(CandidateConcern.Negation);
-            // 「やる必要はない」「やらない」: a task built on a refusal is not a confirmed task.
-            if (c.Kind == CandidateKind.Task && RefusalPattern().IsMatch(quotes)) certainty = Certainty.Unclear;
+            // 「やる必要はない」「対応しないことにします」: a candidate built on a refusal is not confirmed, whatever its
+            // kind (AT-09: shown for checking). 「しないといけない」 is an obligation, not a refusal.
+            if (RefusalPattern().IsMatch(ReviewHints.WithoutObligation(quotes))) certainty = Certainty.Unclear;
         }
 
         // Due date (detail spec 9.3): the app reads the words said; the model writes no date (a 4B model miscounts
@@ -256,13 +257,15 @@ public static partial class CandidateChecker
                 flags.Add(CandidateConcern.DueDateNeedsCheck);
         }
 
-        // Assignee: only a name that appears in the evidence segments.
+        // Assignee: only a name that appears in the evidence segments, and not in a mere suggestion
+        // (「山口さんにお願いしようか」「佐藤さんに聞いてみようか」: nobody has agreed to do it; detail spec 9.3).
         string? assignee = null;
         if (!string.IsNullOrWhiteSpace(c.Assignee))
         {
             var name = ExtractionConverter.Clean(c.Assignee);
             var core = Honorific().Replace(name, string.Empty);
-            if (core.Length > 0 && EvidenceText.Normalize(context).Contains(EvidenceText.Normalize(core), StringComparison.Ordinal))
+            if (core.Length > 0 && !ReviewHints.HasSuggestion(quotes) && !NotAName().IsMatch(name)
+                && (EvidenceText.Normalize(context).Contains(EvidenceText.Normalize(core), StringComparison.Ordinal) || IntroducedJustBefore(core, evidence, transcript)))
                 assignee = name;
             else
                 flags.Add(CandidateConcern.AssigneeDropped);
@@ -317,7 +320,8 @@ public static partial class CandidateChecker
     // Loose key so 「来週の金曜日までに」 matches 「来週金曜までに」 in the transcript.
     private static string DateKey(string text)
     {
-        var s = EvidenceText.Normalize(text);
+        // 「十一月二十日」 said, 「11月20日」 written by the model: compare in digits.
+        var s = RelativeDates.KanjiDigits(EvidenceText.Normalize(text));
         s = WeekdayNote().Replace(s, string.Empty); // 「11月13日(金)」: the model adds the weekday, the speaker may not
         s = s.Replace("曜日", "曜", StringComparison.Ordinal).Replace("の", string.Empty, StringComparison.Ordinal);
         return DateSuffix().Replace(s, string.Empty);
@@ -334,6 +338,38 @@ public static partial class CandidateChecker
 
     [GeneratedRegex("必要は?ない|やらない|しない|やめ|不要|見送")]
     private static partial Regex RefusalPattern();
+
+    /// <summary>
+    /// The speaker named themself in one of the two segments before an evidence segment, from the same source
+    /// (「伊藤です。…」 then 「今日中にプルリクエストを出します」 in a stand-up). Only this form counts, not any mention.
+    /// </summary>
+    private static bool IntroducedJustBefore(string name, IReadOnlyList<Evidence> evidence, TranscriptDocument transcript)
+    {
+        var target = EvidenceText.Normalize(name);
+        foreach (var e in evidence)
+        {
+            var segments = transcript.Segments;
+            var index = -1;
+            for (var k = 0; k < segments.Count && index < 0; k++)
+                if (segments[k].SegmentId == e.SegmentId) index = k;
+            if (index < 0) continue;
+            var source = segments[index].Source;
+            for (var i = index - 1; i >= 0 && i >= index - 2; i--)
+            {
+                var before = transcript.Segments[i];
+                if (before.Source != source) break;
+                if (SelfIntroduction().Match(before.Text) is { Success: true } m && EvidenceText.Normalize(m.Groups["n"].Value) == target) return true;
+            }
+        }
+        return false;
+    }
+
+    [GeneratedRegex(@"^(?:はい、?)?(?<n>\p{IsCJKUnifiedIdeographs}{1,4})(?:です|と申します)[。、]")]
+    private static partial Regex SelfIntroduction();
+
+    // 「皆さんも〜してください」 (a lecturer's advice) or 「私が」: words for people, not a name to put as assignee.
+    [GeneratedRegex("^(?:皆さん|皆様|みなさん|みんな|全員|各自|誰か|だれか|私|わたし|自分|僕|俺|担当者|話者)$")]
+    private static partial Regex NotAName();
 }
 
 /// <summary>Stage 2: statements of the pieces as numbered items, and the model's integration back to evidence.</summary>
