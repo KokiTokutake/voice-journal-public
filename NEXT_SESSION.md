@@ -29,7 +29,7 @@
   - 調整用 3 回: precision 0.85（34 / 40、各回 0.786〜0.9）、recall 0.633（19 / 30、各回 0.6〜0.7）。1 回だけの測定（0.929 / 0.80）より低く、1 回ごとのばらつきが大きい
   - 受入用 1 回目: precision 0.80（16 / 20）、recall 0.667（8 / 12）、違反 14 件。2 回目の途中で停止
   - 止まったときの空きは 0.9 GB。このセッション外の qemu-system（2.9 GB）と java（計 3.3 GB）が動いていた
-- **Gemma 4 E4B の取得**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y`、6.33 GB）も同じく 92.75% で停止。続きから取れるかは未確認
+- **Gemma 4 E4B は取得済み**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y` で途中から再開できた。`lms ls` では `gemma-4-e4b-it`・`gemma4`・6.33 GB）。まだ一度も読み込んでいない
   - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
   - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
 
@@ -42,7 +42,10 @@
 
 ## 次の手順
 
-1. **受入用の残りの問題への対応を利用者と決める**（上の (1)〜(4)。担当・期限の根拠を隣の区間まで広げるか、Gemma 4 E4B を先に試すか、複数回の平均で判定するか）
+1. **利用者と合意済みの順で進める**（2026-11-04）: ① 担当・期限を隣の区間から拾う（済み `3a3ad42`）→ ② 3 回ずつ測って合計で判定 → ③ Gemma 4 E4B と比べる
+   - 始める前に空きメモリを確かめる。Gemma 4 E4B の読み込みには 6 GB 以上の空きが要る。ほかの重いアプリ（エミュレーターの qemu-system、Gradle などの java）が動いていたら、利用者に閉じてよいか聞く。`lms unload --all` と `dotnet build-server shutdown` も先に
+   - Gemma 4 は先に短い要求で確かめる: `lms load gemma-4-e4b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-4-e4b-it -y` → 実行環境が `gemma4` を読めるか、`json_schema` の構造化出力、思考の出力（`<|channel>thought`）が混ざらないか、日本語の質
+   - 測定: `.\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning -Repeat 3`（約 20 分）と `-Repeat 3`（受入用、約 35 分）を、`-Model gemma-3-4b-it` と `-Model gemma-4-e4b-it` で。バックグラウンドで回すとメモリ不足のときに止められるので、空きを 10 GB 前後にしてから
 2. 残っている precision の外れ: 講師の一般的な勧め（「支出の書き出し」）、まとめただけの候補（「未解決問題」）、要約が 1 項目になる短い会議。やらないと決めたことは候補から外した（`7ff16d5`、利用者と合意）
 3. NFR-07: `.\scripts\Test-PhaseD.ps1 -Test Meeting`（Phase C の 25 分の会議。`verify\phase-d\d2\meeting` の文字起こしを写して使う）。区間の大きさ（`-PieceTokens`）も比べて決める
 4. `docs/phase-d-report.md`、CLAUDE.md の更新
