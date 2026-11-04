@@ -22,7 +22,8 @@
 
 ## 次の手順
 
-1. **アプリからの実機の作り直しを最後まで確かめる**: 一時の保存先 `scratchpad\ws2`（D2 の会議のコピー）で「記録を作り直す」を押し、2 区間が終わったところで止めた（ジョブは `organizing` のまま残る）。起動時に Queued に戻して続きから再開し、Rev 4 ができることを確かめる。試験スクリプト `e2e.ps1` は完了の検知のパスが壊れていた（`` が改行に化けた）ので直す
+1. **アプリからの実機の作り直しを最後まで確かめる**: 一時の保存先 `%LOCALAPPDATA%\Temp\claude\...\scratchpad\ws2`（D2 の会議のコピー。消えていたら `verify\phase-d\d2\meeting` と `verify\phase-c\eval-workspace` の同じセッションの音声から作り直す）で「記録を作り直す」を押し、2 区間が終わったところでアプリを止めた（ジョブは `organizing` のまま残る）。起動時に Queued に戻して続きから再開し、Rev 4 ができることを確かめる。前回の試験スクリプトは、完了を検知するパスの文字が化けて動かなかったので作り直す
+` が改行に化けた）ので直す
 2. D5: 評価セットの残り（独話・学習・混在。私が文字起こし相当のテキストを作る）。素材の形式は `tests/eval/phase-d/negation.json` に合わせる（`segments` と `expected`: 候補の `match_any`・担当・期限・状態、`forbidden_candidates`・`no_assignee`・`no_due_date`・`forbidden_status`・`markdown_must_not_contain`・`decisions`）
 3. D5: 素材を一時セッションにして生成し、正解と照合する道具（AudioProbe のコマンド）と `Test-PhaseD.ps1`、区間の大きさを決める、`docs/phase-d-report.md`、CLAUDE.md の更新
 4. 配布時のリスク: Corvus の実行時コンパイルは SDK の参照パックを前提にしている（Phase G で検討）
