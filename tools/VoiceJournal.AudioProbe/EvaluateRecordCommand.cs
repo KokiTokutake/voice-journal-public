@@ -310,7 +310,9 @@ internal static class EvaluateRecordCommand
         {
             if (c.Evidence.All(ev => ev.SegmentId != segments[i].SegmentId)) continue;
             for (var j = i - 1; j >= 0 && j >= i - 2 && segments[j].Source == segments[i].Source; j--)
-                if (Norm(segments[j].Text).StartsWith(name + "です", StringComparison.Ordinal)) return true;
+                if (Norm(segments[j].Text).StartsWith(name + "です", StringComparison.Ordinal)
+                    || System.Text.RegularExpressions.Regex.IsMatch(Norm(segments[j].Text), System.Text.RegularExpressions.Regex.Escape(name) + "(?:さん|様|さま|くん|君)、?(?:お願いします|どうぞ)[。！!]?$"))
+                    return true;
             // And the segment right before or after, where the name is the one who acts (「山本さんが」「木村さんお願いします」).
             foreach (var j in new[] { i - 1, i + 1 })
                 if (j >= 0 && j < segments.Count && segments[j].Source == segments[i].Source

@@ -313,7 +313,9 @@ public static partial class CandidateChecker
             var key = DateKey(expression);
             var supported = DateKey(context).Contains(key, StringComparison.Ordinal);
             var near = !supported && nearby.Any(t => DateKey(t).Contains(key, StringComparison.Ordinal));
-            if ((supported || near) && resolution.DueDate is { } d)
+            // 「十一月十六日の夜を予定しています」: the words are a date, the sentence only a plan or a guess.
+            var hedged = segmentTexts.Any(t => DateKey(t).Contains(key, StringComparison.Ordinal) && ReviewHints.HasHedge(t));
+            if ((supported || near) && !hedged && resolution.DueDate is { } d)
             {
                 due = d;
                 if (near) flags.Add(CandidateConcern.NearbyEvidence);
@@ -468,6 +470,8 @@ public static partial class CandidateChecker
                 var before = transcript.Segments[i];
                 if (before.Source != source) break;
                 if (SelfIntroduction().Match(before.Text) is { Success: true } m && EvidenceText.Normalize(m.Groups["n"].Value) == target) return true;
+                // 「木村さん、お願いします」: the chair gives the floor; the next segments are that person speaking.
+                if (GivesTheFloor().Match(before.Text) is { Success: true } f && EvidenceText.Normalize(f.Groups["n"].Value) == target) return true;
             }
         }
         return false;
@@ -475,6 +479,9 @@ public static partial class CandidateChecker
 
     [GeneratedRegex(@"^(?:はい、?)?(?<n>\p{IsCJKUnifiedIdeographs}{1,4})(?:です|と申します)[。、]")]
     private static partial Regex SelfIntroduction();
+
+    [GeneratedRegex(@"(?<n>\p{IsCJKUnifiedIdeographs}{1,4})(?:さん|様|さま|くん|君)、?(?:お願いします|どうぞ)[。！!]?$")]
+    private static partial Regex GivesTheFloor();
 
     // 「皆さんも〜してください」 (a lecturer's advice) or 「私が」: words for people, not a name to put as assignee.
     [GeneratedRegex("^(?:皆さん|皆様|みなさん|みんな|全員|各自|誰か|だれか|私|わたし|自分|僕|俺|担当者|話者|不明|未定|なし|null)$")]
