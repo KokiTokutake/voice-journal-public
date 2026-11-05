@@ -13,7 +13,7 @@ public sealed class LlmSettingsTests
     {
         var generation = new LlmSettings().ToGeneration();
 
-        Assert.Equal(("gemma-3-4b-it", 16384, 3072, 3000), (generation.ModelId, generation.ContextLength, generation.OutputReserve, generation.MaxPieceTokens));
+        Assert.Equal(("gemma-3-4b-it", 16384, 4096, 3000), (generation.ModelId, generation.ContextLength, generation.OutputReserve, generation.MaxPieceTokens));
         Assert.Equal(1, generation.Parallelism);
     }
 
@@ -39,7 +39,7 @@ public sealed class LlmSettingsTests
 
         Assert.Equal(new LlmSettings(), sanitized);
         Assert.Equal(4096, new LlmSettings { ContextLength = 8192, OutputReserve = 4096 }.Sanitized().OutputReserve); // at most half of C
-        Assert.Equal(3072, new LlmSettings { ContextLength = 8192, OutputReserve = 6000 }.Sanitized().OutputReserve);
+        Assert.Equal(4096, new LlmSettings { ContextLength = 8192, OutputReserve = 6000 }.Sanitized().OutputReserve);
     }
 
     [Theory]
@@ -85,7 +85,7 @@ public sealed class LlmSettingsViewModelTests : IDisposable
     public void TheSavedValues_AreShown_AndAChangeIsSavedForTheNextJob()
     {
         Assert.True(_vm.HasLlm);
-        Assert.Equal((LlmEndpoint.Default, "gemma-3-4b-it", 16384, 3072, 3000), (_vm.LlmUrl, _vm.LlmModelId, _vm.LlmContextLength, _vm.LlmOutputReserve, _vm.LlmPieceTokens));
+        Assert.Equal((LlmEndpoint.Default, "gemma-3-4b-it", 16384, 4096, 3000), (_vm.LlmUrl, _vm.LlmModelId, _vm.LlmContextLength, _vm.LlmOutputReserve, _vm.LlmPieceTokens));
 
         _vm.LlmPieceTokens = 2000;
 
@@ -108,8 +108,8 @@ public sealed class LlmSettingsViewModelTests : IDisposable
         _vm.LlmContextLength = 8192;
         _vm.LlmOutputReserve = 6000; // more than half of C
 
-        Assert.Equal(3072, _store.Current.OutputReserve);
-        Assert.Equal(3072, _vm.LlmOutputReserve);
+        Assert.Equal(4096, _store.Current.OutputReserve);
+        Assert.Equal(4096, _vm.LlmOutputReserve);
         Assert.Contains("直して保存しました", _vm.LlmMessage, StringComparison.Ordinal);
     }
 

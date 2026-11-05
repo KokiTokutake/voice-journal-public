@@ -23,7 +23,7 @@ param(
     [ValidateRange(1, 10)] [int]$Repeat = 1,
     [string]$Model = 'gemma-3-4b-it',
     [int]$Context = 16384,
-    [int]$Reserve = 3072,
+    [int]$Reserve = 4096,
     [int]$PieceTokens = 3000,
     # Meeting: 文字起こしのあるセッション（manifest.json と transcripts\ だけを一時の場所に写して使う）
     [string]$Session = (Join-Path $env:LOCALAPPDATA 'VoiceJournal\verify\phase-d\d2\meeting'),

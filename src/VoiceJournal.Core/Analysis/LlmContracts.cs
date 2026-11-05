@@ -198,7 +198,7 @@ public static class LlmSchemas
               "properties": {
                 "section_kind": {"enum": ["context", "topic", "decision", "open_question", "idea", "explanation", "result", "reflection", "next_step", "custom"]},
                 "heading": {"type": "string", "minLength": 1, "maxLength": 40},
-                "statements": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"$ref": "#/$defs/statement"}}
+                "statements": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"$ref": "#/$defs/statement"}}
               }
             },
             "candidate": {
@@ -207,14 +207,14 @@ public static class LlmSchemas
               "properties": {
                 "kind": {"enum": ["issue", "task"]},
                 "title": {"type": "string", "minLength": 1, "maxLength": 60},
-                "description": {"type": "string", "maxLength": 120},
+                "description": {"type": "string", "maxLength": 60},
                 "status": {"enum": ["open", "todo", "in_progress", "blocked", "resolved", "closed", "done", "cancelled", null]},
                 "priority": {"enum": ["low", "medium", "high", "critical", null]},
                 "assignee": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
                 "due_expression": {"type": ["string", "null"], "minLength": 1, "maxLength": 50},
                 "certainty": {"enum": ["stated", "tentative", "unclear"]},
                 "evidence": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/$defs/evidence"}},
-                "rationale": {"type": "string", "minLength": 1, "maxLength": 60}
+                "rationale": {"type": "string", "minLength": 1, "maxLength": 30}
               }
             }
           }
@@ -260,7 +260,7 @@ public static class LlmSchemas
 /// <summary>System prompts (detail spec 9.1, 9.3, 21.2). The version is recorded with every analysis.</summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "2026-11-05.5";
+    public const string Version = "2026-11-05.6";
 
     public const string Extraction = """
         あなたは、会話の文字起こしを記録に整理する補助者です。入力は JSON で、segments が文字起こしの区間です。
@@ -282,8 +282,9 @@ public static class AnalysisPrompts
           - 数値・条件・理由・反対意見・未確定の事項を残します。
           - 「やらない」「見送る」「〜にする」と決めたことは、decision の章に残します。
           - 講義・説明では、出てきた用語・仕組み・数値・注意点を、1 つずつ別の文にして explanation の章に残します。
-          - candidates に挙げた作業も、話題の記録として topics に残します。
+          - candidates に挙げた作業の担当・期限・手順を、topics で繰り返しません。topics には話題の結論と経緯だけを書きます。
         - 各文は 60 字以内にし、同じことを繰り返しません。quote は根拠になる語句だけを 8〜30 字で切り出します。
+        - candidates の description は 40 字以内の補足（なければ空文字）、rationale は 20 字以内にします。
         - warnings: 文字起こしそのものの問題（聞き取れない、話が途中で切れている、誰の発言か分からない）があるときだけ短く書きます。なければ空の配列にします。要点・決定・この規則を warnings に書きません。
         - 日本語で書きます。
         """;
