@@ -1,0 +1,40 @@
+{
+  "id": "tuning-dates",
+  "purpose": "プロンプトの調整用（期限）: 「〇日までに〜を出します」のように、期限の後ろに動作が続く言い方でも、話した日付を期限にする",
+  "use": "tuning",
+  "title": "展示会の準備の打ち合わせ",
+  "started_at": "2026-11-13T10:00:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:02", "source": "loopback", "text": "展示会の準備について、担当と期限を決めておきましょう" },
+    { "t": "00:00:08", "source": "loopback", "text": "まずブースの看板ですが、佐々木さんが担当して、十二月三日までに試作を出します" },
+    { "t": "00:00:17", "source": "mic", "text": "わかりました。配布するパンフレットはどうしますか" },
+    { "t": "00:00:23", "source": "loopback", "text": "パンフレットの原稿は、森さんが来週の木曜日までに書き上げて回します" },
+    { "t": "00:00:32", "source": "loopback", "text": "印刷会社への見積もりの依頼は、私が十一月二十七日までに送ります" },
+    { "t": "00:00:40", "source": "mic", "text": "当日の説明の台本は、まだ誰がやるか決まっていませんね" },
+    { "t": "00:00:47", "source": "loopback", "text": "そうですね。台本は次の打ち合わせで担当を決めましょう" },
+    { "t": "00:00:54", "source": "loopback", "text": "以上です。ありがとうございました" }
+  ],
+  "expected": {
+    "record_types": ["meeting", "work"],
+    "candidates": [
+      { "kind": "task", "match_any": ["看板", "試作"], "assignee": "佐々木", "due_date": "2026-12-03", "status": null },
+      { "kind": "task", "match_any": ["パンフレット", "原稿"], "assignee": "森", "due_date": "2026-11-19", "status": null },
+      { "kind": "task", "match_any": ["見積もり", "印刷"], "due_date": "2026-11-27", "status": null, "note": "担当は話者自身（私）なので照合しない" }
+    ],
+    "optional_candidates": [
+      { "kind": ["task", "issue"], "match_any": ["台本"], "due_date": null }
+    ],
+    "forbidden_candidates": [],
+    "forbidden_status": [
+      { "match_any": [""], "status": ["done", "resolved", "closed"], "reason": "どれもまだ終わっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": ["台本"], "reason": "まだ誰がやるか決まっていない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["台本"], "reason": "期限の発言がない" }
+    ],
+    "decisions": []
+  }
+}
