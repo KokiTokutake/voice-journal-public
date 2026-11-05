@@ -21,6 +21,8 @@ param(
     [string[]]$Fixture,
     # Evaluate: 同じ条件で繰り返す回数（1 回ごとのばらつきが大きいので、判定は合計で行う。各回の前にモデルを解放する）
     [ValidateRange(1, 10)] [int]$Repeat = 1,
+    # bundled: アプリと同じ同梱の llama-server（docs/phase-d-engine-plan.md）、lmstudio: LM Studio
+    [ValidateSet('bundled', 'lmstudio')] [string]$Engine = 'lmstudio',
     [string]$Model = 'gemma-4-e2b-it',
     [int]$Context = 16384,
     [int]$Reserve = 4096,
@@ -37,7 +39,7 @@ $proj = Join-Path $repo 'tools\VoiceJournal.AudioProbe\VoiceJournal.AudioProbe.c
 $exe = Join-Path $repo 'tools\VoiceJournal.AudioProbe\bin\Release\net10.0-windows\VoiceJournal.AudioProbe.exe'
 $out = Join-Path $Root 'verify\phase-d'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$tag = "c$Context-o$Reserve-p$PieceTokens-$($Model -replace '[^A-Za-z0-9.-]', '_')"
+$tag = "$Engine-c$Context-o$Reserve-p$PieceTokens-$($Model -replace '[^A-Za-z0-9.-]', '_')"
 New-Item -ItemType Directory -Force $out | Out-Null
 
 Write-Host '== 評価ツールをビルド' -ForegroundColor Cyan
@@ -52,7 +54,7 @@ function Show([string]$label, [bool]$ok, [string]$detail) {
 
 function Read-Json([string]$path) { return [IO.File]::ReadAllText($path, $utf8) | ConvertFrom-Json }
 
-$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens)
+$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens, '--engine', $Engine)
 
 if ($Test -eq 'Evaluate') {
     $files = Get-ChildItem (Join-Path $repo 'tests\eval\phase-d') -Filter '*.json' | Where-Object {
@@ -69,9 +71,9 @@ if ($Test -eq 'Evaluate') {
             & {
                 $ErrorActionPreference = 'Continue'
                 lms unload --all 2>$null | Out-Null
-                lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null
+                if ($Engine -eq 'lmstudio') { lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null }
             }
-            if ($LASTEXITCODE -ne 0) { throw "モデル $Model を読み込めませんでした" }
+            if ($Engine -eq 'lmstudio' -and $LASTEXITCODE -ne 0) { throw "モデル $Model を読み込めませんでした" }
         }
         $suffix = if ($Repeat -gt 1) { "-r$n" } else { '' }
         $workspace = Join-Path $out "eval\$stamp-$Use-$tag$suffix"
@@ -116,6 +118,13 @@ else {
     Copy-Item (Join-Path $Session 'transcripts') $copy -Recurse
     $result = Join-Path $out "meeting-$stamp-$tag.json"
     Write-Host "== 会議の文字起こしから記録を作る（$tag）" -ForegroundColor Cyan
+    if (Get-Command lms -ErrorAction SilentlyContinue) {
+        & {
+            $ErrorActionPreference = 'Continue'
+            lms unload --all 2>$null | Out-Null
+            if ($Engine -eq 'lmstudio') { lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null }
+        }
+    }
     & $exe organize $copy @common --out $result | Out-Null
     if (-not (Test-Path $result)) { throw "生成の結果がありません（終了コード $LASTEXITCODE）" }
     $r = Read-Json $result

@@ -37,7 +37,8 @@ internal static class EvaluateRecordCommand
         {
             var workspace = Path.GetFullPath(Option("--workspace", "") is { Length: > 0 } w ? w : throw new ArgumentException("--workspace を指定してください。"));
             var settings = OrganizeCommand.Settings(args);
-            using var client = new LmStudioClient(LlmEndpoint.Parse(Option("--url", LlmEndpoint.Default)), TimeSpan.FromMinutes(10));
+            var (client, owner) = OrganizeCommand.Client(args, settings);
+            using var _ = owner;
             var model = await client.GetModelAsync(settings.ModelId, CancellationToken.None).ConfigureAwait(false);
             Console.Error.WriteLine($"model {model.Id}: loaded context {model.LoadedContextLength?.ToString(CultureInfo.InvariantCulture) ?? "?"}");
             var generator = new RecordGenerator(client, new AnalysisSchemaValidator(), TimeProvider.System);

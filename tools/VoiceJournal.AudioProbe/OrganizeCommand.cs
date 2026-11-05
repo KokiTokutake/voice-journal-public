@@ -10,6 +10,7 @@ namespace VoiceJournal.AudioProbe;
 // Phase D2: build a record from a session's transcript in use with LM Studio, and print timing and sizes only.
 //   AudioProbe organize <sessionDir> [--model gemma-4-e2b-it] [--context 16384] [--reserve 4096] [--url http://127.0.0.1:1234/v1]
 //                       [--factor 1.0] [--temperature 0.1] [--parallel 1] [--piece-tokens 3000] [--out <json>]
+//                       [--engine bundled|lmstudio]   (bundled: the app's llama-server, docs/phase-d-engine-plan.md)
 // The analysis and the record draft are saved in the session folder (analysis/, records/, record.draft.md).
 internal static class OrganizeCommand
 {
@@ -29,6 +30,33 @@ internal static class OrganizeCommand
         };
     }
 
+    /// <summary>
+    /// The client for <c>--engine</c>: <c>lmstudio</c> (the default until E3; <c>--url</c>) or <c>bundled</c> (the app's
+    /// llama-server from <c>%LOCALAPPDATA%\VoiceJournal\config\llm-tools.json</c>, started now and stopped on dispose).
+    /// </summary>
+    public static (ILlmClient Client, IDisposable Owner) Client(string[] args, GenerationSettings settings)
+    {
+        string Option(string name, string fallback) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
+        if (Option("--engine", "lmstudio") == "bundled")
+        {
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoiceJournal");
+            var tools = LlmToolSettings.LoadOrCreate(root);
+            var host = new LlamaServerHost(() => tools);
+            var bundled = new BundledLlmClient(host, () => (settings.ContextLength, TimeSpan.FromMinutes(10)));
+            return (bundled, new Owners(bundled, host));
+        }
+        var lmStudio = new LmStudioClient(LlmEndpoint.Parse(Option("--url", LlmEndpoint.Default)), TimeSpan.FromMinutes(10));
+        return (lmStudio, lmStudio);
+    }
+
+    private sealed class Owners(params IDisposable[] owned) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var o in owned) o.Dispose();
+        }
+    }
+
     public static async Task<int> RunAsync(string[] args, JsonSerializerOptions json)
     {
         var sessionDir = Path.GetFullPath(args[1]);
@@ -36,7 +64,8 @@ internal static class OrganizeCommand
         var settings = Settings(args);
         var manifest = SessionManifest.Load(sessionDir);
         var transcript = new TranscriptStore(sessionDir).LoadCurrent() ?? throw new InvalidOperationException("文字起こしがありません。");
-        using var client = new LmStudioClient(LlmEndpoint.Parse(Option("--url", LlmEndpoint.Default)), TimeSpan.FromMinutes(10));
+        var (client, owner) = Client(args, settings);
+        using var _ = owner;
         var model = await client.GetModelAsync(settings.ModelId, CancellationToken.None).ConfigureAwait(false);
         Console.Error.WriteLine($"model {model.Id}: loaded context {model.LoadedContextLength?.ToString(CultureInfo.InvariantCulture) ?? "?"}, max {model.MaxContextLength?.ToString(CultureInfo.InvariantCulture) ?? "?"}");
         if (model.LoadedContextLength is { } loaded && loaded != settings.ContextLength)
