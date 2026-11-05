@@ -217,7 +217,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (LlmUnavailableException ex)
         {
-            LlmStatus = bundled
+            LlmStatus = bundled && ex.Message.Contains("空きメモリ", StringComparison.Ordinal)
+                ? $"✗ LLM-001: {ex.Message}"
+                : bundled
                 ? $"✗ LLM-001: {ex.Message}\n推論エンジンは %LOCALAPPDATA%\\VoiceJournal\\tools\\llama.cpp、モデルは models\\llm に置きます（登録は config\\llm-tools.json）。"
                 : $"✗ LLM-001: {ex.Message}\nLM Studio を起動し、Developer の画面でサーバーを開始（Status: Running）して、モデル「{settings.ModelId}」を読み込んでください。";
         }
