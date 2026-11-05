@@ -110,6 +110,27 @@ JSON Schema 検証器の比較（2026-10-31）:
 | ログ | 当初 `logSensitiveData: true` で、サーバーログ `%USERPROFILE%\.lmstudio\server-logs\` にプロンプト本文（文字起こし）が残っていた。詳細仕様書 21 章の「全文を含むデバッグ記録は明示 ON・期間限定」に合わせ、2026-11-01 に **`false` へ変更**（`.internal\http-server-config.json`、変更前の控えは `.bak-20261101`）。合言葉入りの試験リクエストで、本文がログに出ず `[Sensitive]` と伏せられることを確認した |
 | API 予測履歴 | `developer.apiPredictionHistoryEviction`: 30 日で削除 |
 
+### 同梱の推論エンジン（E1、2026-11-05、`docs/phase-d-engine-plan.md`）
+
+LM Studio をやめ、llama.cpp の `llama-server.exe` をアプリが起動する方針（利用者の承認、2026-11-05）。E1 で手で起動して確かめた値。
+
+| 項目 | 採用値 |
+|---|---|
+| llama.cpp | **b12121**（`version: 0.9.0-dev (build 12121, commit e56f006ed)`、2026-11-05 公開）。`v0.9.0` のタグには Windows の配布物がなく、`bNNNNN` のタグに付いている |
+| 配布物 | `llama-b12121-bin-win-vulkan-x64.zip`（38 MB）。SHA-256 `73111d348dcbfa86050611c28b8bef523c849d80a6e5529e25b67f1b2055e918`（GitHub のリリースの digest と一致）。MIT ライセンス。実行ファイルに署名はない（whisper.cpp と同じく SHA-256 で検査する） |
+| 置き場所 | `%LOCALAPPDATA%\VoiceJournal\tools\llama.cpp\b12121\bin\`。`llama-server.exe` SHA-256 `21b9b7c1e0c429d653d7431a80a2af0e58a9624fa5109068d7980d0e324fe03c`、`ggml-vulkan.dll` SHA-256 `bea12e4528d90c03abdc7c16f698bbd4b4e16995f2fa30e4b88112d802ef1e21` |
+| 起動の引数 | `-m <GGUF> --spec-type draft-mtp -md <MTP の GGUF> -ngld 999 --host 127.0.0.1 --port <空き> --api-key-file <ファイル> --no-webui -np 1 -c 16384 -ngl 999 -lm none --reasoning off` |
+| 確かめたこと | `/health` が `ok`。API キーなしの要求は HTTP 401。`/props` の `n_ctx` 16384・`total_slots` 1。`response_format: json_schema` で構造化出力が取れる。`--reasoning off` で `reasoning_content` が出ない。既定のログ（verbosity 3）に本文は出ない |
+| MTP | ggml-org の別ファイル `mtp-gemma-4-E2B-it-Q4_0.gguf`（59,235,872 bytes、SHA-256 `718d3a44057924d5840c65a0aeedf7929366adeeda92a2006955ccabaf645ef4`）を `--spec-type draft-mtp -md` で読める（LM Studio は読めなかった）。下書き 558 個中 417〜425 個（約 76%）が採用 |
+
+同じ要求（会議 10 区間、出力約 600 トークン）を 2 回送った値。Gradle のデーモン（java、計 4.3 GB）が動いている中での測定。
+
+| エンジン（E2B Q4_0） | 生成の速さ | llama-server |
+|---|---|---|
+| LM Studio | 毎秒 28〜30 トークン | 4.6 GB |
+| llama-server b12121 | 毎秒 35 トークン | 3.6 GB |
+| **llama-server b12121＋MTP** | **毎秒 61 トークン** | **3.9 GB** |
+
 ### Phase D5 モデルの比較（2026-11-04〜05）
 
 評価セット（`tests/eval/phase-d/`、調整用 3 本・受入用 5 本）と、Phase C の 25 分の会議（D2 と同じ入力）で比べた。C=16384・並列 1・GPU 最大。速さとメモリは同じ要求（会議 10 区間、出力 500〜1,100 トークン）を 2 回送った値。
