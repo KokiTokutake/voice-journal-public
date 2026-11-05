@@ -48,6 +48,10 @@
   - 出力が区間ごとに 2,200〜3,000 トークンと多く、O=3072 で 3 回切れて区間を半分にやり直した（約 9 分）。出力の速さは毎秒約 16 トークンで Gemma 3 と同じ。遅さの原因は出力の量
   - Gemma 3 の 317 秒（D2）は、候補を控えめに出していた古いプロンプトでの値。今のプロンプトの Gemma 3 では未測定
   - メモリ: 終了時に llama-server 11.3 GB、空き 3.2 GB（Gradle のデーモン 3.5 GB が戻っていた）。NFR-05 の空き 4 GiB を下回った
+- **利用者と合意した順（2026-11-05）: 1 出力を減らす → 2 E4B のままメモリを減らす → 3 軽いモデル（E2B）と比べる**
+  - 1（`936569a`、プロンプト 2026-11-05.6、O=4096）: 25 分の会議 1,675 → **997 秒**（要求 11 → 5 回、出力 28,000 → 13,179 トークン、毎秒 13.6 トークン）。調整用の精度は 0.929 / 0.90 で落ちていない。NFR-07 はまだ不合格
+  - 2: 文脈長を下げても 0.4〜0.7 GB しか減らない（見積もり 16384: 6.96 GiB、4096: 6.29 GiB）。メモリの大部分は重み。lmstudio-community の Q4_K_M には MTP（`--speculative-draft-mtp`）のデータがなく、読み込みに失敗する。ggml-org の Q4_0（4.59 GB、MTP 用の `mtp-*.gguf` あり）と E2B の Q4_0（2.84 GB）を取得中
+  - lmstudio-community 版の 6.33 GB には画像入力用の mmproj（0.99 GB）が含まれている（不要）
 - **Gemma 4 E4B は取得済み**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y` で途中から再開できた。`lms ls` では `gemma-4-e4b-it`・`gemma4`・6.33 GB）。まだ一度も読み込んでいない
   - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
   - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
