@@ -126,6 +126,9 @@ public static partial class ExtractionConverter
     /// <summary>The reason shown for a candidate left out because its evidence is an instruction to the AI or the app.</summary>
     public const string InjectedReason = "文字起こしの中の、AI やアプリへの命令なので、候補にしません";
 
+    /// <summary>The reason shown for a candidate left out because its evidence only says a reply is awaited.</summary>
+    public const string WaitingReason = "他の人からの返事を待っているだけなので、候補にしません";
+
     public static PieceAnalysis Convert(ExtractionOutput output, AnalysisPiece piece, TranscriptDocument transcript, DateOnly sessionDate)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -195,6 +198,13 @@ public static partial class ExtractionConverter
             if (CandidateChecker.IsInjectedCommand(evidence, transcript))
             {
                 dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = InjectedReason });
+                continue;
+            }
+            // 「まだ返事が来ていません」「回答を待っている状態です」: nobody has said they will do anything. Gemma 4 E2B
+            // listed it although the prompt says not to (2026-11-05, tuning-noise). It stays visible for review.
+            if (CandidateChecker.IsOnlyWaiting(evidence))
+            {
+                dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = WaitingReason });
                 continue;
             }
             candidates.Add(CandidateChecker.Check(c, evidence, transcript, sessionDate, piece.Index));
@@ -267,6 +277,25 @@ public static partial class CandidateChecker
         var texts = evidence.Select(e => e.Quote).Concat(evidence.Select(e => transcript.Find(e.SegmentId)?.Text ?? string.Empty));
         return texts.Any(t => InjectedCommandPattern().IsMatch(EvidenceText.Normalize(t)));
     }
+
+    /// <summary>
+    /// Every quote only says that a reply is still awaited (「まだ返事が来ていません」「回答を待っている状態です」
+    /// 「連絡待ちです」), and none says that someone will act on it (「催促します」「電話で確認してみます」).
+    /// 「返事をもらえると助かる」「返事を待つ、という流れ」 are not waiting states.
+    /// </summary>
+    public static bool IsOnlyWaiting(IReadOnlyList<Evidence> evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (evidence.Count == 0) return false;
+        var quotes = evidence.Select(e => EvidenceText.Normalize(e.Quote)).ToList();
+        return quotes.All(q => WaitingPattern().IsMatch(q)) && !quotes.Any(q => ChasePattern().IsMatch(q));
+    }
+
+    [GeneratedRegex("(?:返事|返信|回答|返答|連絡|結果)(?:は|が)(?:まだ)?(?:来て(?:い|な|ま)|届いて(?:い|な|ま)|ありません|ない)|待って(?:いる|います|いて|おり)|(?:返事|返信|回答|返答|連絡)待ち")]
+    private static partial Regex WaitingPattern();
+
+    [GeneratedRegex("催促|問い合わせ|聞いて(?:み|お)|確認し(?:ます|てみ|てお)|連絡し(?:ます|てみ|てお)|送り(?:ます|直)|電話し")]
+    private static partial Regex ChasePattern();
 
     [GeneratedRegex("(?:AI|人工知能|アシスタント|システム)(?:へ|に)の?(?:指示|命令)|(?:これまで|以前|上記|前)の(?:指示|命令)を無視|管理ファイル.{0,10}(?:削除|消)|外部の?(?:アドレス|URL|サーバー|サイト).{0,6}送")]
     private static partial Regex InjectedCommandPattern();

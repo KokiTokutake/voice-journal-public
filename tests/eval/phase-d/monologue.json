@@ -71,6 +71,7 @@
     ],
     "optional_candidates": [
       { "kind": ["task", "issue"], "match_any": ["提案書", "A社"], "due_date": null, "note": "再来週くらいは推量で、確定していない" },
+      { "kind": ["task", "issue"], "match_any": ["構成"], "due_date": null, "note": "提案書の構成を考えておく（かもしれない）。2026-11-05 に追加: 正しい候補なのに受け皿がなかった（正解表の漏れ。報告書に明記）" },
       { "kind": "task", "match_any": ["歯医者"], "due_date": null, "note": "いつ行けるか分からない" },
       { "kind": ["task", "issue"], "match_any": ["バッテリー", "ノートパソコン"], "due_date": null },
       { "kind": ["task", "issue"], "match_any": ["ブログ", "レビュー"], "due_date": null, "note": "アイデアの段階" },

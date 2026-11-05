@@ -1,0 +1,45 @@
+{
+  "id": "tuning-noise",
+  "purpose": "プロンプトの調整用（雑音）: 他人の返事を待つこと、説明の中の一般論、紹介されただけの話を候補にしない。本当の作業と問題は挙げる",
+  "use": "tuning",
+  "title": "社内システム更新の打ち合わせ",
+  "started_at": "2026-11-12T16:00:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:02", "source": "loopback", "text": "社内システムの更新について、状況を確認させてください" },
+    { "t": "00:00:08", "source": "loopback", "text": "まず、委託先の会社に出した見積もりの依頼ですが、まだ返事が来ていません" },
+    { "t": "00:00:16", "source": "loopback", "text": "先方からの回答を待っている状態です" },
+    { "t": "00:00:22", "source": "mic", "text": "わかりました。それとパスワードの規則ですが、一般には長いほど安全だと言われていますよね" },
+    { "t": "00:00:31", "source": "loopback", "text": "そうですね。記号を混ぜるより、長さを確保するほうが効果が大きいと聞きます" },
+    { "t": "00:00:39", "source": "loopback", "text": "他社では、二要素認証を全員に義務づけたところもあるそうです" },
+    { "t": "00:00:47", "source": "mic", "text": "うちの場合は、まず規則の案を作るところからですね" },
+    { "t": "00:00:53", "source": "loopback", "text": "規則の案は西田さんが作って、来週の火曜日までに共有します" },
+    { "t": "00:01:01", "source": "loopback", "text": "それから、夜間のバックアップの処理が、ときどき途中で止まる問題があります" },
+    { "t": "00:01:09", "source": "loopback", "text": "原因はまだ分かっていません" },
+    { "t": "00:01:14", "source": "mic", "text": "その調査は私が引き受けます。ログを見てみます" },
+    { "t": "00:01:20", "source": "loopback", "text": "ありがとうございます。最後に、利用者の説明資料は前回作ったものがそのまま使えるので、作り直しは不要です" },
+    { "t": "00:01:30", "source": "loopback", "text": "今日はここまでにしましょう" }
+  ],
+  "expected": {
+    "record_types": ["meeting", "work"],
+    "candidates": [
+      { "kind": "task", "match_any": ["規則の案", "パスワード"], "assignee": "西田", "due_date": "2026-11-17", "status": null },
+      { "kind": ["issue", "task"], "match_any": ["バックアップ"], "due_date": null, "status": null, "note": "話者が調査を引き受けた。担当は話者自身なので照合しない" }
+    ],
+    "optional_candidates": [
+      { "kind": ["task", "issue"], "match_any": ["ログ", "調査"], "due_date": null }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["返事", "回答", "返信", "待ち", "待つ"], "reason": "他人の返事を待っているだけで、誰かがやる作業ではない" },
+      { "match_any": ["長さ", "記号", "二要素"], "reason": "説明の中の一般論や他社の紹介で、誰もやるとは言っていない" },
+      { "match_any": ["説明資料", "作り直し"], "reason": "不要と決めた" }
+    ],
+    "forbidden_status": [
+      { "match_any": [""], "status": ["done", "resolved", "closed"], "reason": "どれもまだ終わっていない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["バックアップ"], "reason": "期限の発言がない" }
+    ],
+    "decisions": []
+  }
+}

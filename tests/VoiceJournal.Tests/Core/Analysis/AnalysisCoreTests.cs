@@ -378,6 +378,49 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
+    public void OnlyWaitingForAReply_IsNoCandidate_ButStaysVisibleForReview()
+    {
+        var t = A.Transcript(
+            "委託先に出した見積もりの依頼ですが、まだ返事が来ていません",
+            "先方からの回答を待っている状態です",
+            "返事が来ていないので、明日こちらから催促します",
+            "田中さんには、水曜日までに返事をもらえると助かると書くつもりです",
+            "水曜までに田中さんの返事を待つ、という流れになります",
+            "業者からの連絡待ちです");
+        var piece = ExtractionConverter.Convert(A.Output(candidates:
+        [
+            A.Task("見積もり依頼の返答待ち", "S0001", "まだ返事が来ていません") with
+            {
+                Evidence = [A.Ev("S0001", "まだ返事が来ていません"), A.Ev("S0002", "先方からの回答を待っている状態です")],
+            },
+            A.Task("見積もりの催促", "S0003", "返事が来ていないので、明日こちらから催促します"),
+            A.Task("田中さんへのメール", "S0004", "水曜日までに返事をもらえると助かる"),
+            A.Task("田中さんの返事", "S0005", "水曜までに田中さんの返事を待つ、という流れになります"),
+            A.Task("業者の連絡", "S0006", "業者からの連絡待ちです"),
+        ]), A.WholePiece(t), t, A.Monday);
+
+        Assert.Equal(["見積もりの催促", "田中さんへのメール", "田中さんの返事"], piece.Candidates.Select(c => c.Fields.Title));
+        Assert.Equal(["見積もり依頼の返答待ち", "業者の連絡"], piece.Dropped.Select(d => d.Text));
+        Assert.All(piece.Dropped, d => Assert.Equal(ExtractionConverter.WaitingReason, d.Reason));
+    }
+
+    [Fact]
+    public void WaitingQuote_WithTheTaskInAnotherQuote_IsKept()
+    {
+        var t = A.Transcript("サーバーの移行は、ベンダーの回答を待っている状態です", "回答が来たら、佐藤さんが手順書を作ります");
+        var piece = ExtractionConverter.Convert(A.Output(candidates:
+        [
+            A.Task("手順書の作成", "S0001", "ベンダーの回答を待っている状態です", assignee: "佐藤さん") with
+            {
+                Evidence = [A.Ev("S0001", "ベンダーの回答を待っている状態です"), A.Ev("S0002", "佐藤さんが手順書を作ります")],
+            },
+        ]), A.WholePiece(t), t, A.Monday);
+
+        Assert.Equal("手順書の作成", Assert.Single(piece.Candidates).Fields.Title);
+        Assert.Empty(piece.Dropped);
+    }
+
+    [Fact]
     public void AssigneeAndDueDate_InTheNextSegment_AreTaken_AndMarked()
     {
         var t = A.Transcript("添付ファイルの移行が未完了です", "これは山本さんが引き続き対応して、来週の水曜日までに終わらせます");
