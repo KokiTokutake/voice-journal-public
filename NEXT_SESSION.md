@@ -52,6 +52,12 @@
   - 1（`936569a`、プロンプト 2026-11-05.6、O=4096）: 25 分の会議 1,675 → **997 秒**（要求 11 → 5 回、出力 28,000 → 13,179 トークン、毎秒 13.6 トークン）。調整用の精度は 0.929 / 0.90 で落ちていない。NFR-07 はまだ不合格
   - 2: 文脈長を下げても 0.4〜0.7 GB しか減らない（見積もり 16384: 6.96 GiB、4096: 6.29 GiB）。メモリの大部分は重み。lmstudio-community の Q4_K_M には MTP（`--speculative-draft-mtp`）のデータがなく、読み込みに失敗する。ggml-org の Q4_0（4.59 GB、MTP 用の `mtp-*.gguf` あり）と E2B の Q4_0（2.84 GB）を取得中
   - lmstudio-community 版の 6.33 GB には画像入力用の mmproj（0.99 GB）が含まれている（不要）
+- **2026-11-05 昼: PC の発熱と異音（コトコト音）のため、LLM の試験を中止した**。利用者の判断: LM Studio での運用は軽量にすべき。ほかの要因（エミュレーターの qemu-system、Docker / WSL、Gradle の同時実行、メモリ不足によるページング）もありうる
+  - 速さとメモリ（同じ要求、C=16384）: E4B Q4_K_M 16 tok/s・9.3〜9.8 GB、E4B Q4_0（ggml-org）16.7 tok/s・7.9 GB、**E2B Q4_0（ggml-org）29 tok/s・4.6 GB**、Gemma 3 4B 19 tok/s
+  - E2B Q4_0 の調整用 3 本（1 回）: precision 0.917・recall 0.70（朝会の伊藤・渡辺・加藤の作業を落とした）
+  - MTP は LM Studio では使えない（「MTP の頭部が同梱された GGUF が必要」）。ggml-org の別ファイルの MTP は読まれない
+  - ggml-org の 2 つ（E4B / E2B の Q4_0）は `curl` で `~/.lmstudio/models/ggml-org/` に直接取得した（`lms get` は失敗）。SHA-256 は Hugging Face の値と一致: E4B Q4_0 `a555b900…97f2`、E2B Q4_0 `8e30dff3…6a52`
+  - **次に決めること（PC が落ち着いてから）**: 軽いモデル（E2B）を前提にするか。負荷を重ねないよう、記録の生成を PC を使っていない時間にまとめて行う運用にするか。NFR-07 を見直すか。発熱が続くなら LLM の常用自体を見直す
 - **Gemma 4 E4B は取得済み**（`lms get "https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF@q4_k_m" --gguf -y` で途中から再開できた。`lms ls` では `gemma-4-e4b-it`・`gemma4`・6.33 GB）。まだ一度も読み込んでいない
   - 思考モードは既定でオフ（チャットテンプレートの `enable_thinking` / `<|think|>` でオン）。https://ai.google.dev/gemma/docs/capabilities/thinking
   - 未確認: 今の実行環境（llama.cpp Vulkan 2.69.0）が `gemma4` を読めるか、`json_schema` の構造化出力、日本語の質
