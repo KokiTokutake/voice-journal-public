@@ -41,6 +41,7 @@ public sealed class LlamaServerHost : IDisposable
     private Process? _process;
     private LlamaServerEndpoint? _running;
     private int _inUse;
+    private bool _stopWhenReleased;
     private DateTimeOffset _lastUsed;
     private bool _disposed;
 
@@ -80,6 +81,7 @@ public sealed class LlamaServerHost : IDisposable
             lock (_lock)
             {
                 _inUse++;
+                _stopWhenReleased = false;
                 _lastUsed = _time.GetUtcNow();
             }
             return (_running, new Lease(this));
@@ -104,12 +106,49 @@ public sealed class LlamaServerHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// Stops the server as soon as no request holds it (recording started: the record job cancels its request first,
+    /// so the job is put back in the queue rather than failing on a server that went away).
+    /// </summary>
+    public void StopWhenIdle()
+    {
+        lock (_lock)
+        {
+            if (_process is null) return;
+            if (_inUse > 0)
+            {
+                _stopWhenReleased = true;
+                return;
+            }
+        }
+        _ = Task.Run(StopIfUnused);
+    }
+
     private void Release()
     {
+        bool stop;
         lock (_lock)
         {
             _inUse--;
             _lastUsed = _time.GetUtcNow();
+            stop = _inUse == 0 && _stopWhenReleased;
+            if (stop) _stopWhenReleased = false;
+        }
+        if (stop) _ = Task.Run(StopIfUnused);
+    }
+
+    private void StopIfUnused()
+    {
+        _gate.Wait();
+        try
+        {
+            lock (_lock)
+                if (_inUse > 0 || _disposed) return;
+            StopCore();
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 
@@ -334,11 +373,18 @@ public sealed class LlamaServerHost : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
         _idleTimer.Dispose();
-        StopCore();
+        _gate.Wait();
+        try
+        {
+            _disposed = true;
+            StopCore();
+        }
+        finally
+        {
+            _gate.Release();
+        }
         _job.Dispose();
-        _gate.Dispose();
     }
 
     private sealed class Lease(LlamaServerHost host) : IDisposable

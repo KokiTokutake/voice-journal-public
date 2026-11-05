@@ -96,6 +96,7 @@ public sealed class LlmSettingsViewModelTests : IDisposable
     [Fact]
     public void AUrlOffLoopback_IsNotSaved()
     {
+        _vm.UseLmStudio = true;
         _vm.LlmUrl = "http://192.168.1.20:1234/v1";
 
         Assert.Equal(LlmEndpoint.Default, _store.Current.Url);
@@ -116,6 +117,7 @@ public sealed class LlmSettingsViewModelTests : IDisposable
     [Fact]
     public async Task CheckingTheConnection_ReportsTheLoadedContext_AndWarnsWhenItIsShorter()
     {
+        _vm.UseLmStudio = true;
         await _vm.CheckLlmCommand.ExecuteAsync(null);
 
         Assert.StartsWith("✓", _vm.LlmStatus, StringComparison.Ordinal);
@@ -129,5 +131,31 @@ public sealed class LlmSettingsViewModelTests : IDisposable
         _llm.Unavailable = true;
         await _vm.CheckLlmCommand.ExecuteAsync(null);
         Assert.StartsWith("✗ LLM-001", _vm.LlmStatus, StringComparison.Ordinal);
+        Assert.Contains("LM Studio を起動し", _vm.LlmStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheBundledEngine_IsTheDefault_ItsCheckStartsIt_AndTheEngineChoiceIsSaved()
+    {
+        Assert.True(_vm.UseBundledEngine);
+        await _vm.CheckLlmCommand.ExecuteAsync(null);
+        Assert.StartsWith("✓ 推論エンジン", _vm.LlmStatus, StringComparison.Ordinal);
+
+        _llm.Unavailable = true;
+        await _vm.CheckLlmCommand.ExecuteAsync(null);
+        Assert.Contains("llm-tools.json", _vm.LlmStatus, StringComparison.Ordinal);
+
+        _vm.UseLmStudio = true;
+        Assert.Equal(VoiceJournal.App.Services.LlmEngine.LmStudio, _store.Current.Engine);
+        _vm.UseBundledEngine = true;
+        Assert.Equal(VoiceJournal.App.Services.LlmEngine.Bundled, _store.Current.Engine);
+    }
+
+    [Fact]
+    public void ThePlaceholderUrl_IsNotCheckedWhileTheBundledEngineIsUsed()
+    {
+        _vm.LlmUrl = "http://192.168.1.20:1234/v1"; // ignored: the bundled engine has no URL
+
+        Assert.DoesNotContain("保存していません", _vm.LlmMessage ?? "", StringComparison.Ordinal);
     }
 }

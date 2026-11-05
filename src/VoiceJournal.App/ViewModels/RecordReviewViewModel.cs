@@ -362,7 +362,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             OnPropertyChanged(nameof(CandidatesHeader));
             _title = string.Empty;
             OnPropertyChanged(nameof(RecordTitle));
-            StatusText = IsGenerating ? null : "まだ記録がありません。「記録を作る」で、LM Studio を使って要約と課題・タスクの候補を作ります。";
+            StatusText = IsGenerating ? null : "まだ記録がありません。「記録を作る」で、推論エンジンを使って要約と課題・タスクの候補を作ります。";
             WarningsText = null;
             ProvenanceText = null;
             LoadTranscript(null);
@@ -726,7 +726,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             _activeJob = job.JobId;
             IsGenerating = true;
             JobText = JobLabel(ProcessingState.Queued);
-            Message = $"章「{section.Heading}」の作り直しを順番待ちに入れました。根拠の区間だけを LM Studio に渡します。今の内容は前の Revision に残ります。";
+            Message = $"章「{section.Heading}」の作り直しを順番待ちに入れました。根拠の区間だけを推論エンジンに渡します。今の内容は前の Revision に残ります。";
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -780,7 +780,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     private static string JobLabel(ProcessingState state) => state switch
     {
         ProcessingState.Queued => "記録の作成: 順番待ち（録音中や文字起こし中は待ちます）",
-        ProcessingState.Organizing => "記録の作成: LM Studio で整理しています…",
+        ProcessingState.Organizing => "記録の作成: 推論エンジンで整理しています…",
         ProcessingState.Validating => "記録の作成: 結果を検証しています…",
         _ => UserMessages.ProcessingStateName(state),
     };

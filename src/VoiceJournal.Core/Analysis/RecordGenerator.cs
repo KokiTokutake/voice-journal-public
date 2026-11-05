@@ -382,7 +382,7 @@ public sealed class RecordGenerator
         }
         if (model.LoadedContextLength is { } loaded && loaded < settings.ContextLength)
         {
-            warnings.Add($"LM Studio のコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。LM Studio のモデル設定を確認してください。");
+            warnings.Add($"推論エンジンのコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。LM Studio のモデル設定を確認してください。");
             return settings with { ContextLength = loaded };
         }
         return settings;
@@ -462,7 +462,7 @@ public sealed class RecordGenerator
         {
             AskFailure.TooLong => "応答が出力の上限で切れました（LLM-002）",
             AskFailure.Invalid => "応答が JSON のスキーマに合いませんでした（LLM-003）",
-            _ => "LM Studio の一時的な障害が続きました",
+            _ => "推論エンジンの一時的な障害が続きました",
         };
         return (null, new FailedPiece(piece.Index, piece.StartMs, piece.EndMs, reason));
     }

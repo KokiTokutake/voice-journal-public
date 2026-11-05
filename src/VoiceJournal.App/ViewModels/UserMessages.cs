@@ -68,8 +68,8 @@ internal static class UserMessages
     public static string RecordError(RecordJobError? error, string? detail) => error switch
     {
         null => string.Empty,
-        RecordJobError.LlmUnavailable => "LLM-001: LM Studio に接続できないか、モデルが読み込まれていません。文字起こしは残っています。" +
-            "LM Studio を起動してサーバーを開始し（Developer の「Status: Running」）、設定画面の「接続を確認」で確かめてから「やり直す」を押してください。" +
+        RecordJobError.LlmUnavailable => "LLM-001: 推論エンジンを使えませんでした（起動できない、ファイルが登録と違う、空きメモリが足りない、または LM Studio に接続できない）。文字起こしは残っています。" +
+            "設定画面の「接続を確認」で原因を確かめてから「やり直す」を押してください。" +
             (string.IsNullOrEmpty(detail) ? string.Empty : $"（{detail}）"),
         RecordJobError.GenerationFailed => "LLM-002/003: 記録を作れませんでした。終わった区間は残っています。「やり直す」で残りだけ実行します。" +
             (string.IsNullOrEmpty(detail) ? string.Empty : $"（{detail}）"),
@@ -139,7 +139,7 @@ internal static class UserMessages
         null => string.Empty,
         SttErrorCode.ToolMissing => "STT-001: whisper-cli またはモデルが見つからないか、登録した SHA-256 と一致しません。設定画面の「ツールを確認」で確かめてください。録音は残っています。",
         SttErrorCode.RunFailed => "STT-002: 文字起こしが異常終了したか、時間内に終わりませんでした。終わった区間は残っています。「やり直す」で残りだけ実行します。",
-        SttErrorCode.NotEnoughMemory => "STT-002: 空きメモリが足りません。LM Studio などでモデルを読み込んでいたら、アンロードしてからやり直してください。",
+        SttErrorCode.NotEnoughMemory => "STT-002: 空きメモリが足りません。ほかのアプリ（LM Studio でモデルを読み込んでいれば、それも）を閉じてからやり直してください。",
         SttErrorCode.Cancelled => "取り消しました。終わった区間と録音は残っています。",
         SttErrorCode.Preempted => "録音のために中断しました。録音が終わると続きから再開します。",
         SttErrorCode.Conflict => "再認識している間に同じ範囲が修正されたため、結果を反映しませんでした。もう一度実行してください。",

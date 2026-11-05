@@ -10,9 +10,10 @@ using VoiceJournal.Infrastructure.Stt;
 namespace VoiceJournal.App.ViewModels;
 
 /// <summary>
-/// UI-12 settings (detail spec 18.2): transcription (model, VAD, gain, threads) and record generation (LM Studio URL,
-/// model id, context length C, output reserve O, piece size). Saved at once; applied from the next job (a queued job
-/// keeps its snapshot). "ツールを確認" checks the registered executable and models; "接続を確認" asks LM Studio.
+/// UI-12 settings (detail spec 18.2): transcription (model, VAD, gain, threads) and record generation (engine: the
+/// bundled llama.cpp server or LM Studio and its URL, model id, context length C, output reserve O, piece size). Saved
+/// at once; applied from the next job (a queued job keeps its snapshot). "ツールを確認" checks the registered executable
+/// and models; "接続を確認" starts the bundled server for the model (or asks LM Studio).
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
@@ -45,6 +46,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private void ShowLlm(LlmSettings settings)
     {
+        LlmEngine = settings.Engine;
         LlmUrl = settings.Url;
         LlmModelId = settings.ModelId;
         LlmContextLength = settings.ContextLength;
@@ -82,6 +84,31 @@ public sealed partial class SettingsViewModel : ObservableObject
     public bool HasLlm => _llmStore is not null;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UseBundledEngine), nameof(UseLmStudio))]
+    public partial LlmEngine LlmEngine { get; set; } = LlmEngine.Bundled;
+
+    /// <summary>The radio buttons: the bundled engine (the default) or LM Studio (the URL applies only then).</summary>
+    public bool UseBundledEngine
+    {
+        get => LlmEngine == LlmEngine.Bundled;
+        set
+        {
+            if (value) LlmEngine = LlmEngine.Bundled;
+        }
+    }
+
+    public bool UseLmStudio
+    {
+        get => LlmEngine == LlmEngine.LmStudio;
+        set
+        {
+            if (value) LlmEngine = LlmEngine.LmStudio;
+        }
+    }
+
+    partial void OnLlmEngineChanged(LlmEngine value) => SaveLlm();
+
+    [ObservableProperty]
     public partial string LlmUrl { get; set; } = LlmEndpoint.Default;
 
     [ObservableProperty]
@@ -116,21 +143,25 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnLlmPieceTokensChanged(int value) => SaveLlm();
 
-    /// <summary>Saves the LM Studio settings; a URL off loopback is refused (detail spec 9.1) and out-of-range numbers are corrected.</summary>
+    /// <summary>Saves the record settings; an LM Studio URL off loopback is refused (detail spec 9.1) and out-of-range numbers are corrected.</summary>
     private void SaveLlm()
     {
         if (_loading || _llmStore is null) return;
-        try
+        if (LlmEngine == LlmEngine.LmStudio)
         {
-            LlmEndpoint.Parse(LlmUrl);
-        }
-        catch (ArgumentException ex)
-        {
-            LlmMessage = ex.Message + "（保存していません）";
-            return;
+            try
+            {
+                LlmEndpoint.Parse(LlmUrl);
+            }
+            catch (ArgumentException ex)
+            {
+                LlmMessage = ex.Message + "（保存していません）";
+                return;
+            }
         }
         var wanted = _llmStore.Load() with
         {
+            Engine = LlmEngine,
             Url = LlmUrl,
             ModelId = LlmModelId,
             ContextLength = LlmContextLength,
@@ -160,7 +191,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     private bool CanCheckLlm() => _llm is not null && !IsCheckingLlm;
 
-    /// <summary>Asks LM Studio whether it runs and has the model, and with which context length (LLM-001).</summary>
+    /// <summary>Starts the bundled server for the model (or asks LM Studio whether it runs and has it), and reports the context length (LLM-001).</summary>
     [RelayCommand(CanExecute = nameof(CanCheckLlm))]
     private async Task CheckLlmAsync()
     {
@@ -168,10 +199,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsCheckingLlm = true;
         LlmStatus = "確認しています…";
         var settings = _llmStore.Load();
+        var bundled = settings.Engine == LlmEngine.Bundled;
         try
         {
             var model = await _llm.GetModelAsync(settings.ModelId, CancellationToken.None);
-            LlmStatus = model.Loaded switch
+            LlmStatus = bundled
+                ? $"✓ 推論エンジン（llama.cpp）でモデル {model.Id} を起動できました" + (model.LoadedContextLength is { } n ? $"（コンテキスト長 {n}）。" : "。") + "使わなければ 1 分ほどで終了し、メモリを返します。"
+                : model.Loaded switch
             {
                 false => $"✓ LM Studio に接続できました。モデル {model.Id} は今は読み込まれていません（記録を作るときに自動で読み込みます）。",
                 _ => $"✓ LM Studio に接続できました。モデル {model.Id} は読み込み済みです" +
@@ -183,11 +217,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (LlmUnavailableException ex)
         {
-            LlmStatus = $"✗ LLM-001: {ex.Message}\nLM Studio を起動し、Developer の画面でサーバーを開始（Status: Running）して、モデル「{settings.ModelId}」を読み込んでください。";
+            LlmStatus = bundled
+                ? $"✗ LLM-001: {ex.Message}\n推論エンジンは %LOCALAPPDATA%\\VoiceJournal\\tools\\llama.cpp、モデルは models\\llm に置きます（登録は config\\llm-tools.json）。"
+                : $"✗ LLM-001: {ex.Message}\nLM Studio を起動し、Developer の画面でサーバーを開始（Status: Running）して、モデル「{settings.ModelId}」を読み込んでください。";
         }
         catch (LlmProtocolException ex)
         {
-            LlmStatus = $"✗ LM Studio の応答を確かめられませんでした（{ex.Message}）。";
+            LlmStatus = bundled ? $"✗ 推論エンジンの応答を確かめられませんでした（{ex.Message}）。" : $"✗ LM Studio の応答を確かめられませんでした（{ex.Message}）。";
         }
         finally
         {

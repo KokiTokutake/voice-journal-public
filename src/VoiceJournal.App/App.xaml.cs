@@ -72,6 +72,14 @@ public partial class App : Application
         var index = _services.GetRequiredService<ISessionIndex>();
         var transcription = _services.GetRequiredService<TranscriptionCoordinator>();
         var records = _services.GetRequiredService<RecordCoordinator>();
+        // Recording comes first (detail spec 3.1): the record job cancels its request, then the bundled server stops
+        // and gives its memory back; it starts again for the next job.
+        var recording = _services.GetRequiredService<RecordingViewModel>();
+        var engine = _services.GetRequiredService<LlamaServerHost>();
+        recording.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RecordingViewModel.Status) && TranscriptionCoordinator.IsActive(recording.Status)) engine.StopWhenIdle();
+        };
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {
             var report = WorkspaceStartup.Run(workspace, index);
@@ -130,7 +138,19 @@ public partial class App : Application
             sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<InferenceGate>()));
         services.AddSingleton<ILlmSettingsStore>(new JsonLlmSettingsStore(JsonLlmSettingsStore.DefaultPath));
-        services.AddSingleton<ILlmClient>(sp =>
+        // The bundled llama.cpp server (docs/phase-d-engine-plan.md); LM Studio stays selectable during the move.
+        services.AddSingleton(_ => LlmToolSettings.LoadOrCreate(AppDataRoot));
+        services.AddSingleton(sp => new LlamaServerHost(sp.GetRequiredService<LlmToolSettings>, idleTimeout: TimeSpan.FromSeconds(60)));
+        services.AddSingleton(sp =>
+        {
+            var store = sp.GetRequiredService<ILlmSettingsStore>();
+            return new BundledLlmClient(sp.GetRequiredService<LlamaServerHost>(), () =>
+            {
+                var settings = store.Load();
+                return (settings.ContextLength, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
+            });
+        });
+        services.AddSingleton(sp =>
         {
             var store = sp.GetRequiredService<ILlmSettingsStore>();
             return new ConfiguredLlmClient(() =>
@@ -139,6 +159,9 @@ public partial class App : Application
                 return (settings.Url, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
             });
         });
+        services.AddSingleton<ILlmClient>(sp => new SelectingLlmClient(
+            () => sp.GetRequiredService<ILlmSettingsStore>().Load().Engine,
+            sp.GetRequiredService<BundledLlmClient>(), sp.GetRequiredService<ConfiguredLlmClient>()));
         services.AddSingleton<IAnalysisSchemaValidator, AnalysisSchemaValidator>();
         services.AddSingleton(sp => new RecordGenerator(sp.GetRequiredService<ILlmClient>(), sp.GetRequiredService<IAnalysisSchemaValidator>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new RecordJobProcessor(sp.GetRequiredService<RecordGenerator>(), sp.GetRequiredService<TimeProvider>()));

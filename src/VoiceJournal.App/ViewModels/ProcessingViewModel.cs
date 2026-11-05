@@ -247,7 +247,7 @@ public sealed partial class ProcessingViewModel : ObservableObject
             if (row.IsRecord) _records?.Retry(row.Directory, row.JobId);
             else _transcription.Retry(row.Directory, row.JobId);
             Message = "順番待ちに戻しました。終わった区間はそのまま使い、残りだけを実行します。" +
-                (row.IsRecord ? "LM Studio が動いていなかったときは、起動してサーバーを開始してから押してください。" : string.Empty);
+                (row.IsRecord ? "推論エンジンを使えなかったときは、設定画面の「接続を確認」で確かめてから押してください。" : string.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or InvalidOperationException)
         {
