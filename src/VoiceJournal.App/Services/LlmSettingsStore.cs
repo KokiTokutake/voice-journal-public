@@ -15,7 +15,7 @@ public sealed record LlmSettings
     /// <summary>LM Studio's OpenAI-compatible API, on loopback only.</summary>
     public string Url { get; init; } = LlmEndpoint.Default;
 
-    public string ModelId { get; init; } = "gemma-3-4b-it";
+    public string ModelId { get; init; } = "gemma-4-e2b-it";
 
     /// <summary>C: the context length the model is loaded with. When LM Studio reports a shorter one, that one is used.</summary>
     public int ContextLength { get; init; } = 16384;

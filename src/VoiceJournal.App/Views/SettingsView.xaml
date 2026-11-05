@@ -76,7 +76,7 @@
                              ToolTip="長い文字起こしを分ける大きさ（トークン）。大きいほど速く、小さいほど細部が残ります" />
                 </Grid>
                 <TextBlock Margin="0,12,0,0" Style="{StaticResource Note}" TextWrapping="Wrap"
-                           Text="LM Studio のサーバーを開始し、モデルを読み込んでおいてください（推奨: lms load gemma-3-4b-it -c 16384 --parallel 1 --gpu max --ttl 600）。録音中と文字起こし中は、記録の作成を待たせます。" />
+                           Text="LM Studio のサーバーを開始し、モデルを読み込んでおいてください（推奨: lms load gemma-4-e2b-it -c 16384 --parallel 1 --gpu max --ttl 600）。録音中と文字起こし中は、記録の作成を待たせます。" />
                 <TextBlock Margin="0,6,0,0" Text="{Binding LlmMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                            Visibility="{Binding LlmMessage, Converter={StaticResource TextToVisibility}}" />
                 <Button Content="接続を確認(_T)" Tag="&#xE703;" Command="{Binding CheckLlmCommand}" Style="{StaticResource ActionButton}"

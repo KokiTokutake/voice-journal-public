@@ -1,4 +1,4 @@
-# 次のセッションでやること（2026-11-04 夕方時点）
+# 次のセッションでやること（2026-11-05 時点）
 
 **Phase D（記録生成）の D5（評価と受入試験）を実施中**です。計画は `docs/phase-d-plan.md`（承認済み。0 章に 2026-11-04 の決定を追記）。D1〜D4 は完了。
 
@@ -71,10 +71,9 @@
 
 ## 次の手順
 
-1. **利用者と合意済みの順で進める**（2026-11-04）: ① 担当・期限を隣の区間から拾う（済み `3a3ad42`）→ ② 3 回ずつ測って合計で判定 → ③ Gemma 4 E4B と比べる
-   - 始める前に空きメモリを確かめる。Gemma 4 E4B の読み込みには 6 GB 以上の空きが要る。ほかの重いアプリ（エミュレーターの qemu-system、Gradle などの java）が動いていたら、利用者に閉じてよいか聞く。`lms unload --all` と `dotnet build-server shutdown` も先に
-   - Gemma 4 は先に短い要求で確かめる: `lms load gemma-4-e4b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-4-e4b-it -y` → 実行環境が `gemma4` を読めるか、`json_schema` の構造化出力、思考の出力（`<|channel>thought`）が混ざらないか、日本語の質
-   - 測定: `.\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning -Repeat 3`（約 20 分）と `-Repeat 3`（受入用、約 35 分）を、`-Model gemma-3-4b-it` と `-Model gemma-4-e4b-it` で。バックグラウンドで回すとメモリ不足のときに止められるので、空きを 10 GB 前後にしてから
+1. **E2B の recall を上げる**（調整用の 1 回で 0.70、基準 0.80）。朝会の伊藤・渡辺・加藤の作業（担当つき）を落としていた。プロンプトを E2B 向けに直し、調整用 → 受入用の順に測る。**LLM の試験の前に、エミュレーター・Docker・Gradle などが動いていないか確かめ、動いていれば閉じてよいか利用者に聞く**。1 回の実行は 10 分以内に分けてフォアグラウンドで回す
+   - E2B の 25 分の会議（NFR-07）もまだ測っていない
+   - Docker Desktop は 2026-11-05 に止めた（`docker desktop start` で戻す）
 2. 残っている precision の外れ: 講師の一般的な勧め（「支出の書き出し」）、まとめただけの候補（「未解決問題」）、要約が 1 項目になる短い会議。やらないと決めたことは候補から外した（`7ff16d5`、利用者と合意）
 3. NFR-07: `.\scripts\Test-PhaseD.ps1 -Test Meeting`（Phase C の 25 分の会議。`verify\phase-d\d2\meeting` の文字起こしを写して使う）。区間の大きさ（`-PieceTokens`）も比べて決める
 4. `docs/phase-d-report.md`、CLAUDE.md の更新
@@ -84,8 +83,11 @@
 
 ## LM Studio
 
-- 読み込み: `lms load gemma-3-4b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-3-4b-it -y`（mmap オフ。詳細は `docs/environment-lock.md` 6 章）
-- サーバーが止まっていたら `lms server start`。モデルは要求で自動的に読み込まれる（既定 16384・並列 1、TTL 1 時間）
+- **モデルは Gemma 4 E2B Q4_0（`gemma-4-e2b-it`）**（2026-11-05 に切り替え。`docs/environment-lock.md` 6 章）
+- 読み込み: `lms load gemma-4-e2b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-4-e2b-it -y`
+- **利用者にお願いすること**: LM Studio の E2B のモデル設定の既定値を、Gemma 3 と同じにする（コンテキスト長 16384・GPU 最大・並列 1・mmap オフ）。入れないと、要求での自動の読み込みで文脈長が最大（128K）になるおそれがある
+- サーバーが止まっていたら `lms server start`。モデルは要求で自動的に読み込まれる（TTL 1 時間）
+- 思考は `reasoning_effort: "none"` で切る（アプリが常に送る）
 
 ## 守ること
 

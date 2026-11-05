@@ -21,7 +21,7 @@ param(
     [string[]]$Fixture,
     # Evaluate: 同じ条件で繰り返す回数（1 回ごとのばらつきが大きいので、判定は合計で行う。各回の前にモデルを解放する）
     [ValidateRange(1, 10)] [int]$Repeat = 1,
-    [string]$Model = 'gemma-3-4b-it',
+    [string]$Model = 'gemma-4-e2b-it',
     [int]$Context = 16384,
     [int]$Reserve = 4096,
     [int]$PieceTokens = 3000,
@@ -64,7 +64,7 @@ if ($Test -eq 'Evaluate') {
     for ($n = 1; $n -le $Repeat; $n++) {
         # llama-server grows with every inference and does not give the memory back: start each run from a fresh load.
         # Loaded explicitly with these settings: a just-in-time load uses the model's own defaults in LM Studio, which
-        # were set (16384, parallel 1) for gemma-3-4b-it only; another model could come up with its full 128K context.
+        # may differ per model; a model without them set could come up with its full 128K context.
         if (Get-Command lms -ErrorAction SilentlyContinue) {
             & {
                 $ErrorActionPreference = 'Continue'

@@ -87,18 +87,20 @@ JSON Schema 検証器の比較（2026-10-31）:
 | LM Studio | 0.4.27+2（winget `ElementLabs.LMStudio`） |
 | API | `http://127.0.0.1:1234/v1`（ループバックのみ） |
 | CLI | `lms`（`%USERPROFILE%\.lmstudio\bin\lms.exe`、CLI commit `43d4b26`） |
-| モデル | Gemma 3 4B Instruct（`lmstudio-community/gemma-3-4b-it-GGUF`、Gemma ライセンス、gated なし） |
-| 配布元 | https://huggingface.co/lmstudio-community/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf |
-| モデル ID | `gemma-3-4b-it`（`lms load --identifier` で固定） |
-| GGUF ファイル | `%USERPROFILE%\.lmstudio\models\lmstudio-community\gemma-3-4b-it-GGUF\gemma-3-4b-it-Q4_K_M.gguf`（2,489,757,856 bytes） |
-| GGUF SHA-256 | `be49949e48422e4547b00af14179a193d3777eea7fbbd7d6e1b0861304628a01`（HF 公開値と一致） |
-| 取得方法 | `lms get` が低速で中断したため `curl -C - --retry 5` で取得。mmproj（画像入力用）は不要のため未取得 |
-| コンテキスト長 C / 出力予約 O | **C=16384 / O=3072**（Phase D2 の実測で変更。C=8192 では 25 分の会議が 6 区間・約 10 分かかった）。区間の大きさの上限は D5 の評価で決める（下の D2 実測） |
+| モデル | **Gemma 4 E2B Instruct Q4_0**（`ggml-org/gemma-4-E2B-it-GGUF`、Apache-2.0）。2026-11-05 に利用者と合意して Gemma 3 4B から切り替えた（下の「Phase D5 モデルの比較」） |
+| 配布元 | https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf |
+| モデル ID | `gemma-4-e2b-it`（`lms load --identifier` で固定） |
+| GGUF ファイル | `%USERPROFILE%\.lmstudio\models\ggml-org\gemma-4-E2B-it-GGUF\gemma-4-E2B-it-Q4_0.gguf`（2,841,481,184 bytes） |
+| GGUF SHA-256 | `8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52`（HF 公開値と一致） |
+| 取得方法 | `lms get` は ggml-org のリポジトリで MTP 用のファイルだけを選んで失敗したため、`curl -L -C - --retry 5` で直接取得。MTP 用の `mtp-gemma-4-E2B-it-Q4_0.gguf`（SHA-256 `718d3a44…5ef4`）も取得したが、LM Studio は別ファイルの MTP を読まない（「MTP の頭部が同梱された GGUF が必要」）。mmproj（画像入力用）は不要のため未取得 |
+| 思考 | Gemma 4 は LM Studio で既定で思考し、出力の約 4 分の 3 を思考に使う。要求に `reasoning_effort: "none"` を付けると切れる（`chat_template_kwargs`・`reasoning`・`enable_thinking` は効かない）。アプリは常に付けて送る |
+| 以前の採用値 | Gemma 3 4B Instruct Q4_K_M（`lmstudio-community/gemma-3-4b-it-GGUF`、2,489,757,856 bytes、SHA-256 `be49949e48422e4547b00af14179a193d3777eea7fbbd7d6e1b0861304628a01`）。Phase A〜D4 で使用。抽出の recall が D5 の基準に届かなかった |
+| コンテキスト長 C / 出力予約 O | **C=16384 / O=4096**（D2 で C を 8192 から変更、D5 で O を 3072 から変更。O=3072 では Gemma 4 の出力が切れ、区間を半分にしたやり直しが起きた）。区間の大きさの上限は 3,000 トークン |
 | Structured Output（json_schema） | **対応を確認**。`response_format: json_schema`（strict）で日本語要約・タスク・課題を取得し、解析成功 |
 | 推論エンジン | `llama.cpp-win-x86_64-vulkan-avx2@2.67.0`（LM Studio 既定選択）、AMD Radeon 890M（内蔵 GPU）。**GPU オフロードは `--gpu max`（100%）**。既定の自動ではモデルの大半が GPU に載らなかった（GPU 共有メモリ 841 MB） |
 | 並列数 | **1**（`--parallel 1`）。既定の 4 は枠ごとに文脈を確保してメモリを約 1.3 GB 多く使い、並列 2 でも速さは約 1 割しか上がらなかった（出力はメモリ帯域で頭打ち、約 18〜20 トークン/秒） |
 | mmap | **オフ**（LM Studio のモデル設定「Try mmap()」、2026-11-02 に利用者が変更）。オンでは GGUF の mmap（約 2.3 GB）と GPU 用のコピーが二重になり、llama-server の作業セットが 5〜8 GB になった。オフで読み込み直後の作業セット約 1.1〜1.3 GB、読み込み 2.8 秒 |
-| 読み込みのコマンド | `lms load gemma-3-4b-it -c 16384 --parallel 1 --gpu max --identifier gemma-3-4b-it -y`（読み込み直後: 作業セット 1.2 GB・プライベート 3.7 GB・GPU 共有 約 3.4 GB） |
+| 読み込みのコマンド | `lms load gemma-4-e2b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-4-e2b-it -y`（推論後の llama-server 約 4.6 GB）。Gemma 3 のときは `gemma-3-4b-it`（読み込み直後: 作業セット 1.2 GB・プライベート 3.7 GB・GPU 共有 約 3.4 GB） |
 | 推論によるメモリの増加 | 推論のたびに llama-server のプライベートが増え、待機しても減らない（25 分の会議 1 回で並列 1 は +1.6 GB、並列 2 は +3.5 GB）。読み込み直すと戻る。上限は未確認（プロンプトキャッシュの可能性）。対策の候補は `--ttl`（使わない間に解放） |
 | 認証 | **なし**（トークンなし・でたらめなトークンのどちらでも HTTP 200）。詳細仕様書 9 章のとおり任意。使う場合はトークンを Windows 資格情報ストアから読み、ログに書かない |
 | 待ち受け | `127.0.0.1:1234`（API）、`127.0.0.1:41343`・`127.0.0.1:61142`（`lms` CLI 等の内部用）。**LAN 向けの待ち受けなし**（`networkInterface: 127.0.0.1`、`cors: false`） |
@@ -107,6 +109,21 @@ JSON Schema 検証器の比較（2026-10-31）:
 | JIT ロード | `justInTimeModelLoading: true`。API でモデル ID を指定すると未ロードでも読み込まれる。詳細仕様書 24.2「モデル設定を無断変更しない」に合わせ、アプリは `GET /v1/models` でロード済みか確認してから使う |
 | ログ | 当初 `logSensitiveData: true` で、サーバーログ `%USERPROFILE%\.lmstudio\server-logs\` にプロンプト本文（文字起こし）が残っていた。詳細仕様書 21 章の「全文を含むデバッグ記録は明示 ON・期間限定」に合わせ、2026-11-01 に **`false` へ変更**（`.internal\http-server-config.json`、変更前の控えは `.bak-20261101`）。合言葉入りの試験リクエストで、本文がログに出ず `[Sensitive]` と伏せられることを確認した |
 | API 予測履歴 | `developer.apiPredictionHistoryEviction`: 30 日で削除 |
+
+### Phase D5 モデルの比較（2026-11-04〜05）
+
+評価セット（`tests/eval/phase-d/`、調整用 3 本・受入用 5 本）と、Phase C の 25 分の会議（D2 と同じ入力）で比べた。C=16384・並列 1・GPU 最大。速さとメモリは同じ要求（会議 10 区間、出力 500〜1,100 トークン）を 2 回送った値。
+
+| モデル | 毎秒のトークン | llama-server | 精度（precision / recall） | 25 分の会議 |
+|---|---|---|---|---|
+| Gemma 3 4B Q4_K_M | 19 | 1.3〜3.6 GB | 調整用 3 回 0.85 / 0.633、受入用 1 回 0.80 / 0.667 | 未測定（今のプロンプト） |
+| Gemma 4 E4B Q4_K_M（lmstudio-community） | 15〜16 | 9.3〜11.3 GB | 調整用 3 回 0.917 / 0.867、受入用 3 回 0.963 / 0.944 | 1,675 秒（O=3072、やり直しあり）→ 997 秒（O=4096、プロンプト 2026-11-05.6） |
+| Gemma 4 E4B Q4_0（ggml-org） | 16.7 | 7.9 GB | 未測定 | 未測定 |
+| **Gemma 4 E2B Q4_0（ggml-org）** | **29** | **4.6 GB** | 調整用 1 回 0.917 / 0.70 | 未測定 |
+
+- 時間を決めるのは出力の量。E4B の 25 分の会議は出力 13,179 トークンで、NFR-07（300 秒）には届かない
+- E4B は録音・whisper・ほかのアプリと並べると空きメモリが 1〜4 GB まで減り、PC の発熱も大きかった（2026-11-05、エミュレーター・Docker・Gradle と同時）。利用者の判断で、軽い E2B を採用した。E2B の recall（0.70）は基準 0.80 に届いていないので、プロンプトの調整を続ける
+- 文脈長を下げても、メモリは 0.4〜0.7 GB しか減らない（E4B の見積もり: 16384 で 6.96 GiB、4096 で 6.29 GiB）。メモリの大部分は重み
 
 ### Phase D2 実測（2026-11-02、記録の生成）
 
