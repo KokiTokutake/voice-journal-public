@@ -92,7 +92,7 @@ JSON Schema 検証器の比較（2026-10-31）:
 | モデル ID | `gemma-4-e2b-it`（`lms load --identifier` で固定） |
 | GGUF ファイル | `%USERPROFILE%\.lmstudio\models\ggml-org\gemma-4-E2B-it-GGUF\gemma-4-E2B-it-Q4_0.gguf`（2,841,481,184 bytes） |
 | GGUF SHA-256 | `8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52`（HF 公開値と一致） |
-| 取得方法 | `lms get` は ggml-org のリポジトリで MTP 用のファイルだけを選んで失敗したため、`curl -L -C - --retry 5` で直接取得。MTP 用の `mtp-gemma-4-E2B-it-Q4_0.gguf`（SHA-256 `718d3a44…5ef4`）も取得したが、LM Studio は別ファイルの MTP を読まない（「MTP の頭部が同梱された GGUF が必要」）。mmproj（画像入力用）は不要のため未取得 |
+| 取得方法 | `lms get` は ggml-org のリポジトリで MTP 用のファイルだけを選んで失敗したため、`curl -L -C - --retry 5` で直接取得。MTP 用の `mtp-gemma-4-E2B-it-Q4_0.gguf`（SHA-256 `718d3a44…5ef4`）も取得したが、LM Studio は別ファイルの MTP を読まない（「MTP の頭部が同梱された GGUF が必要」）ため削除した。比較に使った E4B の 2 つ（Q4_K_M・Q4_0）も 2026-11-05 に削除。Gemma 3 4B は比べ直し・戻すときのために残している。mmproj（画像入力用）は不要のため未取得 |
 | 思考 | Gemma 4 は LM Studio で既定で思考し、出力の約 4 分の 3 を思考に使う。要求に `reasoning_effort: "none"` を付けると切れる（`chat_template_kwargs`・`reasoning`・`enable_thinking` は効かない）。アプリは常に付けて送る |
 | 以前の採用値 | Gemma 3 4B Instruct Q4_K_M（`lmstudio-community/gemma-3-4b-it-GGUF`、2,489,757,856 bytes、SHA-256 `be49949e48422e4547b00af14179a193d3777eea7fbbd7d6e1b0861304628a01`）。Phase A〜D4 で使用。抽出の recall が D5 の基準に届かなかった |
 | コンテキスト長 C / 出力予約 O | **C=16384 / O=4096**（D2 で C を 8192 から変更、D5 で O を 3072 から変更。O=3072 では Gemma 4 の出力が切れ、区間を半分にしたやり直しが起きた）。区間の大きさの上限は 3,000 トークン |
