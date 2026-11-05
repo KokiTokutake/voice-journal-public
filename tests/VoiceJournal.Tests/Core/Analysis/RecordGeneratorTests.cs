@@ -333,15 +333,15 @@ public sealed class RecordGeneratorTests
     public async Task UnloadedModel_IsWokenFirst_AndAShorterLoadedContextIsUsed()
     {
         using var dir = new TempDirectory();
-        var llm = new EchoLlm { Unloaded = true, LoadedContext = 4096 };
+        var llm = new EchoLlm { Unloaded = true, LoadedContext = 6144 };
 
         var result = await Generator(llm).GenerateAsync(Request(dir, Meeting(40), Settings with { OutputReserve = 1024 }), null, CancellationToken.None);
 
         Assert.Equal(GenerationOutcome.Generated, result.Outcome);
         Assert.Equal("voice_journal_wake", llm.Requests[0].SchemaName);
         var analysis = new AnalysisStore(dir.Path).Load(result.AnalysisRevision!.Value);
-        Assert.Equal(4096, analysis.Provenance.ContextLength);
-        Assert.Contains(analysis.Analysis.Warnings, w => w.Contains("コンテキスト長が 4096", StringComparison.Ordinal));
+        Assert.Equal(6144, analysis.Provenance.ContextLength);
+        Assert.Contains(analysis.Analysis.Warnings, w => w.Contains("コンテキスト長が 6144", StringComparison.Ordinal));
     }
 
     [Fact]
