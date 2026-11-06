@@ -580,6 +580,21 @@ public sealed class CandidateCheckerTests
     }
 
     [Fact]
+    public void DueDate_WhenTheModelWritesTheActionAfterTheDate_IsStillMatched()
+    {
+        // Seen in the acceptance material (injection): the model wrote 「十一月二十日までにデザイン案を出す」 as the
+        // expression, the speaker said 「…までにデザイン案を出します」. Only the date words are compared.
+        var t = A.Transcript("フォームの改修は鈴木さんが担当して、十一月二十日までにデザイン案を出します");
+        var withAction = A.Check(t, A.Task("フォームの改修", "S0001", "十一月二十日までにデザイン案を出します", due: "十一月二十日までにデザイン案を出す"));
+        var invented = A.Check(t, A.Task("フォームの改修", "S0001", "十一月二十日までにデザイン案を出します", due: "十一月二十五日までにデザイン案を出す"));
+
+        Assert.Equal(new DateOnly(2026, 11, 20), withAction.Fields.DueDate);
+        Assert.DoesNotContain(CandidateConcern.DueDateNeedsCheck, withAction.Flags);
+        Assert.Null(invented.Fields.DueDate);
+        Assert.Contains(CandidateConcern.DueDateNeedsCheck, invented.Flags);
+    }
+
+    [Fact]
     public void ImpossibleDate_IsDropped()
     {
         var t = A.Transcript("2月30日までに出します");

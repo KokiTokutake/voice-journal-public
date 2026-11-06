@@ -339,7 +339,7 @@ public static partial class CandidateChecker
         if (expression is not null)
         {
             var resolution = RelativeDates.Resolve(expression, sessionDate);
-            var key = DateKey(expression);
+            var key = DateKey(WithoutActionAfterDate(expression));
             var supported = DateKey(context).Contains(key, StringComparison.Ordinal);
             var near = !supported && nearby.Any(t => DateKey(t).Contains(key, StringComparison.Ordinal));
             // 「十一月十六日の夜を予定しています」: the words are a date, the sentence only a plan or a guess.
@@ -434,6 +434,17 @@ public static partial class CandidateChecker
         s = s.Replace("曜日", "曜", StringComparison.Ordinal).Replace("の", string.Empty, StringComparison.Ordinal);
         return DateSuffix().Replace(s, string.Empty);
     }
+
+    // 「十一月二十日までにデザイン案を出す」: the model sometimes writes the action as well, and in its own words
+    // (「出す」 for 「出します」). Only the words up to 「まで」 are the date; the rest is not compared.
+    private static string WithoutActionAfterDate(string expression)
+    {
+        var m = UntilMarker().Match(expression);
+        return m.Success && m.Index > 0 ? expression[..(m.Index + m.Length)] : expression;
+    }
+
+    [GeneratedRegex("まで(?:には|に)?")]
+    private static partial Regex UntilMarker();
 
     [GeneratedRegex(@"[(（][月火水木金土日](?:曜日?)?[)）]|(?<=日)[月火水木金土日]曜日?")]
     private static partial Regex WeekdayNote();
