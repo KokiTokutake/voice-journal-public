@@ -95,7 +95,7 @@ JSON Schema 検証器の比較（2026-10-31）:
 | 取得方法 | `lms get` は ggml-org のリポジトリで MTP 用のファイルだけを選んで失敗したため、`curl -L -C - --retry 5` で直接取得。MTP 用の `mtp-gemma-4-E2B-it-Q4_0.gguf`（SHA-256 `718d3a44…5ef4`）も取得したが、LM Studio は別ファイルの MTP を読まない（「MTP の頭部が同梱された GGUF が必要」）ため削除した。比較に使った E4B の 2 つ（Q4_K_M・Q4_0）も 2026-11-05 に削除。Gemma 3 4B は比べ直し・戻すときのために残している。mmproj（画像入力用）は不要のため未取得 |
 | 思考 | Gemma 4 は LM Studio で既定で思考し、出力の約 4 分の 3 を思考に使う。要求に `reasoning_effort: "none"` を付けると切れる（`chat_template_kwargs`・`reasoning`・`enable_thinking` は効かない）。アプリは常に付けて送る |
 | 以前の採用値 | Gemma 3 4B Instruct Q4_K_M（`lmstudio-community/gemma-3-4b-it-GGUF`、2,489,757,856 bytes、SHA-256 `be49949e48422e4547b00af14179a193d3777eea7fbbd7d6e1b0861304628a01`）。Phase A〜D4 で使用。抽出の recall が D5 の基準に届かなかった |
-| コンテキスト長 C / 出力予約 O | **C=16384 / O=4096**（D2 で C を 8192 から変更、D5 で O を 3072 から変更。O=3072 では Gemma 4 の出力が切れ、区間を半分にしたやり直しが起きた）。区間の大きさの上限は 3,000 トークン |
+| コンテキスト長 C / 出力予約 O | **C=16384 / O=6144**（D2 で C を 8192 から変更、D5 で O を 3072 → 4096 → 6144 に変更。O=3072 では Gemma 4 の出力が切れ、区間を半分にしたやり直しが起きた。O=4096 でも 25 分の会議で 1 区間が 4,096 トークンに達して切れ、441 秒かかった回があった（2026-11-06）。O=6144 で 304 秒。`docs/phase-d-report.md` 3 章）。区間の大きさの上限は 3,000 トークン |
 | Structured Output（json_schema） | **対応を確認**。`response_format: json_schema`（strict）で日本語要約・タスク・課題を取得し、解析成功 |
 | 推論エンジン | `llama.cpp-win-x86_64-vulkan-avx2@2.67.0`（LM Studio 既定選択）、AMD Radeon 890M（内蔵 GPU）。**GPU オフロードは `--gpu max`（100%）**。既定の自動ではモデルの大半が GPU に載らなかった（GPU 共有メモリ 841 MB） |
 | 並列数 | **1**（`--parallel 1`）。既定の 4 は枠ごとに文脈を確保してメモリを約 1.3 GB 多く使い、並列 2 でも速さは約 1 割しか上がらなかった（出力はメモリ帯域で頭打ち、約 18〜20 トークン/秒） |

@@ -1,6 +1,6 @@
 # Voice Journal
 
-Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で文字起こし → LM Studio＋Gemma で要約・構造化 → 課題・タスク候補を承認制で管理ファイルへ反映する。
+Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で文字起こし → 同梱の llama.cpp（`llama-server`）＋Gemma 4 E2B で要約・構造化 → 課題・タスク候補を承認制で管理ファイルへ反映する。
 
 ## 正となる文書
 
@@ -15,7 +15,8 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - NuGet の版は `Directory.Packages.props` で一元管理する。版を変えたら `docs/environment-lock.md` も更新する
 - 警告はエラー扱い（`TreatWarningsAsErrors`）。テストのみ CA1707（メソッド名のアンダースコア）を許可
 - STT は CPU 経路が必須。GPU（Vulkan）・NPU は Phase H の任意最適化
-- LM Studio API は `http://127.0.0.1:1234/v1` のループバックのみ。LM Studio のログにプロンプト本文を残さない（`logSensitiveData: false`）
+- LLM はアプリが起動・終了する同梱の `llama-server`（ループバック・起動ごとの空きポートとランダムな API キー・使わなければ終了、`docs/phase-d-engine-plan.md`）。実行体・DLL・GGUF は `config\llm-tools.json` に SHA-256 で登録する。移行期間は設定で LM Studio（`http://127.0.0.1:1234/v1`、`logSensitiveData: false`）も選べる
+- LLM の試験の前に、エミュレーター・Docker・WSL・Gradle・LM Studio が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く（メモリ不足と PC の発熱のため）
 - 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する
 - 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
@@ -40,5 +41,5 @@ dotnet test VoiceJournal.slnx
 - DB（`Workspace\db\voicejournal.db`）は索引にすぎない。正本は各セッションの `manifest.json` と音声ファイルで、`SessionIndex.Rebuild()` で作り直せる。スキーマ変更は `Infrastructure/Storage/Migrations.cs` に新しい版を追加し、公開済みの SQL は書き換えない（ハッシュで検査している）
 - 文字起こしの正本もファイル。ジョブの台帳は各セッションの `stt/native/<job-id>/job.json`、原文と修正は `transcripts/rev-NNNN/`（書き換え禁止、修正は次の番号）。**使用中の Revision** は `transcripts/current.json`（無ければ最新）。修正・再認識は使用中の版からだけ行い、修正後に終わった全体ジョブの原文は自動では使用中にならない（`TranscriptStore` の remarks）。最新ではなく `LoadCurrent()` を使う。DB の `jobs` / `transcript_revisions` / `segments` は `TranscriptIndex.Rebuild()` で作り直せる索引
 - Windows では、開かれているファイルへの置き換え（`File.Move` の上書き）は相手が削除共有を指定していても失敗する。録音中の `manifest.json` やサイドカーを同じプロセスから読まない（`RecordingSession.SnapshotManifestJson()` を使う）。どうしても読むときは `AtomicFile.ReadAllBytes` で短時間だけ開く
-- 現在のフェーズ: Phase A（環境固定・技術検証）は完了（`docs/environment-lock.md` 10 章）。**Phase B（録音・保存）は受入試験に合格**（`docs/phase-b-report.md`。実機 8 時間と実機スリープは未確認のリスクとして残す）。**Phase C（文字起こし）は受入試験に合格**（`docs/phase-c-report.md`。30 分を超える音声の実測と、カーネルのメモリ増加の切り分けが残る）。次は **Phase D（要約・構造化）**。詳細仕様書 23 章の順に進める
-- 受入試験の道具: `.\scripts\Test-PhaseB.ps1 -Test AT01|AT02|AT03`（結果は `%LOCALAPPDATA%\VoiceJournal\verify\phase-b\`）、`.\scripts\Test-PhaseC.ps1`（結果は `verify\phase-c\`）
+- 現在のフェーズ: Phase A（環境固定・技術検証）は完了（`docs/environment-lock.md` 10 章）。**Phase B（録音・保存）は受入試験に合格**（`docs/phase-b-report.md`。実機 8 時間と実機スリープは未確認のリスクとして残す）。**Phase C（文字起こし）は受入試験に合格**（`docs/phase-c-report.md`。30 分を超える音声の実測と、カーネルのメモリ増加の切り分けが残る）。**Phase D（記録生成）は受入試験に合格**（`docs/phase-d-report.md`。担当・期限の既知の限界、30 分を超える音声、推論中のメモリの実測が残る）。次は **Phase E（管理レビュー）**。詳細仕様書 23 章の順に進める
+- 受入試験の道具: `.\scripts\Test-PhaseB.ps1 -Test AT01|AT02|AT03`（結果は `%LOCALAPPDATA%\VoiceJournal\verify\phase-b\`）、`.\scripts\Test-PhaseC.ps1`（結果は `verify\phase-c\`）、`.\scripts\Test-PhaseD.ps1 -Test Evaluate|Meeting -Engine bundled`（結果は `verify\phase-d\`）
