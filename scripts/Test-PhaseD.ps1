@@ -6,7 +6,7 @@
   LM Studio のサーバーを起動しておく（モデルは要求で自動的に読み込まれる）。結果は %LOCALAPPDATA%\VoiceJournal\verify\phase-d\ に書く。
   - Evaluate: 評価セット（tests\eval\phase-d\*.json のうち use が -Use のもの。既定は acceptance）を素材ごとに一時のセッションにして記録を作り、
               正解と照合する。候補の precision 0.90 以上・recall 0.80 以上、素材ごとの違反 0 件で合格（AT-08・09・23）
-  - Meeting:  Phase C の読み上げ録音（約 25 分）の文字起こしから記録を作り、所要時間を測る（NFR-07: 5 分以内。区間の数を併記）
+  - Meeting:  Phase C の読み上げ録音（約 25 分）の文字起こしから記録を作り、所要時間を測る（NFR-07: 30 分の音声に換算して 7 分以内。区間の数を併記）
 .EXAMPLE
   .\scripts\Test-PhaseD.ps1 -Test Evaluate
   .\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning   # プロンプトの調整用の素材
@@ -25,7 +25,7 @@ param(
     [ValidateSet('bundled', 'lmstudio')] [string]$Engine = 'lmstudio',
     [string]$Model = 'gemma-4-e2b-it',
     [int]$Context = 16384,
-    [int]$Reserve = 4096,
+    [int]$Reserve = 6144,
     [int]$PieceTokens = 3000,
     # Meeting: 文字起こしのあるセッション（manifest.json と transcripts\ だけを一時の場所に写して使う）
     [string]$Session = (Join-Path $env:LOCALAPPDATA 'VoiceJournal\verify\phase-d\d2\meeting'),
@@ -129,7 +129,11 @@ else {
     if (-not (Test-Path $result)) { throw "生成の結果がありません（終了コード $LASTEXITCODE）" }
     $r = Read-Json $result
     Write-Host ("   文字起こし: {0} 区間・{1} 字、生成: {2}、区間 {3}（失敗 {4}）、要求 {5} 回、入力 {6}・出力 {7} トークン" -f $r.segments, $r.characters, $r.outcome, $r.PieceCount, $r.failed.Count, $r.requests.Count, $r.prompt_tokens, $r.completion_tokens)
-    Show 'NFR-07' ($r.outcome -eq 'Generated' -and $r.elapsed_seconds -le 300) ("{0} 秒（300 秒以内）" -f $r.elapsed_seconds)
+    # NFR-07（詳細仕様書 1.1）: 30 分の音声を 420 秒以内。音声の長さ（録音の開始〜終了）で 30 分に換算して判定する
+    $m = Read-Json (Join-Path $copy 'manifest.json')
+    $audioMinutes = ([DateTimeOffset]$m.ended_at_utc - [DateTimeOffset]$m.started_at_utc).TotalMinutes
+    $per30 = [math]::Round($r.elapsed_seconds * 30 / $audioMinutes, 1)
+    Show 'NFR-07' ($r.outcome -eq 'Generated' -and $per30 -le 420) ("{0} 秒（音声 {1:N1} 分。30 分換算 {2} 秒、420 秒以内）" -f $r.elapsed_seconds, $audioMinutes, $per30)
     Write-Host "   結果: $result"
     Write-Host "   記録: $copy"
 }

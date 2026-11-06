@@ -8,7 +8,7 @@ using VoiceJournal.Infrastructure.Llm;
 namespace VoiceJournal.AudioProbe;
 
 // Phase D2: build a record from a session's transcript in use with LM Studio, and print timing and sizes only.
-//   AudioProbe organize <sessionDir> [--model gemma-4-e2b-it] [--context 16384] [--reserve 4096] [--url http://127.0.0.1:1234/v1]
+//   AudioProbe organize <sessionDir> [--model gemma-4-e2b-it] [--context 16384] [--reserve 6144] [--url http://127.0.0.1:1234/v1]
 //                       [--factor 1.0] [--temperature 0.1] [--parallel 1] [--piece-tokens 3000] [--out <json>]
 //                       [--engine bundled|lmstudio]   (bundled: the app's llama-server, docs/phase-d-engine-plan.md)
 // The analysis and the record draft are saved in the session folder (analysis/, records/, record.draft.md).
@@ -22,7 +22,7 @@ internal static class OrganizeCommand
         {
             ModelId = Option("--model", "gemma-4-e2b-it"),
             ContextLength = int.Parse(Option("--context", "16384"), CultureInfo.InvariantCulture),
-            OutputReserve = int.Parse(Option("--reserve", "4096"), CultureInfo.InvariantCulture),
+            OutputReserve = int.Parse(Option("--reserve", "6144"), CultureInfo.InvariantCulture),
             TokenFactor = double.Parse(Option("--factor", "1.0"), CultureInfo.InvariantCulture),
             Temperature = double.Parse(Option("--temperature", "0.1"), CultureInfo.InvariantCulture),
             Parallelism = int.Parse(Option("--parallel", "1"), CultureInfo.InvariantCulture),

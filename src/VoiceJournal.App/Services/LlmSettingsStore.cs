@@ -33,7 +33,7 @@ public sealed record LlmSettings
     public int ContextLength { get; init; } = 16384;
 
     /// <summary>O: the output reserve, also every request's <c>max_tokens</c>.</summary>
-    public int OutputReserve { get; init; } = 4096;
+    public int OutputReserve { get; init; } = 6144;
 
     public int MaxPieceTokens { get; init; } = 3000;
 
