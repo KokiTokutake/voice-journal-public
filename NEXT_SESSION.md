@@ -21,19 +21,19 @@
 3. 推論中の空きメモリの最小値と、同梱のエンジンでのメモリの増加（未測定）。カーネルのメモリ: `Get-PoolTag.ps1 -Compare <boot の記録>`（記録は `%LOCALAPPDATA%\VoiceJournal\verify\pool\`）
 4. O=6144 の効果は 1 回の測定。会議を測るときは、各要求の `FinishReason` が `length` になっていないか見る
 5. 配布時のリスク: 実行ファイルに署名がない（SHA-256 で検査）、Corvus の実行時コンパイルは SDK の参照パックを前提にしている（Phase G で検討）
-6. LM Studio の選択肢をいつ外すか（移行期間）
+6. whisper の結合テスト `SmallModelWithVad_ReturnsSessionTimes_ForSpeechThatStartsTenSecondsIn` が、全体を並列で回したときに 1 回だけ失敗した（単独と再実行では合格。2026-11-06）。続くようなら負荷での時間の扱いを調べる
 
 ## 環境の状態
 
-- 2026-11-06 の測定のため、Docker Desktop（`docker desktop stop`）・WSL（`wsl --shutdown`）・LM Studio・Android Studio の Gradle と Kotlin のデーモンを止めた（利用者の了承済み）。Docker を戻すときは `docker desktop start`。LM Studio はその後また起動していた
+- 2026-11-06 の測定のため、Docker Desktop（`docker desktop stop`）・WSL（`wsl --shutdown`）・Android Studio の Gradle と Kotlin のデーモンを止めた（利用者の了承済み）。Docker を戻すときは `docker desktop start`
+- **LM Studio は 2026-11-06 にアンインストールした**（`.lmstudio` 8.7 GB・更新用のファイル・PATH の項目も削除）。アプリの LM Studio の選択肢、`LmStudioClient`（→ `OpenAiCompatibleClient`）、`ConfiguredLlmClient`、`SelectingLlmClient`、評価ツールの `--engine`・`--url`、`Test-PhaseD.ps1` の `-Engine` も外した（詳細仕様書 1.2）。比較用の Gemma 3 4B も消えた
 - 推論は同梱の `llama-server` b12121（`%LOCALAPPDATA%\VoiceJournal\tools\llama.cpp\b12121\bin\`）、モデルは `models\llm\gemma-4-E2B-it-Q4_0.gguf`＋MTP（`docs/environment-lock.md` 6 章）
-- LM Studio のモデルは Gemma 4 E2B Q4_0（`gemma-4-e2b-it`）。選ぶ場合の読み込み: `lms load gemma-4-e2b-it -c 16384 --parallel 1 --gpu max --ttl 600 --identifier gemma-4-e2b-it -y`
 
 ## 守ること
 
 - チャットは必ず日本語にする。ツール呼び出しの合間の短い文も同じ
 - 利用者のマイクで録音するのは、利用者の了承を得てから。スピーカーから不要な音を出さない
-- LLM の試験の前に、エミュレーター・Docker・WSL・Gradle・LM Studio が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く。1 回の実行は 10 分以内に分けてフォアグラウンドで回す
+- LLM の試験の前に、エミュレーター・Docker・WSL・Gradle が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く。1 回の実行は 10 分以内に分けてフォアグラウンドで回す
 - 音声、モデル、DB、`settings.local.json` はコミットしない。ログに文字起こしやプロンプトの本文を残さない
 - コミットは区切りごとに行ってよい（指示あり）。プッシュはしない。メッセージは日本語で、接頭辞を付ける
 - Python の文字列に Windows のパスや `\n` を書くと制御文字に化ける。`python -I` は環境変数を読まないので、日本語の出力は `-X utf8` を付ける

@@ -82,6 +82,8 @@ JSON Schema 検証器の比較（2026-10-31）:
 
 ## 6. LM Studio / LLM
 
+**2026-11-06: LM Studio はアンインストールし、`%USERPROFILE%\.lmstudio`（モデルを含む 8.7 GB）も削除した**（利用者の指示）。アプリの LM Studio の選択肢も外し、推論は下の「同梱の推論エンジン」だけにした（詳細仕様書 1.2）。下の LM Studio の表は Phase A〜D の経緯として残す。比較用の Gemma 3 4B の GGUF も消えたので、比べ直すときは取り直す。
+
 | 項目 | 採用値 |
 |---|---|
 | LM Studio | 0.4.27+2（winget `ElementLabs.LMStudio`） |

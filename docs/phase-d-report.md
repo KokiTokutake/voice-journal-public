@@ -153,13 +153,14 @@
 ## 7. 再現の手順
 
 ```powershell
-# 測る前に、エミュレーター・Docker・WSL・Gradle・LM Studio が動いていないことを確かめる（空き 10 GB 前後）
+# 測る前に、エミュレーター・Docker・WSL・Gradle が動いていないことを確かめる（空き 10 GB 前後）
 dotnet build-server shutdown
-.\scripts\Test-PhaseD.ps1 -Test Evaluate -Engine bundled -Repeat 3          # 受入用 5 本（約 6 分 × 回数）
-.\scripts\Test-PhaseD.ps1 -Test Evaluate -Engine bundled -Use tuning        # 調整用
-.\scripts\Test-PhaseD.ps1 -Test Meeting -Engine bundled                     # NFR-07（Phase C の 25 分の会議、約 5 分）
+.\scripts\Test-PhaseD.ps1 -Test Evaluate -Repeat 3          # 受入用 5 本（約 6 分 × 回数）
+.\scripts\Test-PhaseD.ps1 -Test Evaluate -Use tuning        # 調整用
+.\scripts\Test-PhaseD.ps1 -Test Meeting                     # NFR-07（Phase C の 25 分の会議、約 5 分）
 dotnet test VoiceJournal.slnx
 ```
 
+- 2026-11-06 に LM Studio を削除し、`-Engine` の引数をなくした（同梱のエンジンだけ）。それまでの結果の名前の `bundled-` はそのまま
 - 結果の JSON は UTF-8 で `verify\phase-d\` に出る。コンソールは CP932 なので、日本語は JSON から読む
 - `Test-PhaseD.ps1` を `2>&1` や `2>$null` で回すと、評価ツールの標準エラーが PowerShell の例外になって止まる
