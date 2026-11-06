@@ -14,6 +14,7 @@
 | `tuning-moving.json` | 独話（調整用） | 期限つきの作業、済んだこと・やめたこと・迷っていること |
 | `tuning-noise.json` | 会議（調整用） | 他人の返事を待つこと・説明の一般論・他社の紹介を候補にしない |
 | `tuning-dates.json` | 会議（調整用） | 「〇日までに〜を出します」のように、期限の後ろに動作が続く言い方の期限 |
+| `tuning-solo-meeting.json` | 会議（調整用） | 話しているのが進行役 1 人だけの打ち合わせの種別（meeting）、変えないと決めたことの決定 |
 
 プロンプトは調整用（`use: tuning`）の素材で直し、受入用（`use: acceptance`）は調整の後に測るだけにする（`docs/phase-d-plan.md` 0 章）。
 

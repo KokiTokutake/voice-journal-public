@@ -54,6 +54,12 @@ public sealed record DroppedItem
     public required string Text { get; init; }
 
     public required string Reason { get; init; }
+
+    /// <summary>
+    /// The quotes the model gave that did not match the transcript (kept in the session's analysis files only, never
+    /// logged), so a dropped statement can be looked into later (2026-11-06).
+    /// </summary>
+    public IReadOnlyList<string> RejectedQuotes { get; init; } = [];
 }
 
 /// <summary>A candidate before ids are assigned. <see cref="Fields"/> already holds only what the transcript supports.</summary>
@@ -138,15 +144,19 @@ public static partial class ExtractionConverter
         var dropped = new List<DroppedItem>();
         var droppedEvidence = 0;
 
+        List<string> rejected = [];
+
         IReadOnlyList<Evidence> Evidence(IReadOnlyList<WireEvidence> wire)
         {
             var list = new List<Evidence>();
+            rejected = [];
             foreach (var e in wire)
             {
                 var segment = Resolve(e.Segment, segments);
                 if (segment is null || !EvidenceText.IsQuoteOf(e.Quote, segment.Text))
                 {
                     droppedEvidence++;
+                    if (rejected.Count < 6) rejected.Add($"{e.Segment}: {Clean(e.Quote)}");
                     continue;
                 }
                 var item = new Evidence { SegmentId = segment.SegmentId, Quote = e.Quote.Trim() };
@@ -162,7 +172,7 @@ public static partial class ExtractionConverter
             var evidence = Evidence(s.Evidence);
             if (evidence.Count == 0)
             {
-                dropped.Add(new DroppedItem { Kind = kind, Piece = piece.Index, Text = text, Reason = "根拠の区間または引用を確認できません" });
+                dropped.Add(new DroppedItem { Kind = kind, Piece = piece.Index, Text = text, Reason = "根拠の区間または引用を確認できません", RejectedQuotes = rejected });
                 return null;
             }
             return new Statement { Text = text, Certainty = s.Certainty, Evidence = evidence };
@@ -183,7 +193,7 @@ public static partial class ExtractionConverter
             var title = Clean(c.Title);
             if (evidence.Count == 0 || title.Length == 0)
             {
-                dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = "根拠の区間または引用を確認できません" });
+                dropped.Add(new DroppedItem { Kind = "candidate", Piece = piece.Index, Text = title, Reason = "根拠の区間または引用を確認できません", RejectedQuotes = rejected });
                 continue;
             }
             // 「対応しないことにします」: what was decided not to do is a decision, not a candidate (2026-11-04, user).
@@ -603,18 +613,21 @@ public static partial class IntegrationConverter
         ArgumentNullException.ThrowIfNull(items);
         var byId = items.ToDictionary(x => x.Item.Id, x => x.Statement, StringComparer.Ordinal);
         var dropped = new List<DroppedItem>();
+        var used = new HashSet<string>(StringComparer.Ordinal);
 
         Statement? ToStatement(WireDerived d, string kind)
         {
             // The model sometimes writes the item ids into the text (「I0012 によって確認された」): they mean nothing to a reader.
             var text = ExtractionConverter.Clean(ItemIdInText().Replace(d.Text, string.Empty));
             if (text.Length == 0) return null;
-            var sources = d.From.Distinct(StringComparer.Ordinal).Select(id => byId.GetValueOrDefault(id)).OfType<Statement>().ToList();
+            var ids = d.From.Distinct(StringComparer.Ordinal).Where(byId.ContainsKey).ToList();
+            var sources = ids.Select(id => byId[id]).ToList();
             if (sources.Count == 0)
             {
                 dropped.Add(new DroppedItem { Kind = kind, Piece = 0, Text = text, Reason = $"統合（段 {level}）で元の要点を確認できません" });
                 return null;
             }
+            used.UnionWith(ids);
             var weakest = sources.Max(s => s.Certainty);
             var evidence = sources.SelectMany(s => s.Evidence).Distinct().Take(30).ToList();
             return new Statement { Text = text, Certainty = (Certainty)Math.Max((int)d.Certainty, (int)weakest), Evidence = evidence };
@@ -628,15 +641,64 @@ public static partial class IntegrationConverter
             if (statements.Count == 0) continue;
             sections.Add(new Section { SectionKind = section.SectionKind, Heading = ExtractionConverter.SafeHeading(section.Heading), Statements = statements });
         }
+        var warnings = output.Warnings.Select(ExtractionConverter.Clean).Where(w => w.Length > 0 && !AnalysisPrompts.EchoesInstructions(w)).ToList();
+        var restored = Restore(items, used, summary, sections);
+        if (restored > 0) warnings.Add($"まとめるときに抜けた要点 {restored.ToString(CultureInfo.InvariantCulture)} 件を、元の要点のまま記録に戻しました。");
         return new IntegratedRecord
         {
             RecordTypes = [.. output.RecordTypes.Distinct().Take(4)],
             Title = ExtractionConverter.Clean(output.Title),
             Summary = summary,
             Sections = sections,
-            Warnings = [.. output.Warnings.Select(ExtractionConverter.Clean).Where(w => w.Length > 0 && !AnalysisPrompts.EchoesInstructions(w))],
+            Warnings = warnings,
             Dropped = dropped,
         };
+    }
+
+    /// <summary>The heading for summary points put back when the summary is full.</summary>
+    public const string RestoredHeading = "そのほかの要点";
+
+    private const int SummaryItems = 7;
+    private const int SummaryChars = 600;
+    private const int MaxSections = 30;
+
+    /// <summary>
+    /// Puts back the items no statement of the integration names in <c>from</c> (AT-08: the model left out about 5% of
+    /// them in D5, e.g. 「ジムは今月はやめておく」 and a lecture's key term). Each comes back as it was, with its
+    /// evidence: a topic statement into the section with its heading (or a new one), a summary point into the summary
+    /// while it has room (detail spec 10: up to 7 items, about 600 characters), otherwise under <see cref="RestoredHeading"/>.
+    /// </summary>
+    /// <returns>How many items were put back.</returns>
+    private static int Restore(IReadOnlyList<(WireItem Item, Statement Statement)> items, HashSet<string> used, List<Statement> summary, List<Section> sections)
+    {
+        var restored = 0;
+        foreach (var (item, statement) in items)
+        {
+            if (used.Contains(item.Id)) continue;
+            restored++;
+            if (item.Heading is null)
+            {
+                if (summary.Count < SummaryItems && summary.Sum(x => x.Text.Length) + statement.Text.Length <= SummaryChars)
+                    summary.Add(statement);
+                else
+                    Append(sections, RestoredHeading, SectionKind.Topic, statement);
+            }
+            else
+            {
+                Append(sections, ExtractionConverter.SafeHeading(item.Heading), item.SectionKind ?? SectionKind.Topic, statement);
+            }
+        }
+        return restored;
+    }
+
+    private static void Append(List<Section> sections, string heading, SectionKind kind, Statement statement)
+    {
+        var i = sections.FindIndex(x => string.Equals(x.Heading, heading, StringComparison.Ordinal));
+        if (i < 0 && sections.Count >= MaxSections) i = sections.Count - 1; // the final schema allows 30 sections
+        if (i >= 0)
+            sections[i] = sections[i] with { Statements = [.. sections[i].Statements, statement] };
+        else
+            sections.Add(new Section { SectionKind = kind, Heading = heading, Statements = [statement] });
     }
 
     // 「I0012」「(I0003, I0004)」 and a following 「によって確認された」.

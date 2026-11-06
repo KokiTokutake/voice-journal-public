@@ -650,6 +650,75 @@ public sealed class IntegrationAndAssemblyTests
         Assert.Equal(2, s.Evidence.Count);
         Assert.Equal("作り話", record.Dropped.Single().Text);
         Assert.Equal([RecordType.Meeting], record.RecordTypes);
+        Assert.Empty(record.Warnings); // every item was used: nothing put back
+    }
+
+    private static IntegrationOutput Output(IReadOnlyList<WireDerived> summary, params WireIntegratedSection[] sections) => new()
+    {
+        RecordTypes = [RecordType.Meeting],
+        Title = "保存先の決定",
+        Summary = summary,
+        Sections = sections,
+        Warnings = [],
+    };
+
+    private static WireDerived From(string text, params string[] ids) => new() { Text = text, Certainty = Certainty.Stated, From = ids };
+
+    [Fact]
+    public void ItemsLeftOutOfTheIntegration_ArePutBack_IntoTheSectionWithTheirHeading()
+    {
+        // D5: the model kept 「ジムは今月やめておく」 in the piece but named it in no `from` of the integration.
+        var (_, piece) = Piece();
+        var items = IntegrationConverter.Items([piece]);
+
+        var record = IntegrationConverter.Convert(Output([From("保存先をローカルに決めた", "I0001")],
+            new WireIntegratedSection { SectionKind = SectionKind.OpenQuestion, Heading = "未決", Statements = [From("保存先の確認", "I0001")] }), items, 1);
+
+        var section = Assert.Single(record.Sections);
+        Assert.Equal("未決", section.Heading);
+        var back = section.Statements[1];
+        Assert.Equal(("暗号化は検討中", Certainty.Tentative), (back.Text, back.Certainty)); // as it was in the piece
+        Assert.Equal(items[1].Statement.Evidence, back.Evidence);
+        Assert.Contains("抜けた要点 1 件", Assert.Single(record.Warnings), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ALeftOutTopicStatement_GetsItsOwnSection_AndALeftOutSummaryPoint_GoesToTheSummaryWhileThereIsRoom()
+    {
+        var (_, piece) = Piece();
+        var items = IntegrationConverter.Items([piece]);
+
+        var record = IntegrationConverter.Convert(Output([From("要約", "I0002")]), items, 1);
+
+        Assert.Equal(["要約", "保存先をローカルに決めた"], record.Summary.Select(s => s.Text));
+        Assert.Empty(record.Sections);
+
+        record = IntegrationConverter.Convert(Output([From("要約", "I0001")]), items, 1);
+        var section = Assert.Single(record.Sections);
+        Assert.Equal((SectionKind.OpenQuestion, "未決", "暗号化は検討中"), (section.SectionKind, section.Heading, section.Statements.Single().Text));
+    }
+
+    [Fact]
+    public void ALeftOutSummaryPoint_GoesUnderItsOwnHeading_WhenTheSummaryIsFull()
+    {
+        var (_, piece) = Piece();
+        var items = IntegrationConverter.Items([piece]);
+
+        var record = IntegrationConverter.Convert(Output([.. Enumerable.Range(1, 7).Select(i => From($"要約 {i}", "I0002"))]), items, 1);
+
+        Assert.Equal(7, record.Summary.Count);
+        var section = Assert.Single(record.Sections);
+        Assert.Equal((IntegrationConverter.RestoredHeading, "保存先をローカルに決めた"), (section.Heading, section.Statements.Single().Text));
+    }
+
+    [Fact]
+    public void ADroppedStatement_KeepsTheQuotesThatDidNotMatch()
+    {
+        var t = A.Transcript("多くのデータベースには、EXPLAIN という命令があり、検索の手順を表示できます");
+        var piece = ExtractionConverter.Convert(A.Output(summary: [A.St("EXPLAIN で手順を確かめる", "S0001", "EXPLAIN で検索の手順を確かめる")]), A.WholePiece(t), t, A.Monday);
+
+        var dropped = Assert.Single(piece.Dropped);
+        Assert.Equal(["S0001: EXPLAIN で検索の手順を確かめる"], dropped.RejectedQuotes);
     }
 
     [Fact]

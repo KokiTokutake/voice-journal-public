@@ -1,0 +1,43 @@
+{
+  "id": "tuning-solo-meeting",
+  "purpose": "プロンプトの調整用（種別）: 話しているのが進行役 1 人だけでも、議題を順に進める打ち合わせは meeting にする。決定の根拠を記録に残す",
+  "use": "tuning",
+  "title": "総務の週次連絡会",
+  "started_at": "2026-11-16T09:30:00+09:00",
+  "time_zone": "Tokyo Standard Time",
+  "segments": [
+    { "t": "00:00:02", "source": "mic", "text": "おはようございます。それでは総務の週次連絡会を始めます" },
+    { "t": "00:00:08", "source": "mic", "text": "まず会議室の予約のルールですが、今のままで変えないことにしました" },
+    { "t": "00:00:16", "source": "mic", "text": "先週いただいた意見を見ると、今のルールで困っている人は少ないためです" },
+    { "t": "00:00:24", "source": "mic", "text": "次にプリンターのトナーですが、高橋さんが今週の金曜日までに注文します" },
+    { "t": "00:00:32", "source": "mic", "text": "それから来月の避難訓練の案内は、私が十一月二十五日までに全員に送ります" },
+    { "t": "00:00:41", "source": "mic", "text": "年末の大掃除の日程は、まだ決まっていません。来週の連絡会で決めます" },
+    { "t": "00:00:49", "source": "mic", "text": "最後に、駐輪場の屋根の修理は先週の土曜日に終わりました" },
+    { "t": "00:00:56", "source": "mic", "text": "今日の連絡は以上です。ありがとうございました" }
+  ],
+  "expected": {
+    "record_types": ["meeting"],
+    "candidates": [
+      { "kind": "task", "match_any": ["トナー", "プリンター"], "assignee": "高橋", "due_date": "2026-11-20", "status": null },
+      { "kind": "task", "match_any": ["避難訓練"], "due_date": "2026-11-25", "status": null, "note": "担当は話者自身（私）なので照合しない" }
+    ],
+    "optional_candidates": [
+      { "kind": ["task", "issue"], "match_any": ["大掃除"], "due_date": null }
+    ],
+    "forbidden_candidates": [
+      { "match_any": ["会議室"], "reason": "今のままで変えないと決めたこと" }
+    ],
+    "forbidden_status": [
+      { "match_any": ["トナー", "避難訓練", "大掃除"], "status": ["done", "resolved", "closed"], "reason": "まだ終わっていない" }
+    ],
+    "no_assignee": [
+      { "match_any": ["大掃除"], "reason": "担当の発言がない" }
+    ],
+    "no_due_date": [
+      { "match_any": ["大掃除"], "reason": "日程はまだ決まっていない" }
+    ],
+    "decisions": [
+      { "match_any": ["会議室"], "evidence_t": "00:00:08" }
+    ]
+  }
+}
