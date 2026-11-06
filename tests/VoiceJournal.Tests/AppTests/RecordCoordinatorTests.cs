@@ -98,7 +98,7 @@ public sealed class RecordCoordinatorTests : IAsyncDisposable
     [Fact]
     public async Task TheProcessingScreen_ListsTheRecordJob_NextToTheTranscription_AndCanRetryIt()
     {
-        _llm.Unavailable = true; // LM Studio is not running (LLM-001)
+        _llm.Unavailable = true; // the inference engine cannot start (LLM-001)
         var dir = await RecordTwoSeconds();
         await JobSession.Until(() => RecordJobStore.List(dir).SingleOrDefault()?.State == ProcessingState.Failed
             && _records.RecentJobs(10).Any(j => j.State == ProcessingState.Failed), "record job fails");
@@ -113,7 +113,7 @@ public sealed class RecordCoordinatorTests : IAsyncDisposable
         Assert.StartsWith("LLM-001", row.ErrorText, StringComparison.Ordinal);
         Assert.Equal("gemma-3-4b-it", row.ModelText);
 
-        _llm.Unavailable = false; // the user started LM Studio
+        _llm.Unavailable = false; // the user fixed the cause (e.g. closed other apps)
         processing.Selected = row;
         processing.RetryCommand.Execute(null);
         await JobSession.Until(() => RecordJobStore.List(dir).Single().State == ProcessingState.ReadyForReview

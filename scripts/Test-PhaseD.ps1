@@ -1,9 +1,10 @@
 ﻿<#
 .SYNOPSIS
   Phase D の評価と受入試験（詳細仕様書 22 章 AT-08・AT-09・AT-23、抽出の precision / recall、20 章 NFR-07）を、
-  アプリと同じ記録の生成処理（RecordGenerator と LM Studio）で行う。
+  アプリと同じ記録の生成処理（RecordGenerator と同梱の llama-server）で行う。
 .DESCRIPTION
-  LM Studio のサーバーを起動しておく（モデルは要求で自動的に読み込まれる）。結果は %LOCALAPPDATA%\VoiceJournal\verify\phase-d\ に書く。
+  評価ツールが回ごとに同梱の llama-server を起動し、終わったら止める（docs/phase-d-engine-plan.md）。測る前に、
+  エミュレーター・Docker・WSL・Gradle などが動いていないことを確かめる。結果は %LOCALAPPDATA%\VoiceJournal\verify\phase-d\ に書く。
   - Evaluate: 評価セット（tests\eval\phase-d\*.json のうち use が -Use のもの。既定は acceptance）を素材ごとに一時のセッションにして記録を作り、
               正解と照合する。候補の precision 0.90 以上・recall 0.80 以上、素材ごとの違反 0 件で合格（AT-08・09・23）
   - Meeting:  Phase C の読み上げ録音（約 25 分）の文字起こしから記録を作り、所要時間を測る（NFR-07: 30 分の音声に換算して 7 分以内。区間の数を併記）
@@ -19,10 +20,8 @@ param(
     # Evaluate: 素材の組（acceptance: 受入評価用、tuning: プロンプトの調整用）と、使う素材の id（省略時はその組のすべて）
     [ValidateSet('acceptance', 'tuning')] [string]$Use = 'acceptance',
     [string[]]$Fixture,
-    # Evaluate: 同じ条件で繰り返す回数（1 回ごとのばらつきが大きいので、判定は合計で行う。各回の前にモデルを解放する）
+    # Evaluate: 同じ条件で繰り返す回数（1 回ごとのばらつきが大きいので、判定は合計で行う。回ごとにエンジンを起動し直す）
     [ValidateRange(1, 10)] [int]$Repeat = 1,
-    # bundled: アプリと同じ同梱の llama-server（docs/phase-d-engine-plan.md）、lmstudio: LM Studio
-    [ValidateSet('bundled', 'lmstudio')] [string]$Engine = 'lmstudio',
     [string]$Model = 'gemma-4-e2b-it',
     [int]$Context = 16384,
     [int]$Reserve = 6144,
@@ -39,7 +38,8 @@ $proj = Join-Path $repo 'tools\VoiceJournal.AudioProbe\VoiceJournal.AudioProbe.c
 $exe = Join-Path $repo 'tools\VoiceJournal.AudioProbe\bin\Release\net10.0-windows\VoiceJournal.AudioProbe.exe'
 $out = Join-Path $Root 'verify\phase-d'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$tag = "$Engine-c$Context-o$Reserve-p$PieceTokens-$($Model -replace '[^A-Za-z0-9.-]', '_')"
+# 結果の名前は LM Studio をやめる前（2026-11-06）と同じ形にする（bundled-c16384-o6144-…）
+$tag = "bundled-c$Context-o$Reserve-p$PieceTokens-$($Model -replace '[^A-Za-z0-9.-]', '_')"
 New-Item -ItemType Directory -Force $out | Out-Null
 
 Write-Host '== 評価ツールをビルド' -ForegroundColor Cyan
@@ -54,7 +54,7 @@ function Show([string]$label, [bool]$ok, [string]$detail) {
 
 function Read-Json([string]$path) { return [IO.File]::ReadAllText($path, $utf8) | ConvertFrom-Json }
 
-$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens, '--engine', $Engine)
+$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens)
 
 if ($Test -eq 'Evaluate') {
     $files = Get-ChildItem (Join-Path $repo 'tests\eval\phase-d') -Filter '*.json' | Where-Object {
@@ -64,17 +64,7 @@ if ($Test -eq 'Evaluate') {
     if (-not $files) { throw '評価素材が見つかりません' }
     $runs = @()
     for ($n = 1; $n -le $Repeat; $n++) {
-        # llama-server grows with every inference and does not give the memory back: start each run from a fresh load.
-        # Loaded explicitly with these settings: a just-in-time load uses the model's own defaults in LM Studio, which
-        # may differ per model; a model without them set could come up with its full 128K context.
-        if (Get-Command lms -ErrorAction SilentlyContinue) {
-            & {
-                $ErrorActionPreference = 'Continue'
-                lms unload --all 2>$null | Out-Null
-                if ($Engine -eq 'lmstudio') { lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null }
-            }
-            if ($Engine -eq 'lmstudio' -and $LASTEXITCODE -ne 0) { throw "モデル $Model を読み込めませんでした" }
-        }
+        # Each run is its own eval-record process, which starts the bundled server and stops it at the end.
         $suffix = if ($Repeat -gt 1) { "-r$n" } else { '' }
         $workspace = Join-Path $out "eval\$stamp-$Use-$tag$suffix"
         $result = Join-Path $out "eval-$stamp-$Use-$tag$suffix.json"
@@ -118,13 +108,6 @@ else {
     Copy-Item (Join-Path $Session 'transcripts') $copy -Recurse
     $result = Join-Path $out "meeting-$stamp-$tag.json"
     Write-Host "== 会議の文字起こしから記録を作る（$tag）" -ForegroundColor Cyan
-    if (Get-Command lms -ErrorAction SilentlyContinue) {
-        & {
-            $ErrorActionPreference = 'Continue'
-            lms unload --all 2>$null | Out-Null
-            if ($Engine -eq 'lmstudio') { lms load $Model -c $Context --parallel 1 --gpu max --ttl 600 --identifier $Model -y 2>$null | Out-Null }
-        }
-    }
     & $exe organize $copy @common --out $result | Out-Null
     if (-not (Test-Path $result)) { throw "生成の結果がありません（終了コード $LASTEXITCODE）" }
     $r = Read-Json $result

@@ -10,27 +10,25 @@ using VoiceJournal.Core.Analysis;
 namespace VoiceJournal.Infrastructure.Llm;
 
 /// <summary>
-/// The LM Studio base URL, accepted only on loopback (detail spec 9.1): <c>http://127.0.0.1:1234/v1</c>,
-/// <c>http://[::1]:1234/v1</c>, or <c>localhost</c> when every address it resolves to is loopback.
+/// The inference server's base URL, accepted only on loopback (detail spec 9.1): <c>http://127.0.0.1:{port}/v1</c>,
+/// <c>http://[::1]:{port}/v1</c>, or <c>localhost</c> when every address it resolves to is loopback.
 /// </summary>
 public sealed record LlmEndpoint(Uri BaseUri)
 {
-    public const string Default = "http://127.0.0.1:1234/v1";
-
     /// <exception cref="ArgumentException">Not an http(s) URL on loopback.</exception>
     public static LlmEndpoint Parse(string url)
     {
         if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            throw new ArgumentException("LM Studio の URL は http://127.0.0.1:1234/v1 の形で指定してください。", nameof(url));
+            throw new ArgumentException("推論エンジンの URL は http://127.0.0.1:<ポート>/v1 の形で指定してください。", nameof(url));
         if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
-            throw new ArgumentException("LM Studio の URL に利用者名・クエリ・フラグメントは使えません。", nameof(url));
+            throw new ArgumentException("推論エンジンの URL に利用者名・クエリ・フラグメントは使えません。", nameof(url));
         if (IPAddress.TryParse(uri.IdnHost, out var ip))
         {
-            if (!IPAddress.IsLoopback(ip)) throw new ArgumentException("LM Studio にはこの PC の中（127.0.0.1 または ::1）でだけ接続します。", nameof(url));
+            if (!IPAddress.IsLoopback(ip)) throw new ArgumentException("推論エンジンにはこの PC の中（127.0.0.1 または ::1）でだけ接続します。", nameof(url));
         }
         else if (!string.Equals(uri.IdnHost, "localhost", StringComparison.OrdinalIgnoreCase))
         {
-            throw new ArgumentException("LM Studio にはこの PC の中（127.0.0.1 または ::1）でだけ接続します。", nameof(url));
+            throw new ArgumentException("推論エンジンにはこの PC の中（127.0.0.1 または ::1）でだけ接続します。", nameof(url));
         }
         else if (Dns.GetHostAddresses(uri.IdnHost) is var addresses && (addresses.Length == 0 || !addresses.All(IPAddress.IsLoopback)))
         {
@@ -41,37 +39,24 @@ public sealed record LlmEndpoint(Uri BaseUri)
     }
 }
 
-/// <summary>Which OpenAI-compatible server is behind the endpoint: how the loaded context length is read, and how errors are worded.</summary>
-public enum LlmServerKind
-{
-    /// <summary>LM Studio: <c>GET /v1/models</c> and its own <c>/api/v0/models/{id}</c>.</summary>
-    LmStudio,
-
-    /// <summary>The bundled llama.cpp <c>llama-server</c>: one model per process, <c>GET /props</c> (docs/phase-d-engine-plan.md).</summary>
-    LlamaServer,
-}
-
 /// <summary>
-/// OpenAI-compatible client for LM Studio or the bundled llama-server (detail spec 9.1, 21.3): no proxy, no redirects,
-/// every socket checked to be loopback, no tools, structured output with a strict JSON Schema. Nothing of the prompt
-/// or answer is logged.
+/// OpenAI-compatible client for the bundled llama.cpp <c>llama-server</c> (detail spec 9.1, 21.3,
+/// docs/phase-d-engine-plan.md): no proxy, no redirects, every socket checked to be loopback, no tools, structured
+/// output with a strict JSON Schema. Nothing of the prompt or answer is logged.
 /// </summary>
-public sealed class LmStudioClient : ILlmClient, IDisposable
+public sealed class OpenAiCompatibleClient : ILlmClient, IDisposable
 {
+    private const string Name = "推論エンジン";
     private readonly HttpClient _http;
     private readonly LlmEndpoint _endpoint;
     private readonly TimeSpan _requestTimeout;
-    private readonly LlmServerKind _kind;
-    private readonly string _name;
 
     /// <param name="apiKey">Sent as a bearer token (the bundled server is started with a random key per run).</param>
-    public LmStudioClient(LlmEndpoint endpoint, TimeSpan requestTimeout, HttpMessageHandler? handler = null, LlmServerKind kind = LlmServerKind.LmStudio, string? apiKey = null)
+    public OpenAiCompatibleClient(LlmEndpoint endpoint, TimeSpan requestTimeout, HttpMessageHandler? handler = null, string? apiKey = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         _endpoint = endpoint;
         _requestTimeout = requestTimeout;
-        _kind = kind;
-        _name = kind == LlmServerKind.LmStudio ? "LM Studio" : "推論エンジン";
         _http = new HttpClient(handler ?? CreateHandler(), disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (!string.IsNullOrEmpty(apiKey)) _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
@@ -106,40 +91,13 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
         },
     };
 
+    /// <summary>One model per process, loaded at start: <c>GET /props</c> reports the context length it was started with.</summary>
     public async Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(modelId);
-        if (_kind == LlmServerKind.LlamaServer)
-        {
-            // One model per process, loaded at start; /props reports the context length it was started with.
-            using var props = await SendAsync(HttpMethod.Get, new Uri(_endpoint.BaseUri, "../props"), null, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
-            var context = props.RootElement.TryGetProperty("default_generation_settings", out var g) ? TryInt(g, "n_ctx") : null;
-            return new LlmModelInfo(modelId, context, context, Loaded: true);
-        }
-        using var models = await SendAsync(HttpMethod.Get, "models", null, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
-        var ids = models.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array
-            ? data.EnumerateArray().Select(m => m.TryGetProperty("id", out var id) ? id.GetString() : null).OfType<string>().ToList()
-            : [];
-        if (!ids.Contains(modelId, StringComparer.Ordinal))
-            throw new LlmUnavailableException($"LM Studio にモデル「{modelId}」が読み込まれていません。");
-
-        // LM Studio's own REST API reports the loaded context length; the OpenAI-compatible one does not.
-        int? loaded = null, max = null;
-        bool? isLoaded = null;
-        try
-        {
-            var native = new Uri(_endpoint.BaseUri, "../api/v0/models/" + Uri.EscapeDataString(modelId));
-            using var info = await SendAsync(HttpMethod.Get, native, null, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
-            loaded = TryInt(info.RootElement, "loaded_context_length");
-            max = TryInt(info.RootElement, "max_context_length");
-            if (info.RootElement.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.String)
-                isLoaded = state.GetString() == "loaded";
-        }
-        catch (Exception ex) when (ex is LlmProtocolException or LlmUnavailableException)
-        {
-            // Older or newer servers without this endpoint: the settings value is used and shown to the user.
-        }
-        return new LlmModelInfo(modelId, isLoaded == false ? null : loaded, max, isLoaded);
+        using var props = await SendAsync(HttpMethod.Get, new Uri(_endpoint.BaseUri, "../props"), null, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+        var context = props.RootElement.TryGetProperty("default_generation_settings", out var g) ? TryInt(g, "n_ctx") : null;
+        return new LlmModelInfo(modelId, context, context, Loaded: true);
     }
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken cancellationToken)
@@ -156,9 +114,8 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
             ["temperature"] = request.Temperature,
             ["max_tokens"] = request.MaxTokens,
             ["stream"] = false,
-            // No thinking: Gemma 4 thinks by default in LM Studio and spends about three quarters of the output on it
-            // (2026-11-04). Only "reasoning_effort": "none" turns it off there; models without thinking ignore it.
-            // The bundled server is also started with --reasoning off.
+            // No thinking: the server is started with --reasoning off; this also turns it off per request (Gemma 4
+            // thinks by default and spent about three quarters of the output on it, 2026-11-04).
             ["reasoning_effort"] = "none",
             ["response_format"] = new JsonObject
             {
@@ -176,11 +133,11 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
         watch.Stop();
         var root = response.RootElement;
         if (!root.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
-            throw new LlmProtocolException($"{_name}の応答に choices がありません。");
+            throw new LlmProtocolException($"{Name}の応答に choices がありません。");
         var choice = choices[0];
         var content = choice.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String
             ? c.GetString()!
-            : throw new LlmProtocolException($"{_name}の応答に本文がありません。");
+            : throw new LlmProtocolException($"{Name}の応答に本文がありません。");
         var finish = choice.TryGetProperty("finish_reason", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() : null;
         var usage = root.TryGetProperty("usage", out var u) ? u : default;
         return new LlmResponse
@@ -209,25 +166,25 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new LlmProtocolException($"{_name}が {timeout.TotalSeconds:0} 秒以内に応答しませんでした。");
+            throw new LlmProtocolException($"{Name}が {timeout.TotalSeconds:0} 秒以内に応答しませんでした。");
         }
         catch (HttpRequestException ex)
         {
-            throw new LlmUnavailableException(_kind == LlmServerKind.LmStudio ? "LM Studio のサーバーに接続できません。LM Studio を起動し、サーバーを開始してください。" : "推論エンジンに接続できません。", ex);
+            throw new LlmUnavailableException("推論エンジンに接続できません。", ex);
         }
         using (response)
         {
             var text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             var status = (int)response.StatusCode;
-            if (status is >= 300 and < 400) throw new LlmProtocolException($"{_name}がリダイレクト（HTTP {status}）を返しました。従いません。");
+            if (status is >= 300 and < 400) throw new LlmProtocolException($"{Name}がリダイレクト（HTTP {status}）を返しました。従いません。");
             if (!response.IsSuccessStatusCode)
             {
                 var error = ErrorMessage(text);
                 if (error.Contains("context", StringComparison.OrdinalIgnoreCase) || error.Contains("memory", StringComparison.OrdinalIgnoreCase))
-                    throw new LlmContextException($"{_name}が要求を処理できませんでした（HTTP {status}、コンテキスト長またはメモリ）。");
+                    throw new LlmContextException($"{Name}が要求を処理できませんでした（HTTP {status}、コンテキスト長またはメモリ）。");
                 if (response.StatusCode is HttpStatusCode.NotFound || error.Contains("model", StringComparison.OrdinalIgnoreCase) && error.Contains("load", StringComparison.OrdinalIgnoreCase))
-                    throw new LlmUnavailableException($"{_name}でモデルが読み込まれていません（HTTP {status}）。");
-                throw new LlmProtocolException(status == 401 ? $"{_name}が認証を拒みました（HTTP 401）。" : $"{_name}がエラーを返しました（HTTP {status}）。");
+                    throw new LlmUnavailableException($"{Name}でモデルが読み込まれていません（HTTP {status}）。");
+                throw new LlmProtocolException(status == 401 ? $"{Name}が認証を拒みました（HTTP 401）。" : $"{Name}がエラーを返しました（HTTP {status}）。");
             }
             try
             {
@@ -235,7 +192,7 @@ public sealed class LmStudioClient : ILlmClient, IDisposable
             }
             catch (JsonException ex)
             {
-                throw new LlmProtocolException($"{_name}の応答を JSON として読めません。", ex);
+                throw new LlmProtocolException($"{Name}の応答を JSON として読めません。", ex);
             }
         }
     }

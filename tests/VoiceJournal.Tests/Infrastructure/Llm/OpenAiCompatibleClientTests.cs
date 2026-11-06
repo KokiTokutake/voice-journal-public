@@ -22,18 +22,18 @@ internal sealed class FakeHandler(Func<HttpRequestMessage, string?, HttpResponse
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 }
 
-public sealed class LmStudioClientTests
+public sealed class OpenAiCompatibleClientTests
 {
     private static readonly LlmRequest Request = new()
     {
-        Model = "gemma-3-4b-it",
+        Model = "gemma-4-e2b-it",
         Messages = [new(LlmRole.System, "指示"), new(LlmRole.User, "{}")],
         SchemaName = LlmSchemas.ExtractionName,
         Schema = LlmSchemas.Extraction,
         MaxTokens = 2048,
     };
 
-    private static LmStudioClient Client(FakeHandler handler) => new(LlmEndpoint.Parse(LlmEndpoint.Default), TimeSpan.FromSeconds(5), handler);
+    private static OpenAiCompatibleClient Client(FakeHandler handler) => new(LlmEndpoint.Parse("http://127.0.0.1:1234/v1"), TimeSpan.FromSeconds(5), handler);
 
     [Theory]
     [InlineData("http://127.0.0.1:1234/v1", "http://127.0.0.1:1234/v1/")]
@@ -54,7 +54,7 @@ public sealed class LmStudioClientTests
     [Fact]
     public void DefaultHandler_UsesNoProxy_AndFollowsNoRedirects()
     {
-        using var handler = LmStudioClient.CreateHandler();
+        using var handler = OpenAiCompatibleClient.CreateHandler();
         Assert.False(handler.UseProxy);
         Assert.False(handler.AllowAutoRedirect);
         Assert.NotNull(handler.ConnectCallback);
@@ -113,17 +113,13 @@ public sealed class LmStudioClientTests
     }
 
     [Fact]
-    public async Task GetModel_ChecksTheId_AndReadsTheLoadedContext()
+    public async Task GetModel_ReadsTheContextTheServerWasStartedWith()
     {
-        var handler = new FakeHandler((r, _) => r.RequestUri!.AbsolutePath switch
-        {
-            "/v1/models" => FakeHandler.Json("""{"data":[{"id":"gemma-3-4b-it"}]}"""),
-            "/api/v0/models/gemma-3-4b-it" => FakeHandler.Json("""{"id":"gemma-3-4b-it","state":"loaded","loaded_context_length":16384,"max_context_length":131072}"""),
-            _ => FakeHandler.Json("{}", HttpStatusCode.NotFound),
-        });
+        var handler = new FakeHandler((r, _) => r.RequestUri!.AbsolutePath == "/props"
+            ? FakeHandler.Json("""{"default_generation_settings":{"n_ctx":16384},"total_slots":1}""")
+            : FakeHandler.Json("{}", HttpStatusCode.NotFound));
         using var client = Client(handler);
 
-        Assert.Equal(new LlmModelInfo("gemma-3-4b-it", 16384, 131072, true), await client.GetModelAsync("gemma-3-4b-it", CancellationToken.None));
-        await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("other-model", CancellationToken.None));
+        Assert.Equal(new LlmModelInfo("gemma-4-e2b-it", 16384, 16384, true), await client.GetModelAsync("gemma-4-e2b-it", CancellationToken.None));
     }
 }

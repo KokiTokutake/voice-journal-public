@@ -115,7 +115,7 @@ public sealed class RecordCoordinator : IRecordService, IDisposable
 
     public void Cancel(string sessionDirectory, Guid jobId) => _runner.Cancel(sessionDirectory, jobId);
 
-    /// <summary>Retries a failed or cancelled job from its finished pieces (LLM-001: after LM Studio is started).</summary>
+    /// <summary>Retries a failed or cancelled job from its finished pieces (LLM-001: after the cause is fixed).</summary>
     public RecordJob Retry(string sessionDirectory, Guid jobId) => _runner.Retry(sessionDirectory, jobId);
 
     /// <summary>A record was edited, approved or deferred from the UI: index it off the UI thread.</summary>

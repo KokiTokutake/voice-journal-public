@@ -1,6 +1,5 @@
 using VoiceJournal.App.Services;
 using VoiceJournal.Core.Analysis;
-using VoiceJournal.Infrastructure.Llm;
 using VoiceJournal.Tests.Core.Analysis;
 using VoiceJournal.Tests.TestSupport;
 
@@ -35,34 +34,21 @@ public sealed class LlmSettingsTests
     [Fact]
     public void HandEditedValues_OutsideTheWorkableRange_AreReplaced()
     {
-        var sanitized = new LlmSettings { Url = " ", ModelId = "", ContextLength = 100, OutputReserve = 999_999, MaxPieceTokens = 0, Temperature = 5, RequestTimeoutMinutes = 0 }.Sanitized();
+        var sanitized = new LlmSettings { ModelId = "", ContextLength = 100, OutputReserve = 999_999, MaxPieceTokens = 0, Temperature = 5, RequestTimeoutMinutes = 0 }.Sanitized();
 
         Assert.Equal(new LlmSettings(), sanitized);
         Assert.Equal(4096, new LlmSettings { ContextLength = 8192, OutputReserve = 4096 }.Sanitized().OutputReserve); // at most half of C
         Assert.Equal(4096, new LlmSettings { ContextLength = 8192, OutputReserve = 6000 }.Sanitized().OutputReserve);
     }
 
-    [Theory]
-    [InlineData("http://192.168.1.10:1234/v1")]
-    [InlineData("http://example.com/v1")]
-    [InlineData("not a url")]
-    public async Task AUrlOffLoopback_IsRefusedAsUnavailable_WithoutSendingAnything(string url)
-    {
-        using var client = new ConfiguredLlmClient(() => (url, TimeSpan.FromSeconds(5)));
-
-        await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("gemma-3-4b-it", CancellationToken.None));
-    }
-
     [Fact]
-    public async Task AChangedUrl_IsUsedForTheNextRequest()
+    public void AnOlderFile_WithTheRemovedEngineAndUrl_IsStillRead()
     {
-        var url = "http://192.168.1.10:1234/v1";
-        using var client = new ConfiguredLlmClient(() => (url, TimeSpan.FromSeconds(5)));
-        await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("m", CancellationToken.None));
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "llm.json");
+        File.WriteAllText(path, """{ "engine": "lm_studio", "url": "http://127.0.0.1:1234/v1", "context_length": 8192 }""");
 
-        url = "http://127.0.0.1:9/v1"; // loopback, nothing listening (discard port)
-        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => client.GetModelAsync("m", CancellationToken.None));
-        Assert.Contains("接続できません", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(8192, new JsonLlmSettingsStore(path).Load().ContextLength);
     }
 }
 
@@ -85,22 +71,12 @@ public sealed class LlmSettingsViewModelTests : IDisposable
     public void TheSavedValues_AreShown_AndAChangeIsSavedForTheNextJob()
     {
         Assert.True(_vm.HasLlm);
-        Assert.Equal((LlmEndpoint.Default, "gemma-4-e2b-it", 16384, 6144, 3000), (_vm.LlmUrl, _vm.LlmModelId, _vm.LlmContextLength, _vm.LlmOutputReserve, _vm.LlmPieceTokens));
+        Assert.Equal(("gemma-4-e2b-it", 16384, 6144, 3000), (_vm.LlmModelId, _vm.LlmContextLength, _vm.LlmOutputReserve, _vm.LlmPieceTokens));
 
         _vm.LlmPieceTokens = 2000;
 
         Assert.Equal(2000, _store.Current.MaxPieceTokens);
         Assert.Contains("次に始める記録の作成から", _vm.LlmMessage, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AUrlOffLoopback_IsNotSaved()
-    {
-        _vm.UseLmStudio = true;
-        _vm.LlmUrl = "http://192.168.1.20:1234/v1";
-
-        Assert.Equal(LlmEndpoint.Default, _store.Current.Url);
-        Assert.Contains("保存していません", _vm.LlmMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -115,47 +91,17 @@ public sealed class LlmSettingsViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task CheckingTheConnection_ReportsTheLoadedContext_AndWarnsWhenItIsShorter()
+    public async Task CheckingTheConnection_StartsTheBundledEngine_AndReportsTheContext()
     {
-        _vm.UseLmStudio = true;
         await _vm.CheckLlmCommand.ExecuteAsync(null);
-
-        Assert.StartsWith("✓", _vm.LlmStatus, StringComparison.Ordinal);
+        Assert.StartsWith("✓ 推論エンジン", _vm.LlmStatus, StringComparison.Ordinal);
         Assert.Contains("コンテキスト長 8192", _vm.LlmStatus, StringComparison.Ordinal);
-        Assert.Contains("⚠", _vm.LlmStatus, StringComparison.Ordinal);
-
-        _llm.Unloaded = true;
-        await _vm.CheckLlmCommand.ExecuteAsync(null);
-        Assert.Contains("自動で読み込みます", _vm.LlmStatus, StringComparison.Ordinal);
+        Assert.Contains("⚠", _vm.LlmStatus, StringComparison.Ordinal); // shorter than the setting's 16384
 
         _llm.Unavailable = true;
         await _vm.CheckLlmCommand.ExecuteAsync(null);
         Assert.StartsWith("✗ LLM-001", _vm.LlmStatus, StringComparison.Ordinal);
-        Assert.Contains("LM Studio を起動し", _vm.LlmStatus, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task TheBundledEngine_IsTheDefault_ItsCheckStartsIt_AndTheEngineChoiceIsSaved()
-    {
-        Assert.True(_vm.UseBundledEngine);
-        await _vm.CheckLlmCommand.ExecuteAsync(null);
-        Assert.StartsWith("✓ 推論エンジン", _vm.LlmStatus, StringComparison.Ordinal);
-
-        _llm.Unavailable = true;
-        await _vm.CheckLlmCommand.ExecuteAsync(null);
         Assert.Contains("llm-tools.json", _vm.LlmStatus, StringComparison.Ordinal);
-
-        _vm.UseLmStudio = true;
-        Assert.Equal(VoiceJournal.App.Services.LlmEngine.LmStudio, _store.Current.Engine);
-        _vm.UseBundledEngine = true;
-        Assert.Equal(VoiceJournal.App.Services.LlmEngine.Bundled, _store.Current.Engine);
-    }
-
-    [Fact]
-    public void ThePlaceholderUrl_IsNotCheckedWhileTheBundledEngineIsUsed()
-    {
-        _vm.LlmUrl = "http://192.168.1.20:1234/v1"; // ignored: the bundled engine has no URL
-
-        Assert.DoesNotContain("保存していません", _vm.LlmMessage ?? "", StringComparison.Ordinal);
+        Assert.DoesNotContain("LM Studio", _vm.LlmStatus, StringComparison.Ordinal);
     }
 }

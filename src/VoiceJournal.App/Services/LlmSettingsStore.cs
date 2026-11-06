@@ -2,34 +2,20 @@ using System.Text.Json;
 using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.IO;
 using VoiceJournal.Core.Serialization;
-using VoiceJournal.Infrastructure.Llm;
 
 namespace VoiceJournal.App.Services;
 
 /// <summary>
 /// Record generation settings (detail spec 9.1, 9.2, 18.2 UI-12). A job takes a snapshot when it is queued, so a
-/// change applies to the next job. The defaults are the values measured in Phase D2 (<c>docs/environment-lock.md</c> 6).
+/// change applies to the next job. The defaults are the values measured in Phase D (<c>docs/environment-lock.md</c> 6).
+/// Records are made by the bundled llama.cpp server only (LM Studio was removed on 2026-11-06); an older file's
+/// <c>engine</c> and <c>url</c> are ignored when read.
 /// </summary>
-/// <summary>Which engine makes records (docs/phase-d-engine-plan.md). LM Studio stays selectable during the move.</summary>
-public enum LlmEngine
-{
-    /// <summary>The bundled llama.cpp server the app starts and stops (<c>config\llm-tools.json</c>).</summary>
-    Bundled,
-
-    /// <summary>LM Studio at <see cref="LlmSettings.Url"/>; the user loads the model.</summary>
-    LmStudio,
-}
-
 public sealed record LlmSettings
 {
-    public LlmEngine Engine { get; init; } = LlmEngine.Bundled;
-
-    /// <summary>LM Studio's OpenAI-compatible API, on loopback only (only with <see cref="LlmEngine.LmStudio"/>).</summary>
-    public string Url { get; init; } = LlmEndpoint.Default;
-
     public string ModelId { get; init; } = "gemma-4-e2b-it";
 
-    /// <summary>C: the context length the model is loaded with. When LM Studio reports a shorter one, that one is used.</summary>
+    /// <summary>C: the context length the bundled server is started with (<c>/props</c> reports what it got).</summary>
     public int ContextLength { get; init; } = 16384;
 
     /// <summary>O: the output reserve, also every request's <c>max_tokens</c>.</summary>
@@ -58,8 +44,6 @@ public sealed record LlmSettings
         var context = ContextLength is >= 4096 and <= 262144 ? ContextLength : defaults.ContextLength;
         return this with
         {
-            Engine = Enum.IsDefined(Engine) ? Engine : defaults.Engine,
-            Url = string.IsNullOrWhiteSpace(Url) ? defaults.Url : Url.Trim(),
             ModelId = string.IsNullOrWhiteSpace(ModelId) ? defaults.ModelId : ModelId.Trim(),
             ContextLength = context,
             OutputReserve = OutputReserve >= 1024 && OutputReserve <= context / 2 ? OutputReserve : Math.Min(defaults.OutputReserve, context / 2),

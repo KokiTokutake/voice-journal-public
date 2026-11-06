@@ -144,7 +144,7 @@
                 <Border Grid.Column="2" Style="{StaticResource Card}" Padding="0">
                     <Grid>
                         <TextBlock Margin="16" TextWrapping="Wrap" Style="{StaticResource Note}" Visibility="{Binding HasNoRecord, Converter={StaticResource BoolToVisibility}}"
-                                   Text="まだ記録がありません。下の「記録を作る」で、使用中の文字起こしから推論エンジンが要約と課題・タスクの候補を作ります（LM Studio のサーバーとモデルの読み込みが必要です）。" />
+                                   Text="まだ記録がありません。下の「記録を作る」で、使用中の文字起こしから推論エンジンが要約と課題・タスクの候補を作ります。" />
                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasRecord, Converter={StaticResource BoolToVisibility}}"
                                       Padding="16,12">
                             <StackPanel>

@@ -33,7 +33,7 @@ public sealed record GenerationSettings
     /// </summary>
     public int MaxPieceTokens { get; init; } = 3000;
 
-    /// <summary>Pieces sent at the same time (LM Studio serves up to its "parallel" setting). Not in the hash: it does not change answers.</summary>
+    /// <summary>Pieces sent at the same time (the bundled server is started with one slot). Not in the hash: it does not change answers.</summary>
     public int Parallelism { get; init; } = 1;
 
     public string ComputeHash()
@@ -146,7 +146,7 @@ public sealed record GenerationWorkPiece
 /// Builds a record from the transcript in use (detail spec 9.2): extraction per piece, hierarchical integration,
 /// assembly, validation against 16.2 and the full schema, then the analysis revision and a record draft.
 /// Work files under <c>analysis/work/&lt;job&gt;/</c> let a cancelled or crashed job resume from finished pieces.
-/// LM Studio being unavailable aborts the job (it is retried later); a bad answer only fails its piece.
+/// The inference server being unavailable aborts the job (it is retried later); a bad answer only fails its piece.
 /// </summary>
 public sealed class RecordGenerator
 {
@@ -164,7 +164,7 @@ public sealed class RecordGenerator
         _time = time ?? throw new ArgumentNullException(nameof(time));
     }
 
-    /// <exception cref="LlmUnavailableException">LM Studio is not reachable or the model is not loaded (LLM-001).</exception>
+    /// <exception cref="LlmUnavailableException">The inference server cannot be started or reached (LLM-001).</exception>
     /// <exception cref="OperationCanceledException">Cancelled (recording started, user cancel); finished pieces are kept.</exception>
     public async Task<GenerationResult> GenerateAsync(GenerationRequest request, IProgress<GenerationProgress>? progress, CancellationToken cancellationToken)
     {
@@ -362,8 +362,8 @@ public sealed class RecordGenerator
 
     /// <summary>
     /// Makes sure the model is loaded and uses the context length it is really loaded with (detail spec 9.2: read
-    /// C when possible). LM Studio may have unloaded it (TTL) and loads it again on the first request (JIT) with
-    /// its own per-model defaults, so a one-token request wakes it before C is read.
+    /// C when possible). A server that reports the model as not loaded (an OpenAI-compatible server with on-demand
+    /// loading; the bundled one always reports it loaded) is woken by a one-token request before C is read.
     /// </summary>
     private async Task<GenerationSettings> PrepareModelAsync(GenerationSettings settings, List<string> warnings, CancellationToken cancellationToken)
     {
@@ -382,14 +382,14 @@ public sealed class RecordGenerator
         }
         if (model.LoadedContextLength is { } loaded && loaded < settings.ContextLength)
         {
-            warnings.Add($"推論エンジンのコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。LM Studio のモデル設定を確認してください。");
+            warnings.Add($"推論エンジンのコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。空きメモリが足りなかった可能性があります。");
             return settings with { ContextLength = loaded };
         }
         return settings;
     }
 
     /// <summary>
-    /// Fixed part of a request (H of detail spec 9.2). LM Studio enforces the schema as a grammar and does not put
+    /// Fixed part of a request (H of detail spec 9.2). The server enforces the schema as a grammar and does not put
     /// it in the prompt (Phase D2: 838 prompt tokens measured where the schema alone would be ~1,300), so a margin
     /// for the chat template and the response-format bookkeeping replaces the schema's size.
     /// </summary>

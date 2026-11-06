@@ -255,7 +255,7 @@ public sealed class LlamaServerHost : IDisposable
 
     private async Task WaitUntilReadyAsync(Process process, LlmEndpoint endpoint, CancellationToken cancellationToken)
     {
-        using var http = new HttpClient(LmStudioClient.CreateHandler(), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(5) };
+        using var http = new HttpClient(OpenAiCompatibleClient.CreateHandler(), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(5) };
         var health = new Uri(endpoint.BaseUri, "../health");
         var deadline = _time.GetUtcNow() + _startTimeout;
         while (true)
@@ -502,9 +502,9 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     private readonly LlamaServerHost _host;
     private readonly Func<(int ContextLength, TimeSpan Timeout)> _settings;
     private readonly Lock _lock = new();
-    private readonly List<LmStudioClient> _retired = [];
+    private readonly List<OpenAiCompatibleClient> _retired = [];
     private (LlamaServerEndpoint Endpoint, TimeSpan Timeout)? _key;
-    private LmStudioClient? _client;
+    private OpenAiCompatibleClient? _client;
 
     public BundledLlmClient(LlamaServerHost host, Func<(int ContextLength, TimeSpan Timeout)> settings)
     {
@@ -527,7 +527,7 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
             return await client.CompleteAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<(LmStudioClient Client, IDisposable Lease)> ClientAsync(string modelId, CancellationToken cancellationToken)
+    private async Task<(OpenAiCompatibleClient Client, IDisposable Lease)> ClientAsync(string modelId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrEmpty(modelId);
         var (context, timeout) = _settings();
@@ -537,7 +537,7 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
             if (_client is null || _key != (endpoint, timeout))
             {
                 if (_client is not null) _retired.Add(_client);
-                _client = new LmStudioClient(endpoint.Endpoint, timeout, kind: LlmServerKind.LlamaServer, apiKey: endpoint.ApiKey);
+                _client = new OpenAiCompatibleClient(endpoint.Endpoint, timeout, apiKey: endpoint.ApiKey);
                 _key = (endpoint, timeout);
             }
             return (_client, lease);

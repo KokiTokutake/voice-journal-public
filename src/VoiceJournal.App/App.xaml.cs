@@ -138,7 +138,7 @@ public partial class App : Application
             sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<InferenceGate>()));
         services.AddSingleton<ILlmSettingsStore>(new JsonLlmSettingsStore(JsonLlmSettingsStore.DefaultPath));
-        // The bundled llama.cpp server (docs/phase-d-engine-plan.md); LM Studio stays selectable during the move.
+        // The bundled llama.cpp server (docs/phase-d-engine-plan.md), started for a job and stopped when idle.
         services.AddSingleton(_ => LlmToolSettings.LoadOrCreate(AppDataRoot));
         services.AddSingleton(sp => new LlamaServerHost(sp.GetRequiredService<LlmToolSettings>, idleTimeout: TimeSpan.FromSeconds(60)));
         services.AddSingleton(sp =>
@@ -150,18 +150,7 @@ public partial class App : Application
                 return (settings.ContextLength, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
             });
         });
-        services.AddSingleton(sp =>
-        {
-            var store = sp.GetRequiredService<ILlmSettingsStore>();
-            return new ConfiguredLlmClient(() =>
-            {
-                var settings = store.Load();
-                return (settings.Url, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
-            });
-        });
-        services.AddSingleton<ILlmClient>(sp => new SelectingLlmClient(
-            () => sp.GetRequiredService<ILlmSettingsStore>().Load().Engine,
-            sp.GetRequiredService<BundledLlmClient>(), sp.GetRequiredService<ConfiguredLlmClient>()));
+        services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<BundledLlmClient>());
         services.AddSingleton<IAnalysisSchemaValidator, AnalysisSchemaValidator>();
         services.AddSingleton(sp => new RecordGenerator(sp.GetRequiredService<ILlmClient>(), sp.GetRequiredService<IAnalysisSchemaValidator>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new RecordJobProcessor(sp.GetRequiredService<RecordGenerator>(), sp.GetRequiredService<TimeProvider>()));

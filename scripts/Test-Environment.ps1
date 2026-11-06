@@ -7,6 +7,8 @@
   3. LM Studio の /v1/models でモデル ID を確認（-ModelId 未指定なら最初の LLM を使う）
   4. JSON Schema 付き chat/completions で要約・タスク抽出を行い、JSON として解析できるか確認
   LM Studio が起動していない場合は 3 以降をスキップして結果に記録する。
+  注記（2026-11-06）: LM Studio はアンインストールした。Phase A の経緯として残すスクリプトで、今は 1・2 だけが動く。
+  LLM の確認は、アプリの設定画面の「接続を確認」か .\scripts\Test-PhaseD.ps1 で行う。
 #>
 param(
     [string]$Root = (Join-Path $env:LOCALAPPDATA 'VoiceJournal'),

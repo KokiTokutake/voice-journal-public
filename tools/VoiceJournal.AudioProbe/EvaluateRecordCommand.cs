@@ -37,7 +37,7 @@ internal static class EvaluateRecordCommand
         {
             var workspace = Path.GetFullPath(Option("--workspace", "") is { Length: > 0 } w ? w : throw new ArgumentException("--workspace を指定してください。"));
             var settings = OrganizeCommand.Settings(args);
-            var (client, owner) = OrganizeCommand.Client(args, settings);
+            var (client, owner) = OrganizeCommand.Client(settings);
             using var _ = owner;
             var model = await client.GetModelAsync(settings.ModelId, CancellationToken.None).ConfigureAwait(false);
             Console.Error.WriteLine($"model {model.Id}: loaded context {model.LoadedContextLength?.ToString(CultureInfo.InvariantCulture) ?? "?"}");

@@ -42,8 +42,8 @@ public sealed record LlmResponse
 
 /// <summary>
 /// The model the server reports, and the context length it is loaded with when the server says so.
-/// <paramref name="Loaded"/> is false when the server lists the model but has not loaded it (LM Studio's JIT
-/// loading or TTL unload); null when the server does not say.
+/// <paramref name="Loaded"/> is false when the server lists the model but has not loaded it (on-demand loading
+/// or an unload after idle); null when the server does not say.
 /// </summary>
 public sealed record LlmModelInfo(string Id, int? LoadedContextLength, int? MaxContextLength, bool? Loaded = null);
 
@@ -78,7 +78,7 @@ public sealed class LlmProtocolException : Exception
 }
 
 /// <summary>
-/// The local LLM server (LM Studio, OpenAI-compatible API on loopback only). Implementations never log prompts
+/// The local LLM server (the bundled llama-server, OpenAI-compatible API on loopback only). Implementations never log prompts
 /// or answers, never follow redirects and never use a proxy (detail spec 9.1, 21.3).
 /// </summary>
 public interface ILlmClient

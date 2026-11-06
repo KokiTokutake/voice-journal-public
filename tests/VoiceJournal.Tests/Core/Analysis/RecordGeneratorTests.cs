@@ -20,7 +20,7 @@ internal sealed class EchoLlm : ILlmClient
 
     public bool Unavailable { get; set; }
 
-    /// <summary>LM Studio unloaded the model (TTL); the first request loads it again (JIT).</summary>
+    /// <summary>A server that reports the model unloaded; the first request loads it again.</summary>
     public bool Unloaded { get; set; }
 
     public int LoadedContext { get; set; } = 8192;

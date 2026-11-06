@@ -9,7 +9,7 @@ namespace VoiceJournal.Core.Analysis;
 /// <summary>Error codes of detail spec 19 for record generation.</summary>
 public enum RecordJobError
 {
-    /// <summary>LLM-001: LM Studio not running, not on loopback, or the model not loaded.</summary>
+    /// <summary>LLM-001: the inference server could not be started (files, memory) or reached.</summary>
     LlmUnavailable,
 
     /// <summary>LLM-002 / LLM-003 / VAL-001: every piece failed, or the result did not validate.</summary>
@@ -375,7 +375,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
         }
     }
 
-    /// <summary>Retries a failed or cancelled job (LLM-001: after LM Studio is started). Finished pieces are reused.</summary>
+    /// <summary>Retries a failed or cancelled job (LLM-001: after the cause is fixed). Finished pieces are reused.</summary>
     public RecordJob Retry(string sessionDirectory, Guid jobId)
     {
         var job = RecordJobStore.Load(sessionDirectory, jobId);
