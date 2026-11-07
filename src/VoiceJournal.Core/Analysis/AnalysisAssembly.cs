@@ -153,13 +153,14 @@ public static partial class ExtractionConverter
             foreach (var e in wire)
             {
                 var segment = Resolve(e.Segment, segments);
-                if (segment is null || !EvidenceText.IsQuoteOf(e.Quote, segment.Text))
+                var quote = segment is null ? null : EvidenceText.MatchQuote(e.Quote, segment.Text);
+                if (segment is null || quote is null)
                 {
                     droppedEvidence++;
                     if (rejected.Count < 6) rejected.Add($"{e.Segment}: {Clean(e.Quote)}");
                     continue;
                 }
-                var item = new Evidence { SegmentId = segment.SegmentId, Quote = e.Quote.Trim() };
+                var item = new Evidence { SegmentId = segment.SegmentId, Quote = quote };
                 if (!list.Contains(item)) list.Add(item);
             }
             return list;

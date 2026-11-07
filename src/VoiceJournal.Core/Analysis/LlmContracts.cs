@@ -260,7 +260,7 @@ public static class LlmSchemas
 /// <summary>System prompts (detail spec 9.1, 9.3, 21.2). The version is recorded with every analysis.</summary>
 public static class AnalysisPrompts
 {
-    public const string Version = "2026-11-06.1";
+    public const string Version = "2026-11-07.1";
 
     public const string Extraction = """
         あなたは、会話の文字起こしを記録に整理する補助者です。入力は JSON で、segments が文字起こしの区間です。
@@ -284,7 +284,7 @@ public static class AnalysisPrompts
         - summary_points: この部分の要点を 1〜3 項目。
         - topics: 話題ごとの記録を 5 章まで、各章 1〜3 文で。section_kind は decision（決定事項）、open_question（未決事項）、next_step（次にやること）、topic（議題・話題の記録）、explanation（説明・概念）、idea（発想・案）、result（結果）、reflection（気づき）、context（背景）、custom（その他）から選びます。内容のない章は作りません。
           - 数値・条件・理由・反対意見・未確定の事項を残します。
-          - 「やらない」「見送る」「〜にする」と決めたことは、decision の章に残します。
+          - 「やらない」「やめておく」「見送る」「〜にする」と決めたことは、ほかの話題の章に混ぜず、decision の章にまとめて残します（個人の予定や生活の話でも同じです）。
           - 講義・説明では、出てきた用語・仕組み・数値・注意点を、1 つずつ別の文にして explanation の章に残します。
           - candidates に挙げた作業の担当・期限・手順を、topics で繰り返しません。topics には話題の結論と経緯だけを書きます。
         - 各文は 50 字以内にし、同じことを繰り返しません。quote は根拠になる語句だけを 8〜30 字で切り出します。

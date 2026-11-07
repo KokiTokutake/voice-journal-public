@@ -54,7 +54,7 @@ public static class JsonGuard
 }
 
 /// <summary>Text comparison for evidence quotes (plan 3.5): NFKC and whitespace only, so a paraphrase never matches.</summary>
-public static class EvidenceText
+public static partial class EvidenceText
 {
     /// <summary>Quotes shorter than this (after normalization) prove nothing, unless they are the whole segment.</summary>
     public const int MinQuoteLength = 4;
@@ -80,6 +80,51 @@ public static class EvidenceText
         if (q.Length < MinQuoteLength && q.Length < s.Trim(EdgePunctuation.ToCharArray()).Length) return false;
         return s.Contains(q, StringComparison.Ordinal);
     }
+
+    /// <summary>Hiragana at the end of a quote that may differ from the segment (「表示できる」 for 「表示できます」).</summary>
+    public const int MaxEndingDifference = 2;
+
+    /// <summary>What must remain of a quote, after its ending is cut, for it to still prove something.</summary>
+    public const int MinQuoteLengthWithoutEnding = 8;
+
+    /// <summary>
+    /// The quote to keep as evidence, or null when <paramref name="quote"/> is not in <paramref name="segmentText"/>.
+    /// A quote that differs only in up to <see cref="MaxEndingDifference"/> hiragana at its end is kept without them
+    /// (D5, 2026-11-07: the model wrote 「…検索の手順を表示できる」 for 「…表示できます」 and the key point was lost),
+    /// as long as <see cref="MinQuoteLengthWithoutEnding"/> characters remain and neither the cut ending nor what follows
+    /// in the segment is a negation (「できない」 for 「できます」 is not the same thing). What is kept is always a
+    /// substring of the segment, so <see cref="IsQuoteOf"/> (the validator) stays strict.
+    /// </summary>
+    public static string? MatchQuote(string quote, string segmentText)
+    {
+        ArgumentNullException.ThrowIfNull(quote);
+        ArgumentNullException.ThrowIfNull(segmentText);
+        var trimmed = quote.Trim();
+        if (IsQuoteOf(trimmed, segmentText)) return trimmed;
+        var body = trimmed.TrimEnd([.. EdgePunctuation, ' ', '　']);
+        var segment = Normalize(segmentText);
+        for (var cut = 1; cut <= MaxEndingDifference && cut < body.Length; cut++)
+        {
+            var ending = body[^cut..];
+            if (!ending.All(IsHiragana)) break;
+            var kept = body[..^cut];
+            var key = Normalize(kept);
+            if (key.Length < MinQuoteLengthWithoutEnding) break;
+            var at = segment.IndexOf(key, StringComparison.Ordinal);
+            if (at < 0) continue;
+            // The end of what is kept joined to what follows: 「できま」+「せん」.
+            var from = Math.Max(at, at + key.Length - 3);
+            var around = segment[from..Math.Min(segment.Length, at + key.Length + 5)];
+            if (Negation().IsMatch(ending) || Negation().IsMatch(around)) return null;
+            return kept;
+        }
+        return null;
+    }
+
+    private static bool IsHiragana(char c) => c is >= 'ぁ' and <= 'ゟ';
+
+    [GeneratedRegex("ない|なかっ|なく|ません|ず|ぬ")]
+    private static partial Regex Negation();
 
     /// <summary>Equality used for titles and names: NFKC, trimmed, runs of spaces collapsed, ASCII case ignored (detail spec 12.2-3).</summary>
     public static string NormalizeTitle(string text)

@@ -102,6 +102,26 @@ public sealed class EvidenceTextTests
     [InlineData("", "来週までにログの調査を進めます")]
     [InlineData("ログの調査を進めます。来週", "来週までにログの調査を進めます")]
     public void ParaphrasesAndFragments_DoNotMatch(string quote, string text) => Assert.False(EvidenceText.IsQuoteOf(quote, text));
+
+    [Theory]
+    [InlineData("ログの調査を進めます", "来週までにログの調査を進めます", "ログの調査を進めます")] // as it is
+    [InlineData(" ログの調査を進めます ", "来週までにログの調査を進めます", "ログの調査を進めます")] // trimmed
+    // D5: 「…表示できる」 for 「…表示できます」. What is kept is the part that is in the segment.
+    [InlineData("多くのデータベースには、EXPLAIN という命令があり、検索の手順を表示できる", "多くのデータベースには、EXPLAIN という命令があり、検索の手順を表示できます", "多くのデータベースには、EXPLAIN という命令があり、検索の手順を表示でき")]
+    [InlineData("来週までにログの調査を進める。", "来週までにログの調査を進めます", "来週までにログの調査を進め")]
+    [InlineData("ジムは今月は行くのをやめておくよ", "ジムは、今月は忙しいので行くのをやめておきます", null)] // the middle differs too
+    public void AQuote_ThatDiffersOnlyInItsEnding_IsKept_WithoutTheEnding(string quote, string text, string? kept) =>
+        Assert.Equal(kept, EvidenceText.MatchQuote(quote, text));
+
+    [Theory]
+    [InlineData("検索の手順を表示できない", "検索の手順を表示できます")] // the cut ending is a negation
+    [InlineData("検索の手順を表示できます", "検索の手順を表示できません")] // what follows in the segment is a negation
+    [InlineData("毎朝の散歩はやめる", "毎朝の散歩はやめないことにしました")]
+    [InlineData("ログを調べるよ", "ログを調べます")] // too little is left without the ending
+    [InlineData("ログの調査を進めるんだよ", "来週までにログの調査を進めます")] // more than two characters differ
+    [InlineData("ログの調査を進めるの調査", "来週までにログの調査を進めます")] // the ending is not hiragana
+    public void AnEndingThatChangesTheMeaning_OrTooShortAQuote_IsNotKept(string quote, string text) =>
+        Assert.Null(EvidenceText.MatchQuote(quote, text));
 }
 
 public sealed class RelativeDatesTests
