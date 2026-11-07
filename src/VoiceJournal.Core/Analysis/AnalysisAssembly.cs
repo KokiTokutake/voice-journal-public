@@ -667,6 +667,8 @@ public static partial class IntegrationConverter
     /// them in D5, e.g. 「ジムは今月はやめておく」 and a lecture's key term). Each comes back as it was, with its
     /// evidence: a topic statement into the section with its heading (or a new one), a summary point into the summary
     /// while it has room (detail spec 10: up to 7 items, about 600 characters), otherwise under <see cref="RestoredHeading"/>.
+    /// An item the record already says in other words (<see cref="IsAlreadySaid"/>) is not put back: in D5 most of the
+    /// left-out items had been merged into another statement without being named in <c>from</c>.
     /// </summary>
     /// <returns>How many items were put back.</returns>
     private static int Restore(IReadOnlyList<(WireItem Item, Statement Statement)> items, HashSet<string> used, List<Statement> summary, List<Section> sections)
@@ -675,6 +677,7 @@ public static partial class IntegrationConverter
         foreach (var (item, statement) in items)
         {
             if (used.Contains(item.Id)) continue;
+            if (IsAlreadySaid(statement, summary.Concat(sections.SelectMany(s => s.Statements)))) continue;
             restored++;
             if (item.Heading is null)
             {
@@ -689,6 +692,52 @@ public static partial class IntegrationConverter
             }
         }
         return restored;
+    }
+
+    /// <summary>Share of an item's character pairs that must appear in the statements sharing its evidence.</summary>
+    public const double SaidCoverage = 0.8;
+
+    /// <summary>A run of this many uncovered character pairs is a phrase of 4 characters or more the record lacks.</summary>
+    public const int NewPhrasePairs = 3;
+
+    /// <summary>
+    /// Whether the statements that share evidence with <paramref name="item"/> already contain its words: at least
+    /// <see cref="SaidCoverage"/> of its character pairs, and no phrase of 4 characters or more missing. Measured in D5
+    /// (2026-11-07): the left-out key points (「選択性」, 「ジム」) scored 0.00–0.61, the repeats 0.91–1.00; the second
+    /// rule keeps a new term in a long sentence (「…列の選択性によって…」) from passing as a repeat.
+    /// </summary>
+    public static bool IsAlreadySaid(Statement item, IEnumerable<Statement> record)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(record);
+        var segments = item.Evidence.Select(e => e.SegmentId).ToHashSet();
+        var said = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var s in record)
+            if (s.Evidence.Any(e => segments.Contains(e.SegmentId)))
+                said.UnionWith(Pairs(s.Text));
+        var pairs = Pairs(item.Text);
+        if (pairs.Count == 0 || said.Count == 0) return false;
+        var covered = 0;
+        var run = 0;
+        foreach (var p in pairs)
+        {
+            if (said.Contains(p))
+            {
+                covered++;
+                run = 0;
+            }
+            else if (++run >= NewPhrasePairs)
+            {
+                return false;
+            }
+        }
+        return covered >= SaidCoverage * pairs.Count;
+    }
+
+    private static List<string> Pairs(string text)
+    {
+        var letters = new string([.. EvidenceText.Normalize(text).Where(c => !char.IsPunctuation(c) && !char.IsSymbol(c))]);
+        return [.. Enumerable.Range(0, Math.Max(letters.Length - 1, 0)).Select(i => letters.Substring(i, 2))];
     }
 
     private static void Append(List<Section> sections, string heading, SectionKind kind, Statement statement)

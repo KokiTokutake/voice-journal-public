@@ -711,6 +711,42 @@ public sealed class IntegrationAndAssemblyTests
         Assert.Equal((IntegrationConverter.RestoredHeading, "保存先をローカルに決めた"), (section.Heading, section.Statements.Single().Text));
     }
 
+    private static IReadOnlyList<(WireItem Item, Statement Statement)> TwoItemsOnOneSegment(string summaryPoint, string topicStatement)
+    {
+        var t = A.Transcript("複合インデックスの効果は列の選択性によって変わります。録音の保存先はローカルに決めました");
+        var output = A.Output(
+            summary: [A.St(summaryPoint, "S0001", "録音の保存先はローカルに決めました")],
+            topics: [new WireTopic { SectionKind = SectionKind.Topic, Heading = "保存", Statements = [A.St(topicStatement, "S0001", "列の選択性によって変わります")] }]);
+        return IntegrationConverter.Items([ExtractionConverter.Convert(output, A.WholePiece(t), t, A.Monday)]);
+    }
+
+    [Fact]
+    public void ALeftOutItem_ThatTheRecordAlreadySaysInOtherWords_IsNotPutBack()
+    {
+        // D5 (2026-11-07): most left-out items had been merged into another statement, e.g. 「電気の手続きは完了しているが、
+        // ガスの開栓立ち会いは未予約である」 next to 「電気の手続きは完了したが、ガスの開栓立ち会いは未予約である」.
+        var items = TwoItemsOnOneSegment("録音の保存先はローカルに決めた", "保存先はローカルに決まった");
+
+        var record = IntegrationConverter.Convert(Output([From("録音の保存先をローカルに決めた", "I0002")]), items, 1);
+
+        Assert.Equal(["録音の保存先をローカルに決めた"], record.Summary.Select(s => s.Text));
+        Assert.Empty(record.Sections);
+        Assert.Empty(record.Warnings);
+    }
+
+    [Fact]
+    public void ALeftOutItem_WithATermTheRecordLacks_IsPutBack_EvenWhenMostOfItsWordsAreThere()
+    {
+        // D5: 「選択性」 was left out while the rest of its sentence was in the record.
+        var items = TwoItemsOnOneSegment("複合インデックスの効果は列によって変わる", "複合インデックスの効果は列の選択性によって変わる");
+
+        var record = IntegrationConverter.Convert(Output([From("複合インデックスの効果は列によって変わる", "I0001")]), items, 1);
+
+        var section = Assert.Single(record.Sections);
+        Assert.Equal(("保存", "複合インデックスの効果は列の選択性によって変わる"), (section.Heading, section.Statements.Single().Text));
+        Assert.True(IntegrationConverter.IsAlreadySaid(items[1].Statement with { Text = "複合インデックスの効果は列によって変わる" }, record.Summary));
+    }
+
     [Fact]
     public void ADroppedStatement_KeepsTheQuotesThatDidNotMatch()
     {
