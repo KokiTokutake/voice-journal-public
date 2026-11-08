@@ -29,14 +29,17 @@ public sealed class AtomicFileTests : IDisposable
 
         // Like an antivirus scan: opened without delete sharing for a moment.
         var locker = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        var release = Task.Run(async () =>
+        // A dedicated thread: under a busy thread pool a pool task could release the lock later than the retries last.
+        var release = new Thread(() =>
         {
-            await Task.Delay(100);
-            await locker.DisposeAsync();
+            Thread.Sleep(100);
+            locker.Dispose();
         });
+        release.Start();
 
         AtomicFile.WriteAllBytes(path, "new"u8);
-        await release;
+        release.Join();
+        await Task.CompletedTask;
         Assert.Equal("new", Encoding.UTF8.GetString(AtomicFile.ReadAllBytes(path)));
     }
 
