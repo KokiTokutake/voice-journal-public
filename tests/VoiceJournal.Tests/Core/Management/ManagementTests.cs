@@ -206,6 +206,8 @@ public sealed class CandidateRulesTests
     {
         Assert.True(CandidateRules.IsSelectableByAll(M.R(M.C("C0001", "新しい作業"), null)));
         Assert.False(CandidateRules.IsSelectableByAll(M.R(M.C("C0002", "新しい作業"), null, concerns: [CandidateConcern.Doubtful])));
+        Assert.True(CandidateRules.IsSelectableByAll(M.R(M.C("C0006", "新しい作業"), null, concerns: [CandidateConcern.CheckAudio, CandidateConcern.DueDateNeedsCheck])));
+        Assert.False(CandidateRules.IsSelectableByAll(M.R(M.C("C0007", "新しい作業"), null, concerns: [CandidateConcern.CheckAudio, CandidateConcern.NearbyEvidence])));
         Assert.False(CandidateRules.IsSelectableByAll(M.R(M.C("C0003", "完了した作業", status: ItemStatus.Done), null)));
         Assert.False(CandidateRules.IsSelectableByAll(M.R(M.C("C0004", "x", action: CandidateAction.Update), null)));
         Assert.False(CandidateRules.IsSelectableByAll(M.R(M.C("C0005", "x"), ReviewChoice.Reject)));

@@ -98,7 +98,7 @@ public static class CandidateRules
     {
         ArgumentNullException.ThrowIfNull(review);
         var list = new List<IndividualCheck>();
-        if (review.Concerns.Count > 0) list.Add(IndividualCheck.Concern);
+        if (review.Concerns.Any(NeedsIndividualCheck)) list.Add(IndividualCheck.Concern);
         var f = review.Fields;
         switch (review.Choice)
         {
@@ -127,13 +127,20 @@ public static class CandidateRules
         return [.. list.Distinct()];
     }
 
-    /// <summary>「すべて選択」 picks only plain new candidates (13.2): no concern, no terminal status, not already decided.</summary>
+    /// <summary>
+    /// Concerns that could make a wrong item if approved in bulk (a doubt, a negation, a finished status, an assignee or
+    /// date taken from the next segment): the user confirms them one by one. The others only show that something was
+    /// left out or should be heard again (CheckAudio, DueDateNeedsCheck, AssigneeDropped…) and do not block 「すべて選択」.
+    /// </summary>
+    public static bool NeedsIndividualCheck(CandidateConcern concern) => concern is CandidateConcern.Doubtful or CandidateConcern.Negation
+        or CandidateConcern.TerminalStatus or CandidateConcern.StatusDropped or CandidateConcern.NearbyEvidence;
+
+    /// <summary>「すべて選択」 picks only plain new candidates (13.2): no blocking concern, no terminal status, not already decided.</summary>
     public static bool IsSelectableByAll(CandidateReview review)
     {
         ArgumentNullException.ThrowIfNull(review);
         return review.Choice is null
             && review.Candidate.Action == CandidateAction.Create
-            && review.Concerns.Count == 0
             && Checks(review with { Choice = ReviewChoice.Create }, null).Count == 0;
     }
 

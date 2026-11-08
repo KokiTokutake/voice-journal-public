@@ -49,7 +49,7 @@
                         <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding SelectedTarget}" DisplayMemberPath="Label" MinWidth="320"
                                   AutomationProperties.Name="対象の既存項目" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="{Binding IsTask, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="{Binding ShowParent, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Text="親課題" VerticalAlignment="Center" Margin="0,0,8,0" />
                         <ComboBox ItemsSource="{Binding ParentIssues}" SelectedItem="{Binding SelectedParent}" DisplayMemberPath="Label" MinWidth="320"
                                   AutomationProperties.Name="親課題" />

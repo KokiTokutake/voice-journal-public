@@ -117,6 +117,9 @@ public sealed partial class CandidateCardViewModel : ObservableObject
 
     public bool IsTask => Review.Candidate.Kind == CandidateKind.Task;
 
+    /// <summary>The parent issue box, for a task when there are issues to choose from.</summary>
+    public bool ShowParent => IsTask && ParentIssues.Count > 0;
+
     public string Title
     {
         get => Review.Fields.Title;
@@ -344,6 +347,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         var again = Sessions.FirstOrDefault(s => s.Session.SessionId == selected) ?? Sessions.FirstOrDefault();
         if (again != SelectedSession) SelectedSession = again;
         else LoadCards();
+        if (Sessions.Count == 0) Message = "記録のあるセッションがまだありません。ライブラリでセッションを選び、「記録を開く」から記録を作ると、ここで課題・タスクの候補を確かめられます。";
     }
 
     /// <summary>From the record page: show this session's candidates.</summary>
