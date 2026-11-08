@@ -751,6 +751,58 @@ public static partial class IntegrationConverter
             sections.Add(new Section { SectionKind = kind, Heading = heading, Statements = [statement] });
     }
 
+    /// <summary>The section for decisions the app took from the transcript as they were said.</summary>
+    public const string UncitedDecisionsHeading = "発言から拾った決定（要確認）";
+
+    private const int MaxUncitedDecisions = 10;
+
+    /// <summary>
+    /// Adds the utterances that say a decision (<see cref="IsDecisionUtterance"/>) and that no statement of the record nor
+    /// candidate cites, word for word with the utterance as evidence, under <see cref="UncitedDecisionsHeading"/>.
+    /// In D5 (2026-11-07) Gemma 4 E2B left decisions out of the extraction (「新聞は解約しないで、そのまま住所だけ変える
+    /// ことにしました」 in 2 of 3 runs) and a line in the prompt did not change it (AT-08: every important decision with its
+    /// evidence). Nothing is made up: the text is the utterance itself.
+    /// </summary>
+    /// <param name="segments">The segments the plan covered (in order).</param>
+    public static IntegratedRecord AddUncitedDecisions(IntegratedRecord record, IEnumerable<TranscriptSegment> segments, IEnumerable<PieceAnalysis> pieces)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(pieces);
+        var cited = record.Summary.Concat(record.Sections.SelectMany(s => s.Statements)).SelectMany(s => s.Evidence)
+            .Concat(pieces.SelectMany(p => p.Candidates).SelectMany(c => c.Evidence))
+            .Select(e => e.SegmentId).ToHashSet();
+        var found = segments
+            .Where(s => !cited.Contains(s.SegmentId) && IsDecisionUtterance(s.Text))
+            .Take(MaxUncitedDecisions)
+            .Select(s => new Statement
+            {
+                Text = ExtractionConverter.Clean(s.Text),
+                Certainty = Certainty.Stated,
+                Evidence = [new Evidence { SegmentId = s.SegmentId, Quote = s.Text.Trim() }],
+            })
+            .Where(s => s.Text.Length > 0)
+            .ToList();
+        if (found.Count == 0) return record;
+        var sections = record.Sections.ToList();
+        foreach (var statement in found) Append(sections, UncitedDecisionsHeading, SectionKind.Decision, statement);
+        return record with
+        {
+            Sections = sections,
+            Warnings = [.. record.Warnings, $"記録に入っていなかった決定の発言 {found.Count.ToString(CultureInfo.InvariantCulture)} 件を、発言のまま「{UncitedDecisionsHeading}」に加えました。"],
+        };
+    }
+
+    /// <summary>
+    /// Whether an utterance says a decision: 「〜ことにする／しました」「〜ようにします」「やめておきます」「見送ります」
+    /// 「決めました」. Not a question, wish or condition (「〜ことにしますか」「やめたい」「〜ことにしたら」), and not
+    /// 「決まった額」 (a decided amount is not a decision).
+    /// </summary>
+    public static bool IsDecisionUtterance(string text) => DecisionPattern().IsMatch(text ?? string.Empty);
+
+    [GeneratedRegex("(?:(?:こと|の)に(?:する|します|しました|した|なりました|なった)|ように(?:します|しました)|やめ(?:ておきます|ておく|ときます|とく|ます|ました|ることに|た)|見送(?:ります|りました|る|った)|(?:決め|決まり|決定し)ました)(?![かいなら])")]
+    private static partial Regex DecisionPattern();
+
     // 「I0012」「(I0003, I0004)」 and a following 「によって確認された」.
     [GeneratedRegex(@"[(（]?\s*I\d{4}(?:\s*[、,・]\s*I\d{4})*\s*[)）]?(?:\s*(?:によって|により|で)確認(?:された|されている|済み)[。]?)?")]
     private static partial Regex ItemIdInText();

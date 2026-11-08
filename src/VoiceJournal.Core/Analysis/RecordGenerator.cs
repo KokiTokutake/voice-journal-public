@@ -241,6 +241,7 @@ public sealed class RecordGenerator
         progress?.Report(new GenerationProgress("integrate", 0, 1));
         var record = await IntegrateAsync(pieces, session, settings, estimator, stats, appWarnings, work, cancellationToken).ConfigureAwait(false);
         dropped.AddRange(record.Dropped);
+        record = IntegrationConverter.AddUncitedDecisions(record, plan.Pieces.SelectMany(p => p.SegmentIds).Distinct().Select(id => transcript.Find(id)).OfType<TranscriptSegment>(), pieces);
         if (failed.Count > 0) appWarnings.Add($"{failed.Count} 個の区間で記録を作れませんでした（部分生成）。");
 
         var (analysis, notes) = AnalysisAssembler.Assemble(transcript.SessionId, transcript.Revision, record, pieces, appWarnings);

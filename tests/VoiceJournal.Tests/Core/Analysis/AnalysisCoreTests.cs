@@ -767,6 +767,47 @@ public sealed class IntegrationAndAssemblyTests
         Assert.True(IntegrationConverter.IsAlreadySaid(items[1].Statement with { Text = "複合インデックスの効果は列によって変わる" }, record.Summary));
     }
 
+    [Theory]
+    [InlineData("新聞は解約しないで、そのまま住所だけ変えることにしました")]
+    [InlineData("先取り貯蓄は、来月の給料から始めることにする")]
+    [InlineData("ジムは、今月は忙しいので行くのをやめておきます")]
+    [InlineData("確認画面は今回は作らないことにします")]
+    [InlineData("次からは、確認したいことを一覧にしてから始めるようにします")]
+    [InlineData("性能の改善は次のバージョンに見送ります")]
+    [InlineData("保存先はローカルに決めました")]
+    public void ADecisionUtterance_IsRecognized(string text) => Assert.True(IntegrationConverter.IsDecisionUtterance(text));
+
+    [Theory]
+    [InlineData("給料が入ったら、使う前に決まった額を別の口座に移します")] // a decided amount
+    [InlineData("確認画面は作らないことにしますか")] // a question
+    [InlineData("ジムはやめたいな")] // a wish
+    [InlineData("もし来月から始めることにしたら")] // a condition
+    [InlineData("皆さんも一か月の支出を書き出すことにしましょう")] // a suggestion
+    [InlineData("リリースの判定会議は、十一月十二日の午後に行います")]
+    public void OtherUtterances_AreNotDecisions(string text) => Assert.False(IntegrationConverter.IsDecisionUtterance(text));
+
+    [Fact]
+    public void ADecisionNoStatementNorCandidateCites_IsAddedAsItWasSaid()
+    {
+        // D5 (2026-11-07): the extraction left out 「新聞は…変えることにしました」 in 2 of 3 runs.
+        var t = A.Transcript("録音の保存先はローカルに決めました", "ジムは、今月は忙しいので行くのをやめておきます",
+            "新聞は解約しないで、そのまま住所だけ変えることにしました", "手順書は田中さんが書くことにしました");
+        var piece = ExtractionConverter.Convert(A.Output(
+            summary: [A.St("保存先をローカルに決めた", "S0001", "ローカルに決めました")],
+            candidates: [A.Task("手順書を書く", "S0004", "手順書は田中さんが書くことにしました", "田中さん", null)]), A.WholePiece(t), t, A.Monday);
+        var record = IntegrationConverter.Convert(Output([From("保存先をローカルに決めた", "I0001")]), IntegrationConverter.Items([piece]), 1);
+
+        record = IntegrationConverter.AddUncitedDecisions(record, t.Segments, [piece]);
+
+        var section = Assert.Single(record.Sections);
+        Assert.Equal((SectionKind.Decision, IntegrationConverter.UncitedDecisionsHeading), (section.SectionKind, section.Heading));
+        Assert.Equal([t.Segments[1].Text, t.Segments[2].Text], section.Statements.Select(s => s.Text)); // cited ones are not repeated
+        Assert.Equal([t.Segments[1].SegmentId, t.Segments[2].SegmentId], section.Statements.Select(s => s.Evidence.Single().SegmentId));
+        Assert.All(section.Statements, s => Assert.True(EvidenceText.IsQuoteOf(s.Evidence.Single().Quote, s.Text)));
+        Assert.Contains("決定の発言 2 件", Assert.Single(record.Warnings), StringComparison.Ordinal);
+        Assert.Same(record, IntegrationConverter.AddUncitedDecisions(record, t.Segments, [piece])); // nothing more to add
+    }
+
     [Fact]
     public void ADroppedStatement_KeepsTheQuotesThatDidNotMatch()
     {
