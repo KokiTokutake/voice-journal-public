@@ -840,6 +840,29 @@ public sealed class IntegrationAndAssemblyTests
     }
 
     [Fact]
+    public void CombineAbove_DropsPutBackSummaryPoints_ThatThePartsSectionsAlreadySay()
+    {
+        var segment = Guid.NewGuid();
+        Statement St(string text, Guid? seg = null) => new() { Text = text, Certainty = Certainty.Stated, Evidence = [new Evidence { SegmentId = seg ?? Guid.NewGuid(), Quote = text }] };
+        IntegratedRecord Rec(Statement[] summary, params Section[] sections) => new()
+        {
+            RecordTypes = [RecordType.Meeting], Title = "t", Summary = summary, Sections = sections, Warnings = [], Dropped = [],
+        };
+        var part = Rec([St("画面設計は 42 画面中 38 画面が完了", segment)],
+            new Section { SectionKind = SectionKind.Topic, Heading = "進捗", Statements = [St("画面設計は 42 画面中 38 画面が完了", segment)] });
+        var top = Rec([St("全体の要約")], new Section
+        {
+            SectionKind = SectionKind.Topic, Heading = IntegrationConverter.RestoredHeading,
+            Statements = [St("画面設計は 42 画面中 38 画面が完了", segment), St("新しい事実: 研修は 3 回", Guid.NewGuid())],
+        });
+
+        var combined = IntegrationConverter.CombineAbove(top, [part]);
+
+        var restored = Assert.Single(combined.Sections, s => s.Heading == IntegrationConverter.RestoredHeading);
+        Assert.Equal("新しい事実: 研修は 3 回", Assert.Single(restored.Statements).Text); // the repeat is not put back
+    }
+
+    [Fact]
     public void Group_SplitsItemsForHierarchicalIntegration()
     {
         var (_, piece) = Piece();

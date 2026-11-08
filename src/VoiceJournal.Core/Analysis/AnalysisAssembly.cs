@@ -617,8 +617,15 @@ public static partial class IntegrationConverter
         var sections = new List<Section>();
         // The top's own sections too: a summary point the model put only in a section (e.g. 決定事項) counts as used and
         // is not restored, so dropping those sections would lose it (review 2026-11-08). Same headings merge.
-        foreach (var section in parts.SelectMany(p => p.Sections).Concat(top.Sections))
+        foreach (var section in parts.SelectMany(p => p.Sections))
             foreach (var statement in section.Statements) Append(sections, section.Heading, section.SectionKind, statement);
+        // A part's summary point the top left out was put back under RestoredHeading; most of them are already said in
+        // the parts' sections (35-minute test, 2026-11-08: 18 put back), so only the ones not said there are kept.
+        var said = sections.SelectMany(s => s.Statements).Concat(top.Summary).ToList();
+        foreach (var section in top.Sections)
+            foreach (var statement in section.Statements)
+                if (section.Heading != RestoredHeading || !IsAlreadySaid(statement, said))
+                    Append(sections, section.Heading, section.SectionKind, statement);
         return top with
         {
             Sections = sections,
