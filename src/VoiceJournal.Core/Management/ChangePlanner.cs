@@ -48,6 +48,9 @@ public sealed record PlanningInput
     /// <summary>Candidates in a saved plan that is not applied yet: planning them again would apply them twice (AT-12).</summary>
     public IReadOnlySet<CandidateKey> Pending { get; init; } = new HashSet<CandidateKey>();
 
+    /// <summary>Fingerprints of the creations in saved plans not applied yet: the same candidate from a regenerated record (AT-12).</summary>
+    public IReadOnlySet<string> PendingFingerprints { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>Kind + evidence hash + normalized title of applied creations: the same candidate from a regenerated analysis (AT-12).</summary>
     public IReadOnlySet<string> AppliedFingerprints { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -80,6 +83,9 @@ public sealed record PlannedChange
     public Guid? BeforeSnapshotId { get; init; }
 
     public required Guid AfterSnapshotId { get; init; }
+
+    /// <summary>For a creation: kind, evidence and normalized title, kept in the applied ledger (AT-12).</summary>
+    public string? Fingerprint { get; init; }
 
     /// <summary>The file the change is written to; null for a change kept in the database only (a mention in an append-only file).</summary>
     public Guid? FileId { get; init; }
@@ -219,6 +225,11 @@ public static class ChangePlanner
                 Skip("同じ根拠・同じタイトルの候補が、前に反映されています（同じ音声の再処理）。別の項目として登録するときはタイトルを変えてください");
                 continue;
             }
+            if (review.Choice == ReviewChoice.Create && input.PendingFingerprints.Contains(Fingerprint(kind, evidenceHash, title)))
+            {
+                Skip("同じ根拠・同じタイトルの候補が、保存済みの変更計画（反映待ち）に入っています（記録の作り直し）");
+                continue;
+            }
             if (!files.TryGetValue(kind, out var file)) { Skip("保存先の管理ファイルが登録されていません"); continue; }
             if (file.Problem is { } problem) { Skip(problem); continue; }
 
@@ -268,7 +279,7 @@ public static class ChangePlanner
                     changes.Add(new PlannedChange
                     {
                         Key = key, CandidateUuid = candidateUuid, Action = ReviewChoice.Create, After = item, EvidenceHash = evidenceHash,
-                        ExpectedRevision = 0, AfterSnapshotId = Snapshot(item), FileId = file.File.FileId,
+                        ExpectedRevision = 0, AfterSnapshotId = Snapshot(item), FileId = file.File.FileId, Fingerprint = Fingerprint(kind, evidenceHash, title),
                     });
                     break;
                 }
@@ -455,6 +466,43 @@ public static class ChangePlanner
 /// <summary>The canonical JSON of an item snapshot (fields and evidence).</summary>
 public static class ItemJson
 {
+    /// <summary>Reads a snapshot written by <see cref="ToNode"/> back (Phase F applies the after snapshots).</summary>
+    public static ManagementItem FromNode(JsonNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        string S(string name) => (string?)node[name] ?? throw new FormatException($"The snapshot has no {name}.");
+        string? N(string name) => (string?)node[name];
+        var kind = S("kind") == "issue" ? CandidateKind.Issue : CandidateKind.Task;
+        return new ManagementItem
+        {
+            Id = Guid.Parse(S("id")),
+            DisplayId = S("display_id"),
+            Kind = kind,
+            Project = S("project"),
+            Title = S("title"),
+            Description = S("description"),
+            Status = ParseStatus(S("status")),
+            Priority = N("priority") is { } p ? Enum.Parse<ItemPriority>(p, ignoreCase: true) : null,
+            Assignee = N("assignee"),
+            DueDate = N("due_date") is { } d ? DateOnly.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
+            ParentIssueId = N("parent_issue_id") is { } parent ? Guid.Parse(parent) : null,
+            Revision = (int?)node["revision"] ?? throw new FormatException("The snapshot has no revision."),
+            CreatedAtUtc = DateTimeOffset.Parse(S("created_at"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+            UpdatedAtUtc = DateTimeOffset.Parse(S("updated_at"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+            Evidence = [.. (node["evidence"] as JsonArray ?? []).Select(e => new ItemEvidence
+            {
+                SessionId = Guid.Parse((string)e!["session_id"]!),
+                TranscriptRevision = (int)e["transcript_revision"]!,
+                SegmentId = Guid.Parse((string)e["segment_id"]!),
+                Quote = (string)e["quote"]!,
+            })],
+        };
+    }
+
+    private static ItemStatus ParseStatus(string label) =>
+        Enum.GetValues<ItemStatus>().FirstOrDefault(s => ItemStatuses.Label(s) == label) is var s && ItemStatuses.Label(s) == label
+            ? s : throw new FormatException($"Unknown status {label}.");
+
     public static JsonObject ToNode(ManagementItem item)
     {
         ArgumentNullException.ThrowIfNull(item);

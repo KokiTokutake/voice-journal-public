@@ -197,19 +197,24 @@ public sealed class ManagementStore
         return ((IReadOnlySet<CandidateKey>)keys, (IReadOnlySet<string>)prints);
     });
 
-    /// <summary>Candidates in saved plans that are not applied or abandoned yet.</summary>
-    public IReadOnlySet<CandidateKey> Pending() => _db.Read(c =>
+    /// <summary>Candidates (and fingerprints of creations) in saved plans that are not applied or abandoned yet.</summary>
+    public (IReadOnlySet<CandidateKey> Keys, IReadOnlySet<string> Fingerprints) Pending() => _db.Read(c =>
     {
         using var cmd = c.CreateCommand();
         cmd.CommandText = """
-            SELECT json_extract(j.value, '$.key') FROM apply_batches b JOIN approvals a ON a.id = b.approval_id, json_each(a.candidate_revisions_json) j
+            SELECT json_extract(j.value, '$.key'), json_extract(j.value, '$.fingerprint')
+            FROM apply_batches b JOIN approvals a ON a.id = b.approval_id, json_each(a.candidate_revisions_json) j
             WHERE b.state IN ('planned', 'prepared', 'applying', 'recovery_required')
             """;
         using var r = cmd.ExecuteReader();
         var keys = new HashSet<CandidateKey>();
+        var prints = new HashSet<string>(StringComparer.Ordinal);
         while (r.Read())
+        {
             if (!r.IsDBNull(0) && ParseKey(r.GetString(0)) is { } key) keys.Add(key);
-        return (IReadOnlySet<CandidateKey>)keys;
+            if (!r.IsDBNull(1)) prints.Add(r.GetString(1));
+        }
+        return ((IReadOnlySet<CandidateKey>)keys, (IReadOnlySet<string>)prints);
     });
 
     public IReadOnlyDictionary<CandidateKey, StoredReview> Reviews(Guid sessionId) => _db.Read(c =>
@@ -302,7 +307,13 @@ public sealed class ManagementStore
                 INSERT INTO approvals (id, workspace_id, plan_hash, candidate_revisions_json, approved_at, actor, state)
                 VALUES ($id, $ws, $hash, $candidates, $at, $actor, 'planned')
                 """, ("$id", DbText.Id(plan.ApprovalId)), ("$ws", WorkspaceId), ("$hash", (object?)plan.PlanHash ?? DBNull.Value),
-                ("$candidates", JsonSerializer.Serialize(plan.Changes.Select(ch => new { key = ch.Key.ToString(), revision = ch.Key.AnalysisRevision, ch.EvidenceHash }))),
+                ("$candidates", JsonSerializer.Serialize(plan.Changes.Select(ch => new
+                {
+                    key = ch.Key.ToString(),
+                    revision = ch.Key.AnalysisRevision,
+                    evidence_hash = ch.EvidenceHash,
+                    fingerprint = ch.Fingerprint,
+                }))),
                 ("$at", now), ("$actor", actor));
             Exec(c, tx, """
                 INSERT INTO apply_batches (id, approval_id, idempotency_key, state, plan_path, created_at) VALUES ($id, $approval, $key, 'planned', $path, $at)

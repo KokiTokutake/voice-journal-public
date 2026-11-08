@@ -432,13 +432,15 @@ public sealed partial class ManagementViewModel : ObservableObject
         }
         var (issue, task) = _store.NextNumbers();
         var (keys, prints) = _store.Applied();
+        var (pending, pendingPrints) = _store.Pending();
         var plan = ChangePlanner.Plan(new PlanningInput
         {
             WorkspaceId = _store.WorkspaceGuid,
             Items = _store.Items(),
             Reviews = approved,
             Applied = keys,
-            Pending = _store.Pending(),
+            Pending = pending,
+            PendingFingerprints = pendingPrints,
             AppliedFingerprints = prints,
             Files = _store.Files(),
             NextIssueNumber = issue,

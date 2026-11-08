@@ -12,7 +12,8 @@ using VoiceJournal.Infrastructure.Stt;
 namespace VoiceJournal.Infrastructure.Llm;
 
 /// <summary>What the bundled server is started with. A different value restarts it.</summary>
-public sealed record LlamaServerLaunch(string ModelId, int ContextLength);
+/// <param name="Parallel">Server slots. Above 1 the slots share one KV buffer of <c>ContextLength × Parallel</c>, each limited to <c>ContextLength</c>.</param>
+public sealed record LlamaServerLaunch(string ModelId, int ContextLength, int Parallel = 1);
 
 /// <summary>A running server: where to send requests, with which key.</summary>
 public sealed record LlamaServerEndpoint(LlmEndpoint Endpoint, string ApiKey, LlamaServerLaunch Launch);
@@ -242,13 +243,14 @@ public sealed class LlamaServerHost : IDisposable
             "--host", "127.0.0.1",
             "--port", port.ToString(c),
             "--no-webui",
-            "-np", "1",
-            "-c", launch.ContextLength.ToString(c),
+            "-np", Math.Max(1, launch.Parallel).ToString(c),
+            "-c", (launch.ContextLength * Math.Max(1, launch.Parallel)).ToString(c),
             "-ngl", "999",
             "-lm", "none", // no mmap: with it the weights were held twice (file mapping and GPU copy) in LM Studio
             "--reasoning", "off",
             "--alias", launch.ModelId,
         };
+        if (launch.Parallel > 1) args.AddRange(["-kvu", "--kv-unified-per-slot", launch.ContextLength.ToString(c)]);
         if (model.Mtp is { } mtp) args.AddRange(["--spec-type", "draft-mtp", "-md", mtp.Path, "-ngld", "999"]);
         return args;
     }
@@ -501,15 +503,18 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
 {
     private readonly LlamaServerHost _host;
     private readonly Func<(int ContextLength, TimeSpan Timeout)> _settings;
+    private readonly Func<int> _parallel;
     private readonly Lock _lock = new();
     private readonly List<OpenAiCompatibleClient> _retired = [];
     private (LlamaServerEndpoint Endpoint, TimeSpan Timeout)? _key;
     private OpenAiCompatibleClient? _client;
 
-    public BundledLlmClient(LlamaServerHost host, Func<(int ContextLength, TimeSpan Timeout)> settings)
+    /// <param name="parallel">Server slots (the record generator's parallelism); 1 when not given.</param>
+    public BundledLlmClient(LlamaServerHost host, Func<(int ContextLength, TimeSpan Timeout)> settings, Func<int>? parallel = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _parallel = parallel ?? (() => 1);
     }
 
     public async Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken)
@@ -531,7 +536,7 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     {
         ArgumentException.ThrowIfNullOrEmpty(modelId);
         var (context, timeout) = _settings();
-        var (endpoint, lease) = await _host.AcquireAsync(new LlamaServerLaunch(modelId, context), cancellationToken).ConfigureAwait(false);
+        var (endpoint, lease) = await _host.AcquireAsync(new LlamaServerLaunch(modelId, context, Math.Max(1, _parallel())), cancellationToken).ConfigureAwait(false);
         lock (_lock)
         {
             if (_client is null || _key != (endpoint, timeout))

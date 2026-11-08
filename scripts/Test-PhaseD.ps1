@@ -26,6 +26,8 @@ param(
     [int]$Context = 16384,
     [int]$Reserve = 6144,
     [int]$PieceTokens = 3000,
+    # 推論エンジンの並列の枠（区間を同時に処理する数）。2 以上では KV キャッシュを共有し、1 枠の上限を Context にする
+    [ValidateRange(1, 4)] [int]$Parallel = 1,
     # Meeting: 文字起こしのあるセッション（manifest.json と transcripts\ だけを一時の場所に写して使う）
     [string]$Session = (Join-Path $env:LOCALAPPDATA 'VoiceJournal\verify\phase-d\d2\meeting'),
     [string]$Root = (Join-Path $env:LOCALAPPDATA 'VoiceJournal')
@@ -39,7 +41,7 @@ $exe = Join-Path $repo 'tools\VoiceJournal.AudioProbe\bin\Release\net10.0-window
 $out = Join-Path $Root 'verify\phase-d'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 # 結果の名前は LM Studio をやめる前（2026-11-06）と同じ形にする（bundled-c16384-o6144-…）
-$tag = "bundled-c$Context-o$Reserve-p$PieceTokens-$($Model -replace '[^A-Za-z0-9.-]', '_')"
+$tag = "bundled-c$Context-o$Reserve-p$PieceTokens$(if ($Parallel -gt 1) { "-np$Parallel" })-$($Model -replace '[^A-Za-z0-9.-]', '_')"
 New-Item -ItemType Directory -Force $out | Out-Null
 
 Write-Host '== 評価ツールをビルド' -ForegroundColor Cyan
@@ -54,7 +56,7 @@ function Show([string]$label, [bool]$ok, [string]$detail) {
 
 function Read-Json([string]$path) { return [IO.File]::ReadAllText($path, $utf8) | ConvertFrom-Json }
 
-$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens)
+$common = @('--model', $Model, '--context', $Context, '--reserve', $Reserve, '--piece-tokens', $PieceTokens, '--parallel', $Parallel)
 
 if ($Test -eq 'Evaluate') {
     $files = Get-ChildItem (Join-Path $repo 'tests\eval\phase-d') -Filter '*.json' | Where-Object {

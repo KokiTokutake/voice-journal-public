@@ -61,6 +61,20 @@ public sealed class LlamaServerHostTests : IDisposable
 
         var noMtp = LlamaServerHost.Arguments(new LlamaServerLaunch("m", 8192), model with { Mtp = null }, 1);
         Assert.DoesNotContain("--spec-type", noMtp);
+        Assert.DoesNotContain("-kvu", args);
+    }
+
+    [Fact]
+    public void TwoSlots_ShareOneKvBuffer_AndEachKeepsTheWholeContext()
+    {
+        var (_, model) = Registered();
+
+        var args = LlamaServerHost.Arguments(new LlamaServerLaunch("gemma-4-e2b-it", 16384, 2), model, 18990).ToList();
+
+        Assert.Equal("2", args[args.IndexOf("-np") + 1]);
+        Assert.Equal("32768", args[args.IndexOf("-c") + 1]);
+        Assert.Contains("-kvu", args);
+        Assert.Equal("16384", args[args.IndexOf("--kv-unified-per-slot") + 1]);
     }
 
     [Fact]

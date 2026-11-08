@@ -39,7 +39,7 @@ internal static class OrganizeCommand
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoiceJournal");
         var tools = LlmToolSettings.LoadOrCreate(root);
         var host = new LlamaServerHost(() => tools);
-        var bundled = new BundledLlmClient(host, () => (settings.ContextLength, TimeSpan.FromMinutes(10)));
+        var bundled = new BundledLlmClient(host, () => (settings.ContextLength, TimeSpan.FromMinutes(10)), () => settings.Parallelism);
         return (bundled, new Owners(bundled, host));
     }
 

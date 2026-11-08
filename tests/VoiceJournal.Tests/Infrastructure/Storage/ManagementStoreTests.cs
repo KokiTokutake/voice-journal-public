@@ -110,6 +110,25 @@ public sealed class ManagementStoreTests : IDisposable
     }
 
     [Fact]
+    public void ACandidateInASavedPlan_IsNotPlannedAgain_EvenFromARegeneratedRecord() // AT-12
+    {
+        var candidate = M.C("C0001", "見積書の作成");
+        _store.SavePlan(ChangePlanner.Plan(Input(M.R(candidate, ReviewChoice.Create)), () => Guid.NewGuid()));
+        var (keys, prints) = _store.Pending();
+
+        var again = ChangePlanner.Plan(Input(M.R(candidate, ReviewChoice.Create), M.R(candidate with { CandidateId = "C0004" }, ReviewChoice.Create, analysisRevision: 2))
+            with { Pending = keys, PendingFingerprints = prints }, () => Guid.NewGuid());
+
+        Assert.Empty(again.Changes);
+        Assert.All(again.Skipped, s => Assert.Contains("反映待ち", s.Reason, StringComparison.Ordinal));
+
+        _store.Abandon(_store.Batches().Single().BatchId); // once abandoned, it can be planned again
+        var (k2, p2) = _store.Pending();
+        Assert.Empty(k2);
+        Assert.Empty(p2);
+    }
+
+    [Fact]
     public void AnAbandonedPlan_KeepsItsDisplayNumbersUsed()
     {
         var saved = _store.SavePlan(ChangePlanner.Plan(Input(M.R(M.C("C0001", "ログイン不具合", CandidateKind.Issue), ReviewChoice.Create)), () => Guid.NewGuid()));
