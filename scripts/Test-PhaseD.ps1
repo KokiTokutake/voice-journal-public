@@ -117,6 +117,15 @@ else {
     # NFR-07（詳細仕様書 1.1）: 30 分の音声を 420 秒以内。音声の長さ（録音の開始〜終了）で 30 分に換算して判定する
     $m = Read-Json (Join-Path $copy 'manifest.json')
     $audioMinutes = ([DateTimeOffset]$m.ended_at_utc - [DateTimeOffset]$m.started_at_utc).TotalMinutes
+    # 素材をつないで長くした文字起こし（2026-11-08 の 35・40 分の素材）は manifest より長い: 文字起こしの最後の区間の終わりも見る
+    $lastRev = Get-ChildItem (Join-Path $copy 'transcripts') -Directory -Filter 'rev-*' -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
+    if ($lastRev) {
+        $tj = Get-ChildItem $lastRev.FullName -Filter 'transcript.*.json' | Select-Object -First 1
+        if ($tj) {
+            $endMs = ((Read-Json $tj.FullName).segments | Measure-Object -Property end_ms -Maximum).Maximum
+            if ($endMs / 60000 -gt $audioMinutes) { $audioMinutes = $endMs / 60000 }
+        }
+    }
     $per30 = [math]::Round($r.elapsed_seconds * 30 / $audioMinutes, 1)
     Show 'NFR-07' ($r.outcome -eq 'Generated' -and $per30 -le 420) ("{0} 秒（音声 {1:N1} 分。30 分換算 {2} 秒、420 秒以内）" -f $r.elapsed_seconds, $audioMinutes, $per30)
     Write-Host "   結果: $result"
