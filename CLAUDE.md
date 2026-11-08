@@ -17,7 +17,7 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - STT は CPU 経路が必須。GPU（Vulkan）・NPU は Phase H の任意最適化
 - LLM はアプリが起動・終了する同梱の `llama-server`（ループバック・起動ごとの空きポートとランダムな API キー・使わなければ終了、`docs/phase-d-engine-plan.md`）。実行体・DLL・GGUF は `config\llm-tools.json` に SHA-256 で登録する。LM Studio は 2026-11-06 にアンインストールし、アプリの選択肢も外した
 - LLM の試験の前に、エミュレーター・Docker・WSL・Gradle が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く（メモリ不足と PC の発熱のため）
-- 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する（11.5 の管理ブロック。反映は `ApplyEngine`、変更計画と backup は `Workspace\transactions\<batch-id>\\`）。管理項目の表（`items` ほか、マイグレーション 4）は索引ではなく正本で、作り直さない
+- 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する（11.5 の管理ブロック。反映は `ApplyEngine`、変更計画と backup は `Workspace\transactions\<batch-id>\`）。管理項目の表（`items` ほか、マイグレーション 4）は索引ではなく正本で、作り直さない
 - 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
