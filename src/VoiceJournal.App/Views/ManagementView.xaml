@@ -113,7 +113,13 @@
                 <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
         <StackPanel>
-            <TextBlock Text="{Binding ItemsTitle}" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <DockPanel Margin="0,0,0,4">
+                <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding SelectedStatusFilter}" DisplayMemberPath="Label"
+                          MinWidth="90" Margin="6,0,0,0" AutomationProperties.Name="状態で絞り込む" />
+                <TextBox DockPanel.Dock="Right" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}" MinWidth="180" Margin="8,0,0,0"
+                         AutomationProperties.Name="管理一覧を検索（ID・タイトル・内容・担当・プロジェクト）" ToolTip="ID・タイトル・内容・担当・プロジェクトの一部で検索" />
+                <TextBlock Text="{Binding ItemsTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
             <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="180" HeadersVisibility="Column"
                       AutomationProperties.Name="管理一覧">
                 <DataGrid.Columns>

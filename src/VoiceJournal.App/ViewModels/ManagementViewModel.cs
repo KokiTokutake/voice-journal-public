@@ -317,6 +317,9 @@ public sealed record EditedBlockRow(ManagementItem Item, string Block, string Di
     public string Header => $"{Item.DisplayId} {Item.Title}";
 }
 
+/// <summary>A status filter of the management list (null: all).</summary>
+public sealed record StatusFilter(ItemStatus? Status, string Label);
+
 /// <summary>An item of the management list (UI-10).</summary>
 public sealed record ItemRow(ManagementItem Item)
 {
@@ -359,6 +362,39 @@ public sealed partial class ManagementViewModel : ObservableObject
     public ObservableCollection<BatchRow> Batches { get; } = [];
 
     public ObservableCollection<EditedBlockRow> EditedBlocks { get; } = [];
+
+    public IReadOnlyList<StatusFilter> StatusFilters { get; } =
+        [new(null, "すべて"), .. Enum.GetValues<ItemStatus>().Select(s => new StatusFilter(s, UserMessages.ItemStatusName(s)))];
+
+    private string _searchText = string.Empty;
+
+    /// <summary>UI-10 search: part of the id, title, content, assignee or project (AT-21).</summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (SetProperty(ref _searchText, value ?? string.Empty)) LoadItems();
+        }
+    }
+
+    private StatusFilter? _statusFilter;
+
+    public StatusFilter? SelectedStatusFilter
+    {
+        get => _statusFilter;
+        set
+        {
+            if (SetProperty(ref _statusFilter, value)) LoadItems();
+        }
+    }
+
+    private void LoadItems()
+    {
+        Items.Clear();
+        foreach (var i in _store.Search(SearchText, SelectedStatusFilter?.Status)) Items.Add(new ItemRow(i));
+        OnPropertyChanged(nameof(ItemsTitle));
+    }
 
     /// <summary>Set by the window: a snapshot is taken only while nothing is recorded (14.4).</summary>
     public Func<bool>? IsRecording { get; set; }
@@ -475,8 +511,8 @@ public sealed partial class ManagementViewModel : ObservableObject
     public bool HasCards => Cards.Count > 0;
 
     public string ItemsTitle => Items.Count == 0
-        ? "管理一覧（まだ項目はありません。変更計画を反映すると、ここに出ます）"
-        : $"管理一覧（{Items.Count.ToString(CultureInfo.InvariantCulture)} 件）";
+        ? (SearchText.Length > 0 || SelectedStatusFilter?.Status is not null ? "管理一覧（条件に合う項目はありません）" : "管理一覧（まだ項目はありません。変更計画を反映すると、ここに出ます）")
+        : $"管理一覧（{Items.Count.ToString(CultureInfo.InvariantCulture)} 件{(Items.Count >= 500 ? "まで表示" : string.Empty)}）";
 
     public string ReadyText => $"承認 {Cards.Count(c => c.IsReady).ToString(CultureInfo.InvariantCulture)} 件／候補 {Cards.Count.ToString(CultureInfo.InvariantCulture)} 件";
 
@@ -487,9 +523,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         var selected = SelectedSession?.Session.SessionId;
         Sessions.Clear();
         foreach (var s in _store.SessionsWithRecords()) Sessions.Add(new SessionChoice(s));
-        Items.Clear();
-        foreach (var i in _store.Items()) Items.Add(new ItemRow(i));
-        OnPropertyChanged(nameof(ItemsTitle));
+        LoadItems();
         Batches.Clear();
         foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
         OnPropertyChanged(nameof(IssuesAppendOnly));

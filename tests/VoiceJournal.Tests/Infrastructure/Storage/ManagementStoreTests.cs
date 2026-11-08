@@ -137,6 +137,48 @@ public sealed class ManagementStoreTests : IDisposable
         Assert.Equal(2L, _store.NextNumbers().Issue);
     }
 
+    private void InsertItem(string displayId, string kind, string title, string status, string? assignee = null, string? due = null, string description = "")
+    {
+        using var c = _db.OpenConnection();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO items (id, workspace_id, display_id, kind, project, title, description, status, assignee, due_date, revision, created_at, updated_at)
+            VALUES ($id, $ws, $display, $kind, '未分類', $title, $description, $status, $assignee, $due, 1, '2026-11-01T00:00:00.0000000Z', '2026-11-01T00:00:00.0000000Z')
+            """;
+        cmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("D"));
+        cmd.Parameters.AddWithValue("$ws", _workspace.Info.WorkspaceId.ToString("D"));
+        cmd.Parameters.AddWithValue("$display", displayId);
+        cmd.Parameters.AddWithValue("$kind", kind);
+        cmd.Parameters.AddWithValue("$title", title);
+        cmd.Parameters.AddWithValue("$description", description);
+        cmd.Parameters.AddWithValue("$status", status);
+        cmd.Parameters.AddWithValue("$assignee", (object?)assignee ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$due", (object?)due ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public void Search_FindsShortWords_PartsOfWords_AndFiltersByStatusKindAndDueDate() // AT-21
+    {
+        _store.Files();
+        InsertItem("TSK-000001", "task", "見積書の作成", "todo", "田村", "2026-11-20");
+        InsertItem("TSK-000002", "task", "議事録の共有", "done", due: "2026-11-05", description: "見出しを直す");
+        InsertItem("ISS-000001", "issue", "ログイン不具合（100% 再現）", "open");
+        InsertItem("TSK-000003", "task", "a_b の確認", "in_progress");
+
+        string[] Ids(IReadOnlyList<ManagementItem> items) => [.. items.Select(i => i.DisplayId)];
+        Assert.Equal(["TSK-000001", "TSK-000002"], Ids(_store.Search("見"))); // one character: title or description
+        Assert.Equal(["TSK-000001"], Ids(_store.Search("積書")));
+        Assert.Equal(["TSK-000001"], Ids(_store.Search("田村")));
+        Assert.Equal(["ISS-000001"], Ids(_store.Search("100%"))); // 「%」 is a character, not a wildcard
+        Assert.Equal(["TSK-000003"], Ids(_store.Search("a_b")));
+        Assert.Empty(_store.Search("ab"));
+        Assert.Equal(["TSK-000002"], Ids(_store.Search(null, ItemStatus.Done)));
+        Assert.Equal(["ISS-000001"], Ids(_store.Search("", kind: CandidateKind.Issue)));
+        Assert.Equal(["TSK-000001"], Ids(_store.Search(null, dueFrom: new DateOnly(2026, 11, 10), dueTo: new DateOnly(2026, 11, 30))));
+        Assert.Equal(["TSK-000002"], Ids(_store.Search("TSK-000002")));
+    }
+
     [Fact]
     public void ItemsWrittenByPhaseF_AreReadWithTheirEvidence_AndNumbersContinueAfterThem()
     {

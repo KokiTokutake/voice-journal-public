@@ -162,6 +162,74 @@ public sealed class ManagementStore
         return items;
     });
 
+    /// <summary>
+    /// Search of the management list (UI-10, 15.3, AT-21): the text matches part of the display id, title, description,
+    /// assignee or project (escaped LIKE, so short Japanese words and 「%」「_」 work); status, kind and a due date range
+    /// narrow it. At most <paramref name="limit"/> items, by display id. Evidence is not loaded (a list, not a detail).
+    /// </summary>
+    public IReadOnlyList<ManagementItem> Search(string? text, ItemStatus? status = null, CandidateKind? kind = null,
+        DateOnly? dueFrom = null, DateOnly? dueTo = null, int limit = 500) => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        var where = new List<string> { "workspace_id = $ws" };
+        cmd.Parameters.AddWithValue("$ws", WorkspaceId);
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            where.Add(@"(display_id LIKE $q ESCAPE '\' OR title LIKE $q ESCAPE '\' OR description LIKE $q ESCAPE '\' OR assignee LIKE $q ESCAPE '\' OR project LIKE $q ESCAPE '\')");
+            var escaped = text.Trim().Replace(@"\", @"\\", StringComparison.Ordinal)
+                .Replace("%", @"\%", StringComparison.Ordinal).Replace("_", @"\_", StringComparison.Ordinal);
+            cmd.Parameters.AddWithValue("$q", "%" + escaped + "%");
+        }
+        if (status is { } s)
+        {
+            where.Add("status = $status");
+            cmd.Parameters.AddWithValue("$status", ItemStatuses.Label(s));
+        }
+        if (kind is { } k)
+        {
+            where.Add("kind = $kind");
+            cmd.Parameters.AddWithValue("$kind", KindText(k));
+        }
+        if (dueFrom is { } from)
+        {
+            where.Add("due_date >= $from");
+            cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+        if (dueTo is { } to)
+        {
+            where.Add("due_date <= $to");
+            cmd.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+        cmd.CommandText = $"""
+            SELECT id, display_id, kind, project, title, description, status, priority, assignee, due_date, parent_issue_id, revision, created_at, updated_at
+            FROM items WHERE {string.Join(" AND ", where)} ORDER BY display_id LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 10_000));
+        using var reader = cmd.ExecuteReader();
+        var items = new List<ManagementItem>();
+        while (reader.Read()) items.Add(ReadItem(reader, []));
+        return (IReadOnlyList<ManagementItem>)items;
+    });
+
+    private static ManagementItem ReadItem(SqliteDataReader reader, IReadOnlyList<ItemEvidence> evidence) => new()
+    {
+        Id = Guid.Parse(reader.GetString(0)),
+        DisplayId = reader.GetString(1),
+        Kind = ParseKind(reader.GetString(2)),
+        Project = reader.GetString(3),
+        Title = reader.GetString(4),
+        Description = reader.GetString(5),
+        Status = DbText.ParseEnum<ItemStatus>(reader.GetString(6)),
+        Priority = reader.IsDBNull(7) ? null : DbText.ParseEnum<ItemPriority>(reader.GetString(7)),
+        Assignee = reader.IsDBNull(8) ? null : reader.GetString(8),
+        DueDate = reader.IsDBNull(9) ? null : DateOnly.ParseExact(reader.GetString(9), "yyyy-MM-dd", CultureInfo.InvariantCulture),
+        ParentIssueId = reader.IsDBNull(10) ? null : Guid.Parse(reader.GetString(10)),
+        Revision = reader.GetInt32(11),
+        CreatedAtUtc = DbText.ParseUtc(reader.GetString(12)),
+        UpdatedAtUtc = DbText.ParseUtc(reader.GetString(13)),
+        Evidence = evidence,
+    };
+
     /// <summary>The next display numbers: never below a number already used or reserved by a plan (11.1, never reused).</summary>
     public (long Issue, long Task) NextNumbers() => _db.Read(c =>
     {

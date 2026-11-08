@@ -53,6 +53,7 @@ internal static class Program
                 "eval-record" when args.Length >= 2 => EvaluateRecordCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 "apply-crash" when args.Length >= 2 => ApplyCrashCommand.Run(args, JsonOptions),
                 "apply-batch" when args.Length >= 5 => ApplyCrashCommand.ApplyBatch(args),
+                "search-bench" when args.Length >= 2 => SearchBenchCommand.Run(args, JsonOptions),
                 _ => Usage(),
             };
         }
