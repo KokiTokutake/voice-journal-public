@@ -54,6 +54,7 @@ internal static class Program
                 "apply-crash" when args.Length >= 2 => ApplyCrashCommand.Run(args, JsonOptions),
                 "apply-batch" when args.Length >= 5 => ApplyCrashCommand.ApplyBatch(args),
                 "search-bench" when args.Length >= 2 => SearchBenchCommand.Run(args, JsonOptions),
+                "restore-drill" when args.Length >= 2 => RestoreDrillCommand.Run(args, JsonOptions),
                 _ => Usage(),
             };
         }
