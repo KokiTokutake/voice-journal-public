@@ -29,9 +29,9 @@
                 </Ellipse.Triggers>
             </Ellipse>
             <StackPanel VerticalAlignment="Center" Margin="0,0,14,0" MinWidth="96">
-                <TextBlock Text="{Binding ElapsedText}" FontSize="18" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
+                <TextBlock Text="{Binding ElapsedText}" FontSize="{DynamicResource VjFont18}" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
                            AutomationProperties.Name="経過時間" />
-                <TextBlock Text="{Binding ShortStatusText}" FontSize="11" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="{Binding ShortStatusText}" FontSize="{DynamicResource VjFont11}" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
             <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
                 <controls:LevelHistory Width="96" Height="14" BarCount="24" Level="{Binding MicLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"
@@ -48,7 +48,7 @@
                 <Rectangle Width="12" Height="12" RadiusX="2" RadiusY="2" Fill="{StaticResource RecordBrush}" />
             </Button>
             <Button Click="OnRestore" Width="36" Height="36" Padding="0" ToolTip="ウィンドウを元に戻す" AutomationProperties.Name="ウィンドウを元に戻す">
-                <TextBlock Text="&#xE740;" Style="{StaticResource Icon}" FontSize="14" />
+                <TextBlock Text="&#xE740;" Style="{StaticResource Icon}" FontSize="{DynamicResource VjFont14}" />
             </Button>
         </StackPanel>
     </Border>

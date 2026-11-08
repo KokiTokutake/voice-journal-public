@@ -17,7 +17,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:EvidenceLink}">
-                        <Button Content="{Binding Label}" ToolTip="{Binding ToolTip}" Padding="6,1" Margin="0,2,6,2" FontSize="12"
+                        <Button Content="{Binding Label}" ToolTip="{Binding ToolTip}" Padding="6,1" Margin="0,2,6,2" FontSize="{DynamicResource VjFont12}"
                                 Command="{Binding DataContext.ShowEvidenceCommand, ElementName=Root}" CommandParameter="{Binding}"
                                 AutomationProperties.Name="{Binding ToolTip}" />
                     </DataTemplate>
@@ -39,7 +39,7 @@
 
     <!-- AT-25 / 18.1: below the minimum size (e.g. 200 % scaling on a small screen) the page scrolls instead of squeezing -->
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-    <Border Padding="24,8,24,24" MinHeight="520" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <Border Padding="24,8,24,24" MinHeight="{DynamicResource VjSize520}" Height="{Binding ViewportHeight, ElementName=PageScroll}">
     <Grid>
         <!-- Nothing opened yet -->
         <TextBlock Margin="12,16" TextWrapping="Wrap"
@@ -153,7 +153,7 @@
                             <StackPanel>
                                 <Label Content="題名(_I)" Target="{Binding ElementName=TitleBox}" Padding="0,0,0,4" />
                                 <TextBox x:Name="TitleBox" Text="{Binding RecordTitle, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsTitleReadOnly}"
-                                         Style="{StaticResource EditableText}" FontSize="20" FontWeight="SemiBold" AutomationProperties.Name="記録の題名" />
+                                         Style="{StaticResource EditableText}" FontSize="{DynamicResource VjFont20}" FontWeight="SemiBold" AutomationProperties.Name="記録の題名" />
 
                                 <ItemsControl ItemsSource="{Binding Blocks}" Focusable="False" Margin="0,8,0,0">
                                     <ItemsControl.ItemTemplate>
@@ -176,7 +176,7 @@
                                                                 ToolTip="この章を削除（前の Revision には残ります）" AutomationProperties.Name="この章を削除" />
                                                     </StackPanel>
                                                     <TextBox Text="{Binding Heading, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsHeadingReadOnly}"
-                                                             Style="{StaticResource EditableText}" FontSize="16" FontWeight="SemiBold" AutomationProperties.Name="章の見出し" />
+                                                             Style="{StaticResource EditableText}" FontSize="{DynamicResource VjFont16}" FontWeight="SemiBold" AutomationProperties.Name="章の見出し" />
                                                 </DockPanel>
                                                 <TextBlock Text="{Binding CompareText}" Foreground="{StaticResource CautionBorderBrush}" TextWrapping="Wrap" Margin="6,0,0,0"
                                                            Visibility="{Binding CompareText, Converter={StaticResource TextToVisibility}}" />

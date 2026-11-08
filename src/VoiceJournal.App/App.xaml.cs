@@ -35,6 +35,7 @@ public partial class App : Application
 
         var options = StartupOptions.Parse(e.Args);
         if (options.Theme is { } theme) ThemeMode = theme;
+        TextScaling.Follow(this, options.TextScale); // AT-25: the Windows text size, which WPF does not apply itself
         // 15.1: --workspace first, then the folder chosen in 設定, then the default
         var configured = options.WorkspaceRoot is null ? _location.Load() : null;
         var root = options.WorkspaceRoot ?? configured ?? Workspace.DefaultRoot;

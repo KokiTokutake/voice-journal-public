@@ -84,6 +84,49 @@ public sealed class UiBehaviorTests : IDisposable
     }
 
     [Fact]
+    public void StartupOptions_ParseTheTextScale_OnlyInTheWindowsRange()
+    {
+        Assert.Equal(200, StartupOptions.Parse(["--text-scale", "200"]).TextScale);
+        Assert.Null(StartupOptions.Parse(["--text-scale", "50"]).TextScale);
+        Assert.Null(StartupOptions.Parse(["--text-scale", "300"]).TextScale);
+        Assert.Null(StartupOptions.Parse(["--text-scale", "-150"]).TextScale);
+        Assert.Null(StartupOptions.Parse([]).TextScale);
+    }
+
+    [Fact]
+    public void TextScaling_MultipliesEveryFontSizeFromItsOriginal_WithoutCompounding() // 18.1, AT-25
+    {
+        var resources = new System.Windows.ResourceDictionary { ["VjFont14"] = 14.0, ["VjSize520"] = 520.0, ["Other"] = 3.0 };
+        var theme = new Dictionary<string, object> { ["ControlContentThemeFontSize"] = 14.0, ["BodyTextBlockFontSize"] = 14.0 };
+        object? Find(string key) => resources.Contains(key) ? resources[key] : theme.GetValueOrDefault(key);
+        var originals = new Dictionary<string, double>();
+
+        TextScaling.Apply(resources, Find, originals, 200);
+        Assert.Equal(28.0, resources["VjFont14"]);
+        Assert.Equal(1040.0, resources["VjSize520"]);
+        Assert.Equal(28.0, resources["ControlContentThemeFontSize"]);
+        Assert.Equal(3.0, resources["Other"]); // not a size resource
+
+        TextScaling.Apply(resources, Find, originals, 150); // from the originals, not from 28
+        Assert.Equal(21.0, resources["VjFont14"]);
+        TextScaling.Apply(resources, Find, originals, 100);
+        Assert.Equal(14.0, resources["ControlContentThemeFontSize"]);
+        TextScaling.Apply(resources, Find, originals, 400); // clamped to 225 %
+        Assert.Equal(31.5, resources["VjFont14"]);
+    }
+
+    [Fact]
+    public void TextScaling_WidensFixedColumns_AndFixesStarColumnsOnlyWhileEnlarged()
+    {
+        Assert.Equal(new System.Windows.Controls.DataGridLength(300), TextScaling.ScaledWidth(new System.Windows.Controls.DataGridLength(150), 200));
+        Assert.Equal(new System.Windows.Controls.DataGridLength(150), TextScaling.ScaledWidth(new System.Windows.Controls.DataGridLength(150), 100));
+        var star = new System.Windows.Controls.DataGridLength(1, System.Windows.Controls.DataGridLengthUnitType.Star);
+        Assert.Equal(star, TextScaling.ScaledWidth(star, 100));
+        Assert.Equal(new System.Windows.Controls.DataGridLength(TextScaling.StarWidth * 2), TextScaling.ScaledWidth(star, 200));
+        Assert.Equal(System.Windows.Controls.DataGridLength.Auto, TextScaling.ScaledWidth(System.Windows.Controls.DataGridLength.Auto, 200));
+    }
+
+    [Fact]
     public void StartupOptions_ParseWorkspaceAndTheme()
     {
         var options = StartupOptions.Parse(["--workspace", @"C:\tmp\ws", "--theme", "dark"]);

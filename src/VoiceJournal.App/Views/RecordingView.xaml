@@ -24,12 +24,12 @@
                         ToolTip="{Binding ToggleLabel}" AutomationProperties.Name="{Binding ToggleLabel}" Margin="0,0,28,0" />
 
                 <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ElapsedText}" FontSize="52" FontWeight="Light" Typography.NumeralAlignment="Tabular"
+                    <TextBlock Text="{Binding ElapsedText}" FontSize="{DynamicResource VjFont52}" FontWeight="Light" Typography.NumeralAlignment="Tabular"
                                AutomationProperties.Name="経過時間" />
                     <StackPanel Orientation="Horizontal" Margin="2,2,0,0">
                         <Ellipse Width="10" Height="10" Fill="{StaticResource RecordBrush}" Margin="0,0,8,0" VerticalAlignment="Center"
                                  Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource VjFont15}" FontWeight="SemiBold" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="録音の状態" />
                     </StackPanel>
                     <TextBlock Margin="2,6,0,0" Style="{StaticResource Note}">
@@ -52,7 +52,7 @@
 
                     <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="&#xE720;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,8,0" />
+                        <TextBlock Text="&#xE720;" Style="{StaticResource Icon}" FontSize="{DynamicResource VjFont16}" Margin="0,0,8,0" />
                         <TextBlock Text="マイク" VerticalAlignment="Center" />
                     </StackPanel>
                     <controls:LevelHistory Grid.Row="0" Grid.Column="1" Height="40" Margin="0,4" BarCount="64"
@@ -66,7 +66,7 @@
 
                     <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}">
-                        <TextBlock Text="&#xE767;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,8,0" />
+                        <TextBlock Text="&#xE767;" Style="{StaticResource Icon}" FontSize="{DynamicResource VjFont16}" Margin="0,0,8,0" />
                         <TextBlock Text="PC 内部音声" VerticalAlignment="Center" />
                     </StackPanel>
                     <controls:LevelHistory Grid.Row="1" Grid.Column="1" Height="40" Margin="0,4" BarCount="64"
@@ -89,7 +89,7 @@
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource CautionBorderBrush}"
-                                       FontSize="16" Margin="0,0,10,0" VerticalAlignment="Top" />
+                                       FontSize="{DynamicResource VjFont16}" Margin="0,0,10,0" VerticalAlignment="Top" />
                             <TextBlock Text="{Binding Mode=OneWay}" TextWrapping="Wrap" />
                         </DockPanel>
                     </Border>
@@ -113,7 +113,7 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="フォルダーを開く(_F)" Tag="&#xE838;" Command="{Binding OpenLastSavedCommand}"
                         Style="{StaticResource ActionButton}" Margin="12,0,0,0" />
-                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="16" Margin="0,0,10,0" />
+                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="{DynamicResource VjFont16}" Margin="0,0,10,0" />
                 <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
                     <Run Text="保存しました: " /><Run Text="{Binding LastSavedDirectory, Mode=OneWay}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                 </TextBlock>
@@ -163,7 +163,9 @@
                               Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
                     <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,2,0,8" IsChecked="{Binding UseRawMic}"
                               Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}"
-                              Content="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）" />
+                             >
+                    <AccessText Text="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）" TextWrapping="Wrap" />
+                </CheckBox>
 
                     <Label Grid.Row="4" Grid.Column="0" Content="出力先(_O)" Target="{Binding ElementName=LoopbackBox}" VerticalAlignment="Center" Padding="0"
                            Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
@@ -182,9 +184,13 @@
                 <TextBlock Margin="0,8,0,0" Text="{Binding CaptureTestResult}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                            AutomationProperties.Name="録音テストの結果" />
                 <!-- Detail spec 18.3: "保存後 [✓]文字起こしをキューへ追加" -->
-                <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}" Content="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" />
+                <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}">
+                    <AccessText Text="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" TextWrapping="Wrap" />
+                </CheckBox>
                 <CheckBox Margin="0,8,0,0" IsChecked="{Binding GenerateRecordAfterTranscription}"
-                          Content="文字起こしの後に記録を作る(_K)（推論エンジンで要約と課題・タスクの候補を作ります。記録のない録音だけ）" />
+                         >
+                    <AccessText Text="文字起こしの後に記録を作る(_K)（推論エンジンで要約と課題・タスクの候補を作ります。記録のない録音だけ）" TextWrapping="Wrap" />
+                </CheckBox>
             </StackPanel>
         </Border>
     </StackPanel>

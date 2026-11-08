@@ -19,7 +19,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <Image Source="/Assets/VoiceJournal-256.png" Width="28" Height="28" Margin="0,0,10,0" />
-                <TextBlock Text="Voice Journal" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Text="Voice Journal" FontSize="{DynamicResource VjFont18}" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
             <Border Grid.Column="2" Style="{StaticResource RecPill}" VerticalAlignment="Center"
                     Visibility="{Binding IsRecordingActive, Converter={StaticResource BoolToVisibility}}">

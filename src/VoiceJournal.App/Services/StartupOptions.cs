@@ -7,13 +7,15 @@ namespace VoiceJournal.App.Services;
 /// <c>--workspace &lt;folder&gt;</c> records into another workspace (acceptance tests must not touch the user's library),
 /// <c>--theme light|dark</c> forces a theme (to check both).
 /// </summary>
-public sealed record StartupOptions(string? WorkspaceRoot, ThemeMode? Theme)
+/// <param name="TextScale">--text-scale 100..225: overrides the Windows text size (for checking AT-25 without changing the user's setting).</param>
+public sealed record StartupOptions(string? WorkspaceRoot, ThemeMode? Theme, int? TextScale = null)
 {
     public static StartupOptions Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
         string? workspace = null;
         ThemeMode? theme = null;
+        int? textScale = null;
         for (var i = 0; i < args.Count; i++)
         {
             switch (args[i])
@@ -29,8 +31,12 @@ public sealed record StartupOptions(string? WorkspaceRoot, ThemeMode? Theme)
                         _ => null,
                     };
                     break;
+                case "--text-scale" when i + 1 < args.Count:
+                    textScale = int.TryParse(args[++i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var percent)
+                        && percent is >= TextScaling.MinPercent and <= TextScaling.MaxPercent ? percent : null;
+                    break;
             }
         }
-        return new StartupOptions(workspace, theme);
+        return new StartupOptions(workspace, theme, textScale);
     }
 }

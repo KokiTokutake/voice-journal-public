@@ -26,9 +26,13 @@
                               ItemsSource="{Binding ModelOptions}" SelectedValuePath="Name" DisplayMemberPath="Label" SelectedValue="{Binding ModelName}"
                               AutomationProperties.Name="文字起こしのモデル" />
                     <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding UseVad}"
-                              Content="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(_V)" />
+                             >
+                    <AccessText Text="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(_V)" TextWrapping="Wrap" />
+                </CheckBox>
                     <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding NormalizeGain}"
-                              Content="小さい音声の音量をそろえてから認識する（原音は変えません）(_N)" />
+                             >
+                    <AccessText Text="小さい音声の音量をそろえてから認識する（原音は変えません）(_N)" TextWrapping="Wrap" />
+                </CheckBox>
                     <Label Grid.Row="3" Content="CPU のスレッド数(_H)" Target="{Binding ElementName=ThreadBox}" VerticalAlignment="Center" Padding="0" Margin="0,8,0,0" />
                     <ComboBox x:Name="ThreadBox" Grid.Row="3" Grid.Column="1" Margin="0,12,0,4" Width="90" HorizontalAlignment="Left"
                               ItemsSource="{Binding ThreadOptions}" SelectedItem="{Binding Threads}" AutomationProperties.Name="CPU のスレッド数" />

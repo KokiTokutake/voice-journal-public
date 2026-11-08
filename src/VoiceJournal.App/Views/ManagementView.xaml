@@ -1,6 +1,7 @@
 ﻿<UserControl x:Class="VoiceJournal.App.Views.ManagementView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:VoiceJournal.App.Services"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
@@ -15,7 +16,7 @@
                         <TextBlock Text="{Binding ActionText}" Style="{StaticResource Note}" Margin="0,0,10,0" />
                         <TextBlock Text="{Binding StateText}" Style="{StaticResource Note}" FontWeight="SemiBold" />
                     </WrapPanel>
-                    <TextBox Text="{Binding Title, UpdateSourceTrigger=LostFocus}" Margin="0,6,0,2" Padding="4,3" FontSize="15"
+                    <TextBox Text="{Binding Title, UpdateSourceTrigger=LostFocus}" Margin="0,6,0,2" Padding="4,3" FontSize="{DynamicResource VjFont15}"
                              AutomationProperties.Name="候補のタイトル" ToolTip="タイトルを直せます（確定はフォーカスを外したとき）" />
                     <TextBlock Text="{Binding DetailText}" TextWrapping="Wrap" Margin="0,2" />
                     <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Style="{StaticResource Note}"
@@ -64,7 +65,7 @@
 
     <!-- AT-25 / 18.1: below about 1100x720 the page scrolls instead of squeezing the cards; above, it fills the window -->
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-    <Border Padding="24,8,24,16" MinHeight="560" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <Border Padding="24,8,24,16" MinHeight="{DynamicResource VjSize560}" Height="{Binding ViewportHeight, ElementName=PageScroll}">
     <DockPanel>
         <!-- Session and refresh -->
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -100,7 +101,7 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding Header}" VerticalAlignment="Center" />
                                     </DockPanel>
-                                    <TextBox Text="{Binding Diff, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas, MS Gothic" FontSize="12" MaxHeight="140"
+                                    <TextBox Text="{Binding Diff, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas, MS Gothic" FontSize="{DynamicResource VjFont12}" MaxHeight="140"
                                              TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0" />
                                 </StackPanel>
                             </DataTemplate>
@@ -118,22 +119,23 @@
                 <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
         <StackPanel>
-            <DockPanel Margin="0,0,0,4">
-                <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding SelectedStatusFilter}" DisplayMemberPath="Label"
-                          MinWidth="90" Margin="6,0,0,0" AutomationProperties.Name="状態で絞り込む" />
-                <TextBox DockPanel.Dock="Right" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}" MinWidth="180" Margin="8,0,0,0"
+            <!-- Wraps when narrow or with enlarged text (AT-25) instead of cutting the title -->
+            <WrapPanel Margin="0,0,0,4">
+                <TextBlock Text="{Binding ItemsTitle}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,4" />
+                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}" MinWidth="180" Margin="0,0,6,4"
                          AutomationProperties.Name="管理一覧を検索（ID・タイトル・内容・担当・プロジェクト）" ToolTip="ID・タイトル・内容・担当・プロジェクトの一部で検索" />
-                <TextBlock Text="{Binding ItemsTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </DockPanel>
-            <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="180" HeadersVisibility="Column"
+                <ComboBox ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding SelectedStatusFilter}" DisplayMemberPath="Label"
+                          MinWidth="90" Margin="0,0,0,4" AutomationProperties.Name="状態で絞り込む" />
+            </WrapPanel>
+            <DataGrid services:TextScaling.ScaleColumns="True" ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="180" HeadersVisibility="Column"
                       AutomationProperties.Name="管理一覧">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="ID" Binding="{Binding DisplayId}" />
-                    <DataGridTextColumn Header="タイトル" Binding="{Binding Title}" Width="*" />
-                    <DataGridTextColumn Header="状態" Binding="{Binding Status}" />
-                    <DataGridTextColumn Header="担当" Binding="{Binding Assignee}" />
-                    <DataGridTextColumn Header="期限" Binding="{Binding Due}" />
-                    <DataGridTextColumn Header="プロジェクト" Binding="{Binding Project}" />
+                    <DataGridTextColumn Header="ID" Binding="{Binding DisplayId}" Width="100" />
+                    <DataGridTextColumn Header="タイトル" Binding="{Binding Title}" Width="*" MinWidth="160" />
+                    <DataGridTextColumn Header="状態" Binding="{Binding Status}" Width="70" />
+                    <DataGridTextColumn Header="担当" Binding="{Binding Assignee}" Width="80" />
+                    <DataGridTextColumn Header="期限" Binding="{Binding Due}" Width="96" />
+                    <DataGridTextColumn Header="プロジェクト" Binding="{Binding Project}" Width="100" />
                 </DataGrid.Columns>
             </DataGrid>
         </StackPanel>
@@ -215,7 +217,7 @@
                             <DataTemplate DataType="{x:Type vm:PlannedFileRow}">
                                 <StackPanel Margin="0,0,0,10">
                                     <TextBlock Text="{Binding Header}" FontWeight="SemiBold" Margin="0,0,0,4" />
-                                    <TextBox Text="{Binding Diff, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas, MS Gothic" FontSize="12"
+                                    <TextBox Text="{Binding Diff, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas, MS Gothic" FontSize="{DynamicResource VjFont12}"
                                              TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="{Binding Header}" />
                                 </StackPanel>
                             </DataTemplate>
