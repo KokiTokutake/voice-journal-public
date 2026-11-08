@@ -22,7 +22,7 @@
                                Visibility="{Binding Description, Converter={StaticResource TextToVisibility}}" />
                     <TextBlock Text="{Binding ConcernText}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,2"
                                Visibility="{Binding ConcernText, Converter={StaticResource TextToVisibility}}" />
-                    <ItemsControl ItemsSource="{Binding Evidence}" Focusable="False" Margin="0,2">
+                    <ItemsControl ItemsSource="{Binding Evidence}" Focusable="False" Margin="0,2" AutomationProperties.Name="根拠">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding StringFormat=根拠 {0}}" TextWrapping="Wrap" Style="{StaticResource Note}" />
@@ -31,7 +31,7 @@
                     </ItemsControl>
                     <TextBlock Text="{Binding DuplicateText}" TextWrapping="Wrap" Margin="0,2"
                                Visibility="{Binding DuplicateText, Converter={StaticResource TextToVisibility}}" />
-                    <ItemsControl ItemsSource="{Binding Choices}" Focusable="False" Margin="0,6,0,0">
+                    <ItemsControl ItemsSource="{Binding Choices}" Focusable="False" Margin="0,6,0,0" AutomationProperties.Name="この候補をどうするか">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <WrapPanel />
@@ -68,7 +68,7 @@
             <TextBlock Text="課題・タスクの候補のレビュー" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
             <WrapPanel>
                 <Label Content="セッション(_N)" Target="{Binding ElementName=SessionBox}" VerticalAlignment="Center" Padding="0,0,8,0" />
-                <ComboBox x:Name="SessionBox" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}" DisplayMemberPath="Label"
+                <ComboBox x:Name="SessionBox" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}" DisplayMemberPath="Label" AutomationProperties.Name="セッション"
                           MinWidth="420" Margin="0,0,10,0" />
                 <Button Content="再読み込み" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" Margin="0,0,16,0" />
                 <CheckBox Content="課題のファイルは追記だけ" IsChecked="{Binding IssuesAppendOnly}" VerticalAlignment="Center" Margin="0,0,12,0"
@@ -82,7 +82,7 @@
             <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="12,8" Visibility="{Binding HasEditedBlocks, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
                     <TextBlock Text="管理ファイルの中で手で編集された項目があります。取り込むか、アプリの内容に戻すまで、この項目は更新しません。" TextWrapping="Wrap" FontWeight="SemiBold" />
-                    <ItemsControl ItemsSource="{Binding EditedBlocks}" Focusable="False">
+                    <ItemsControl ItemsSource="{Binding EditedBlocks}" Focusable="False" AutomationProperties.Name="手で編集された項目">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:EditedBlockRow}">
                                 <StackPanel Margin="0,6,0,0">
@@ -200,7 +200,7 @@
                     </WrapPanel>
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding PlannedFiles}" Focusable="False">
+                    <ItemsControl ItemsSource="{Binding PlannedFiles}" Focusable="False" AutomationProperties.Name="ファイルごとの差分">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:PlannedFileRow}">
                                 <StackPanel Margin="0,0,0,10">
