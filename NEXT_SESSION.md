@@ -79,7 +79,7 @@
 3. 推論中の空きメモリの最小値と、同梱のエンジンでのメモリの増加（未測定）。カーネルのメモリ: `Get-PoolTag.ps1 -Compare <boot の記録>`（記録は `%LOCALAPPDATA%\VoiceJournal\verify\pool\`）
 4. O=6144 の効果は 1 回の測定。会議を測るときは、各要求の `FinishReason` が `length` になっていないか見る
 5. 配布時のリスク: 実行ファイルに署名がない（SHA-256 で検査）、Corvus の実行時コンパイルは SDK の参照パックを前提にしている（Phase G で検討）
-6. whisper の結合テスト `SmallModelWithVad_ReturnsSessionTimes_ForSpeechThatStartsTenSecondsIn` が、ビルド直後に全体を回したときに 2 回失敗した（1〜2 秒で終わる。単独・その後の全体 4 回は合格。2026-11-06）。メッセージはまだ捕まえていない。並列で動く別の whisper のテストとの取り合いを疑う。次に失敗したら出力を保存して調べる
+6. whisper の結合テスト `SmallModelWithVad_ReturnsSessionTimes_ForSpeechThatStartsTenSecondsIn` が、ビルド直後に全体を回したときに 2 回失敗した（1〜2 秒で終わる。単独・その後の全体 4 回は合格。2026-11-06）。メッセージはまだ捕まえていない。並列で動く別の whisper のテストとの取り合いを疑う。次に失敗したら出力を保存して調べる。2026-11-08 21:5x にも、評価の道具をビルドして文字起こしと推論を動かした直後の全体の実行で 1 件だけ失敗した（名前は捕まえ損ねた。その後 5 回は全部合格）。全体を回すときは `dotnet test ... > ファイル` で出力を残し、終了コードで判定する（grep の一致で判定すると、失敗していてもコミットに進んでしまう。この日 2 回やった）
 
 ## 環境の状態
 
