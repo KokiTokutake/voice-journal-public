@@ -25,10 +25,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IFreeSpaceProbe? _disk;
     private readonly LlmToolSettings? _llmTools;
     private readonly long _minFreeBytes;
+    private readonly IDialogService? _dialogs;
+    private readonly IWorkspaceLocationStore? _location;
     private bool _loading;
 
     public SettingsViewModel(ISttSettingsStore store, ISttEngine engine, SttToolSettings tools, RecordingEnvironment environment,
-        ILlmSettingsStore? llmStore = null, ILlmClient? llm = null, IFreeSpaceProbe? disk = null, LlmToolSettings? llmTools = null)
+        ILlmSettingsStore? llmStore = null, ILlmClient? llm = null, IFreeSpaceProbe? disk = null, LlmToolSettings? llmTools = null,
+        IDialogService? dialogs = null, IWorkspaceLocationStore? location = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         _store = store;
@@ -38,6 +41,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _disk = disk;
         _llmTools = llmTools;
         _minFreeBytes = environment.MinFreeBytes;
+        _dialogs = dialogs;
+        _location = location;
         Tools = tools;
         WorkspaceRoot = environment.WorkspaceRoot;
         ModelOptions = [.. tools.Models.Keys.Order(StringComparer.Ordinal).Select(m => new TranscriptViewModel.ModelOption(m, UserMessages.ModelLabel(m)))];
@@ -51,6 +56,84 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (llmStore is not null) ShowLlm(llmStore.Load());
         _loading = false;
         FreeSpaceText = FreeSpace();
+        ShowNextWorkspace();
+    }
+
+    public bool CanChangeWorkspace => _dialogs is not null && _location is not null;
+
+    /// <summary>Set when the folder used from the next start differs from the one in use.</summary>
+    [ObservableProperty]
+    public partial string? NextWorkspaceText { get; set; }
+
+    [ObservableProperty]
+    public partial string? WorkspaceMessage { get; set; }
+
+    /// <summary>Set by the app when <c>--workspace</c> chose the folder in use (the saved choice applies without it).</summary>
+    public bool StartedWithWorkspaceOption
+    {
+        get;
+        set
+        {
+            field = value;
+            ShowNextWorkspace();
+        }
+    }
+
+    private void ShowNextWorkspace()
+    {
+        if (_location is null) return;
+        var next = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_location.Load() ?? Infrastructure.Storage.Workspace.DefaultRoot));
+        if (StartedWithWorkspaceOption)
+        {
+            NextWorkspaceText = $"起動オプション（--workspace）で指定した保存先を使っています。オプションなしで起動したときの保存先: {next}";
+            return;
+        }
+        NextWorkspaceText = string.Equals(next, Path.TrimEndingDirectorySeparator(Path.GetFullPath(WorkspaceRoot)), StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"次に起動したときの保存先: {next}";
+    }
+
+    /// <summary>
+    /// 15.1: picks another local, unsynced folder for the workspace, used from the next start. The data in the current
+    /// workspace is not moved or deleted; an existing workspace in the chosen folder is opened as it is.
+    /// </summary>
+    [RelayCommand]
+    private void ChangeWorkspace()
+    {
+        if (_dialogs is null || _location is null) return;
+        if (_dialogs.PickFolder("新しい保存先のフォルダーを選ぶ（空のフォルダーか、既存のワークスペース）") is not { } folder) return;
+        if (WorkspaceChoice.Problem(folder) is { } problem)
+        {
+            WorkspaceMessage = $"このフォルダーは保存先にできません: {problem}";
+            return;
+        }
+        var existing = WorkspaceChoice.IsWorkspace(folder);
+        var question = $"次に起動したときから「{folder}」を保存先にします。\n\n"
+            + (existing ? "このフォルダーにある既存のワークスペースを開きます。" : "このフォルダーに新しい空のワークスペースを作ります。")
+            + $"\n今の保存先（{WorkspaceRoot}）の録音・文字起こし・記録・管理ファイルは移さず、そのまま残します。";
+        if (!_dialogs.Confirm("保存先の変更", question)) return;
+        SaveLocation(folder, "保存しました。アプリを起動し直すと、新しい保存先を使います。");
+    }
+
+    [RelayCommand]
+    private void UseDefaultWorkspace()
+    {
+        if (_location is null) return;
+        SaveLocation(null, "既定の保存先に戻しました。アプリを起動し直すと使います（今の保存先のデータはそのまま残します）。");
+    }
+
+    private void SaveLocation(string? folder, string done)
+    {
+        try
+        {
+            _location!.Save(folder);
+            WorkspaceMessage = done;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            WorkspaceMessage = $"保存先の設定を書き込めませんでした（{ex.Message}）。";
+        }
+        ShowNextWorkspace();
     }
 
     /// <summary>The free space of the workspace's drive and the minimum a recording needs.</summary>

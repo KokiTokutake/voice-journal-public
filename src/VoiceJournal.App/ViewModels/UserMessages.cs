@@ -198,6 +198,20 @@ internal static class UserMessages
             : $"✓ {who}: 音が届きました（{arrived}、{level}）{gaps}。";
     }
 
+    /// <summary>Why a folder cannot be the workspace (14.1, 15.1).</summary>
+    public static string WorkspaceIssue(Infrastructure.Storage.WorkspaceRootIssue issue) => issue switch
+    {
+        Infrastructure.Storage.WorkspaceRootIssue.InsideSyncFolder => "OneDrive などの同期フォルダーの中です（録音中の同期で壊れるおそれがあります）",
+        Infrastructure.Storage.WorkspaceRootIssue.NetworkPath => "ネットワーク上の場所です",
+        Infrastructure.Storage.WorkspaceRootIssue.NotFixedDrive => "固定ディスクではありません（USB メモリなど）",
+        Infrastructure.Storage.WorkspaceRootIssue.NotNtfs => "NTFS でフォーマットされたドライブではありません",
+        Infrastructure.Storage.WorkspaceRootIssue.ReparsePoint => "ジャンクションやシンボリックリンクを通る場所です",
+        Infrastructure.Storage.WorkspaceRootIssue.NotADirectory => "フォルダーではなくファイルです",
+        Infrastructure.Storage.WorkspaceRootIssue.DevicePath => "デバイスのパスです",
+        Infrastructure.Storage.WorkspaceRootIssue.NotAbsolute => "完全なパスではありません",
+        _ => issue.ToString(),
+    };
+
     /// <summary>Why recording could not start, with what the user can do about it.</summary>
     public static string StartFailure(Exception error)
     {

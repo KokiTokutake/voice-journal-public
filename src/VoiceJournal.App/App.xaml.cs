@@ -24,6 +24,7 @@ public partial class App : Application
     /// <summary>Tools, models and settings live here regardless of the workspace (<c>%LOCALAPPDATA%\VoiceJournal</c>).</summary>
     private static string AppDataRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoiceJournal");
 
+    private readonly JsonWorkspaceLocationStore _location = new JsonWorkspaceLocationStore(JsonWorkspaceLocationStore.DefaultPath);
     private Mutex? _singleInstance;
     private ServiceProvider? _services;
 
@@ -34,7 +35,9 @@ public partial class App : Application
 
         var options = StartupOptions.Parse(e.Args);
         if (options.Theme is { } theme) ThemeMode = theme;
-        var root = options.WorkspaceRoot ?? Workspace.DefaultRoot;
+        // 15.1: --workspace first, then the folder chosen in 設定, then the default
+        var configured = options.WorkspaceRoot is null ? _location.Load() : null;
+        var root = options.WorkspaceRoot ?? configured ?? Workspace.DefaultRoot;
         var rootKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(root).ToUpperInvariant())))[..16];
         _singleInstance = new Mutex(initiallyOwned: true, SingleInstancePrefix + rootKey, out var createdNew);
@@ -57,9 +60,28 @@ public partial class App : Application
                                        or Microsoft.Data.Sqlite.SqliteException)
         {
             // DB-002: never repair automatically; the recordings stay untouched.
-            MessageBox.Show(
-                $"保存先またはデータベースを開けませんでした。録音済みのファイルは変更していません。\n\n{ex.Message}",
-                "Voice Journal", MessageBoxButton.OK, MessageBoxImage.Error);
+            var reason = ex is WorkspaceRootException { Issues.Count: > 0 } wre
+                ? $"{root} は保存先にできません: {string.Join("、", wre.Issues.Select(UserMessages.WorkspaceIssue))}"
+                : ex.Message;
+            if (configured is not null)
+            {
+                // A folder chosen in 設定 that no longer works: offer the default instead of leaving the user stuck.
+                var answer = MessageBox.Show(
+                    $"設定で選んだ保存先を開けませんでした。録音済みのファイルは変更していません。\n\n{reason}\n\n" +
+                    $"保存先の設定を既定（{Workspace.DefaultRoot}）に戻しますか？ 選んだフォルダーの中身は変えません。戻したら、もう一度起動してください。",
+                    "Voice Journal", MessageBoxButton.YesNo, MessageBoxImage.Error, MessageBoxResult.No);
+                if (answer == MessageBoxResult.Yes)
+                {
+                    try { _location.Save(null); }
+                    catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException) { }
+                }
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"保存先またはデータベースを開けませんでした。録音済みのファイルは変更していません。\n\n{reason}",
+                    "Voice Journal", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             Shutdown(1);
             return;
         }
@@ -90,6 +112,7 @@ public partial class App : Application
         processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);
         processing.ShowFolder = _services.GetRequiredService<IShellService>().OpenFolder;
         processing.Confirm = _services.GetRequiredService<IDialogService>().Confirm;
+        _services.GetRequiredService<SettingsViewModel>().StartedWithWorkspaceOption = options.WorkspaceRoot is not null;
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {
             var report = WorkspaceStartup.Run(workspace, index);
@@ -138,6 +161,7 @@ public partial class App : Application
         services.AddSingleton<IPowerService, WindowsPowerService>();
         services.AddSingleton<IShellService, ExplorerShellService>();
         services.AddSingleton<IUiSettingsStore>(new JsonUiSettingsStore(JsonUiSettingsStore.DefaultPath));
+        services.AddSingleton<IWorkspaceLocationStore>(_location);
         services.AddSingleton(_ => SttToolSettings.LoadOrCreate(AppDataRoot));
         services.AddSingleton<ISttEngine>(sp => new WhisperCliEngine(sp.GetRequiredService<SttToolSettings>()));
         services.AddSingleton<ISttInputBuilder, SttInputBuilder>();

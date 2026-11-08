@@ -365,6 +365,75 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.StartsWith("✗ の項目を直すまで", settings.EnvironmentStatus[^1], StringComparison.Ordinal);
     }
 
+    private sealed class MemoryLocation : IWorkspaceLocationStore
+    {
+        public string? Root { get; set; }
+
+        public string? Load() => Root;
+
+        public void Save(string? root) => Root = root;
+    }
+
+    [Fact]
+    public void Settings_ChangeWorkspace_AcceptsAnEmptyFolderOrAWorkspace_AfterConfirmation_ForTheNextStart() // 15.1
+    {
+        var dialogs = new FakeDialogs();
+        var location = new MemoryLocation();
+        var settings = new SettingsViewModel(_settings, _engine, _tools, new RecordingEnvironment(_workspace.Root, 0), dialogs: dialogs, location: location);
+        Assert.True(settings.CanChangeWorkspace);
+
+        var busy = _dir.File("busy");
+        Directory.CreateDirectory(busy);
+        File.WriteAllText(Path.Combine(busy, "memo.txt"), "x");
+        dialogs.PickedFolder = busy;
+        settings.ChangeWorkspaceCommand.Execute(null);
+        Assert.Contains("空のフォルダーか", settings.WorkspaceMessage, StringComparison.Ordinal); // a folder with other files
+        Assert.Null(location.Root);
+
+        var empty = _dir.File("new-workspace");
+        Directory.CreateDirectory(empty);
+        dialogs.PickedFolder = empty;
+        dialogs.ConfirmAnswer = false;
+        settings.ChangeWorkspaceCommand.Execute(null);
+        Assert.Null(location.Root); // declined
+        Assert.Contains("移さず、そのまま残します", dialogs.Confirmations[^1], StringComparison.Ordinal);
+
+        dialogs.ConfirmAnswer = true;
+        settings.ChangeWorkspaceCommand.Execute(null);
+        Assert.Equal(empty, location.Root);
+        Assert.Equal($"次に起動したときの保存先: {empty}", settings.NextWorkspaceText);
+
+        dialogs.PickedFolder = _workspace.Root; // an existing workspace is opened as it is
+        settings.ChangeWorkspaceCommand.Execute(null);
+        Assert.Contains("既存のワークスペースを開きます", dialogs.Confirmations[^1], StringComparison.Ordinal);
+        Assert.Equal(_workspace.Root, location.Root);
+        Assert.Null(settings.NextWorkspaceText); // the one in use
+
+        settings.UseDefaultWorkspaceCommand.Execute(null);
+        Assert.Null(location.Root);
+
+        settings.StartedWithWorkspaceOption = true; // --workspace chose the folder: say so instead of a "next start" that would not happen
+        Assert.StartsWith("起動オプション（--workspace）で指定した保存先を使っています", settings.NextWorkspaceText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WorkspaceChoice_RefusesASyncFolder_AndTheLocationIsSavedAsJson()
+    {
+        var sync = _dir.File("OneDrive");
+        Directory.CreateDirectory(Path.Combine(sync, "VJ"));
+        Assert.Contains("同期フォルダー", WorkspaceChoice.Problem(Path.Combine(sync, "VJ"), [sync]), StringComparison.Ordinal);
+        Assert.Null(WorkspaceChoice.Problem(_dir.File("not-yet-created"), [sync]));
+
+        var store = new JsonWorkspaceLocationStore(_dir.File("config/workspace.json"));
+        Assert.Null(store.Load());
+        store.Save(_dir.File("ws"));
+        Assert.Equal(_dir.File("ws"), store.Load());
+        store.Save(null);
+        Assert.Null(store.Load());
+        File.WriteAllText(_dir.File("config/workspace.json"), "{ broken");
+        Assert.Null(store.Load()); // a broken file means the default
+    }
+
     [Theory]
     [InlineData("それでは始めます", "")]
     [InlineData("予算は3000円です", "数字")]
