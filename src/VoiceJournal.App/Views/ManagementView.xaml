@@ -76,8 +76,14 @@
                        Visibility="{Binding Message, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
 
-        <!-- UI-10: management list -->
-        <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+        <!-- UI-10: management list, UI-11: plans waiting and history -->
+        <Grid DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+        <StackPanel>
             <TextBlock Text="{Binding ItemsTitle}" FontWeight="SemiBold" Margin="0,0,0,4" />
             <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="180" HeadersVisibility="Column"
                       AutomationProperties.Name="管理一覧">
@@ -91,6 +97,27 @@
                 </DataGrid.Columns>
             </DataGrid>
         </StackPanel>
+        <StackPanel Grid.Column="2">
+            <TextBlock Text="変更計画（反映待ち・履歴）" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <ListBox ItemsSource="{Binding Batches}" MaxHeight="180" AutomationProperties.Name="変更計画の履歴" HorizontalContentAlignment="Stretch">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:BatchRow}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding CanApply, Converter={StaticResource BoolToVisibility}}">
+                                <Button Content="反映" Padding="8,1" Margin="4,0" Command="{Binding DataContext.ApplyBatchCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" AutomationProperties.Name="この計画を反映" />
+                                <Button Content="破棄" Padding="8,1" Command="{Binding DataContext.AbandonBatchCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" AutomationProperties.Name="この計画を破棄" />
+                            </StackPanel>
+                            <TextBlock TextWrapping="Wrap" ToolTip="{Binding Folder}">
+                                <Run Text="{Binding Created, Mode=OneWay}" /><Run Text="　" /><Run Text="{Binding StateText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　" /><Run Text="{Binding Counts, Mode=OneWay}" />
+                            </TextBlock>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
+        </Grid>
 
         <Grid>
             <Grid.ColumnDefinitions>
@@ -118,9 +145,9 @@
                     <TextBlock Text="{Binding PlanNotes}" TextWrapping="Wrap" Style="{StaticResource Note}" Margin="0,4"
                                Visibility="{Binding PlanNotes, Converter={StaticResource TextToVisibility}}" />
                     <WrapPanel Visibility="{Binding HasPlan, Converter={StaticResource BoolToVisibility}}">
-                        <Button Content="変更計画を保存(_K)" Command="{Binding SavePlanCommand}" Style="{StaticResource ActionButton}" Margin="0,0,8,6" />
-                        <Button Content="管理ファイルに反映（Phase F）" IsEnabled="False" Style="{StaticResource ActionButton}" Margin="0,0,8,6"
-                                ToolTip="管理ファイルへの安全な反映は Phase F で実装します" />
+                        <Button Content="選択した変更を反映(_R)" Command="{Binding SaveAndApplyCommand}" Style="{StaticResource AccentActionButton}" Margin="0,0,8,6"
+                                IsEnabled="{Binding CanApply}" ToolTip="計画を保存し、元の内容をバックアップしてから管理ファイルを書き換えます" />
+                        <Button Content="計画だけ保存(_K)" Command="{Binding SavePlanCommand}" Style="{StaticResource ActionButton}" Margin="0,0,8,6" />
                     </WrapPanel>
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

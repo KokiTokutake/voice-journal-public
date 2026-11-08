@@ -68,7 +68,8 @@ public sealed class ManagementViewModelTests : IDisposable
 
     private ManagementViewModel Vm()
     {
-        var vm = new ManagementViewModel(_store, _dialogs, TimeProvider.System);
+        var engine = new ApplyEngine(_workspace, _db, _store);
+        var vm = new ManagementViewModel(_store, _dialogs, TimeProvider.System, engine, new ApplyRecovery(_db, _store, engine));
         vm.Refresh();
         return vm;
     }
@@ -155,6 +156,43 @@ public sealed class ManagementViewModelTests : IDisposable
         other.SavePlanCommand.Execute(null);
         Assert.Contains("すでに保存されています", other.Message, StringComparison.Ordinal);
         Assert.Single(_store.Batches());
+    }
+
+    [Fact]
+    public void ApplyingThePlan_WritesTheFile_ListsTheItem_AndTheCandidateCannotBeAppliedAgain() // AT-11, AT-12
+    {
+        var vm = Vm();
+        vm.Cards[0].Choices[0].IsChecked = true;
+        vm.Cards[1].Choices[4].IsChecked = true; // deferred: stays out
+        vm.BuildPlanCommand.Execute(null);
+        vm.SaveAndApplyCommand.Execute(null);
+
+        Assert.Contains("反映しました", vm.Message, StringComparison.Ordinal);
+        Assert.Equal("TSK-000001", Assert.Single(vm.Items).DisplayId);
+        Assert.Equal("反映済み", Assert.Single(vm.Batches).StateText);
+        Assert.Contains("見積書の作成", File.ReadAllText(_store.FullPath(ManagementStore.TasksPath)), StringComparison.Ordinal);
+        Assert.False(File.Exists(_store.FullPath(ManagementStore.IssuesPath))); // the deferred issue was not written
+
+        vm.BuildPlanCommand.Execute(null);
+        Assert.False(vm.HasPlan);
+        Assert.Contains("反映済み", vm.PlanNotes, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASavedPlan_CanBeAbandoned_AndTheCandidatesPlannedAgain()
+    {
+        var vm = Vm();
+        vm.Cards[0].Choices[0].IsChecked = true;
+        vm.BuildPlanCommand.Execute(null);
+        vm.SavePlanCommand.Execute(null);
+        var row = Assert.Single(vm.Batches);
+        Assert.Equal("反映待ち", row.StateText);
+
+        vm.AbandonBatchCommand.Execute(row);
+        Assert.Equal("破棄", Assert.Single(vm.Batches).StateText);
+        vm.BuildPlanCommand.Execute(null);
+        Assert.True(vm.HasPlan);
+        Assert.Contains("TSK-000002", vm.PlannedFiles.Single().Diff, StringComparison.Ordinal); // TSK-000001 stays used
     }
 
     [Fact]

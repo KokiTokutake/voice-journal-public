@@ -269,6 +269,28 @@ public sealed record PlannedFileRow(string Path, string Operation, string Diff)
     public string Header => $"{Path}（{(Operation == "create" ? "新規作成" : "更新")}）";
 }
 
+/// <summary>A saved plan in the history (UI-11): waiting to be applied, applied, or stopped.</summary>
+public sealed record BatchRow(BatchSummary Batch)
+{
+    public string Created => Batch.CreatedAtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture);
+
+    public string StateText => Batch.State switch
+    {
+        "planned" => "反映待ち",
+        "committed" => "反映済み",
+        "abandoned" => "破棄",
+        "recovery_required" => "復旧が必要",
+        "prepared" or "applying" => "反映の途中",
+        _ => Batch.State,
+    };
+
+    public string Counts => $"候補 {Batch.Changes.ToString(CultureInfo.InvariantCulture)} 件・ファイル {Batch.Files.ToString(CultureInfo.InvariantCulture)} 個";
+
+    public bool CanApply => Batch.State == "planned";
+
+    public string Folder => Batch.PlanPath;
+}
+
 /// <summary>An item of the management list (UI-10).</summary>
 public sealed record ItemRow(ManagementItem Item)
 {
@@ -294,13 +316,37 @@ public sealed partial class ManagementViewModel : ObservableObject
     private readonly ManagementStore _store;
     private readonly IDialogService _dialogs;
     private readonly TimeProvider _time;
+    private readonly ApplyEngine? _engine;
+    private readonly ApplyRecovery? _recovery;
     private ChangePlan? _plan;
+    private string? _startupNote;
 
-    public ManagementViewModel(ManagementStore store, IDialogService dialogs, TimeProvider time)
+    public ManagementViewModel(ManagementStore store, IDialogService dialogs, TimeProvider time, ApplyEngine? engine = null, ApplyRecovery? recovery = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _engine = engine;
+        _recovery = recovery;
+    }
+
+    public ObservableCollection<BatchRow> Batches { get; } = [];
+
+    public bool CanApply => _engine is not null;
+
+    /// <summary>
+    /// At start-up, off the UI thread: finishes or stops batches a crash left half applied (detail spec 14.3). What it did
+    /// is shown on the 「管理」 page.
+    /// </summary>
+    public void RecoverAtStartup()
+    {
+        if (_recovery is null) return;
+        var reports = _recovery.RecoverAll();
+        if (reports.Count == 0) return;
+        var stuck = reports.Count(r => r.Action == RecoveryAction.RecoveryRequired);
+        _startupNote = stuck > 0
+            ? $"前回、管理ファイルへの反映が途中で終わっていました。{stuck} 件は外部の編集と重なっていたため止めています（履歴で確かめてください）。"
+            : $"前回、途中で終わっていた管理ファイルへの反映 {reports.Count} 件を確かめ、続きを処理しました。";
     }
 
     public ObservableCollection<SessionChoice> Sessions { get; } = [];
@@ -329,7 +375,7 @@ public sealed partial class ManagementViewModel : ObservableObject
     public bool HasCards => Cards.Count > 0;
 
     public string ItemsTitle => Items.Count == 0
-        ? "管理一覧（まだ項目はありません。変更計画の反映は Phase F で実装します）"
+        ? "管理一覧（まだ項目はありません。変更計画を反映すると、ここに出ます）"
         : $"管理一覧（{Items.Count.ToString(CultureInfo.InvariantCulture)} 件）";
 
     public string ReadyText => $"承認 {Cards.Count(c => c.IsReady).ToString(CultureInfo.InvariantCulture)} 件／候補 {Cards.Count.ToString(CultureInfo.InvariantCulture)} 件";
@@ -344,10 +390,17 @@ public sealed partial class ManagementViewModel : ObservableObject
         Items.Clear();
         foreach (var i in _store.Items()) Items.Add(new ItemRow(i));
         OnPropertyChanged(nameof(ItemsTitle));
+        Batches.Clear();
+        foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
         var again = Sessions.FirstOrDefault(s => s.Session.SessionId == selected) ?? Sessions.FirstOrDefault();
         if (again != SelectedSession) SelectedSession = again;
         else LoadCards();
-        if (Sessions.Count == 0) Message = "記録のあるセッションがまだありません。ライブラリでセッションを選び、「記録を開く」から記録を作ると、ここで課題・タスクの候補を確かめられます。";
+        if (_startupNote is { } note)
+        {
+            Message = note;
+            _startupNote = null;
+        }
+        else if (Sessions.Count == 0) Message = "記録のあるセッションがまだありません。ライブラリでセッションを選び、「記録を開く」から記録を作ると、ここで課題・タスクの候補を確かめられます。";
     }
 
     /// <summary>From the record page: show this session's candidates.</summary>
@@ -464,7 +517,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         var updated = plan.Changes.Count(c => c.Action == ReviewChoice.Update);
         var mentioned = plan.Changes.Count(c => c.Action == ReviewChoice.Mention);
         PlanSummary = $"変更計画: 新規 {created} 件・更新 {updated} 件・関連 {mentioned} 件・提案 {plan.Proposals.Count} 件、ファイル {plan.Files.Count} 個。" +
-            "管理ファイルへの反映は Phase F で実装します。今は計画を保存して内容を確かめられます。";
+            "下の差分を確かめてから反映してください。反映の前に元の内容をバックアップします。";
     }
 
     /// <summary>Saves the plan for Phase F. Pressing it twice returns the same batch (AT-12).</summary>
@@ -484,6 +537,64 @@ public sealed partial class ManagementViewModel : ObservableObject
         {
             _dialogs.ShowError("変更計画を保存できません", ex.Message);
         }
+    }
+
+    /// <summary>UI-09 「選択した変更を反映」: saves the plan (the same approval twice is one batch) and applies it (14.2).</summary>
+    [RelayCommand]
+    private void SaveAndApply()
+    {
+        if (_plan is null || _engine is null) return;
+        SavedPlan saved;
+        try
+        {
+            saved = _store.SavePlan(_plan);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DatabaseBusyException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _dialogs.ShowError("変更計画を保存できません", ex.Message);
+            return;
+        }
+        Apply(saved.BatchId);
+    }
+
+    /// <summary>Applies a saved plan from the history.</summary>
+    [RelayCommand]
+    private void ApplyBatch(BatchRow? row)
+    {
+        if (row is null || !row.CanApply || _engine is null) return;
+        Apply(row.Batch.BatchId);
+    }
+
+    /// <summary>Discards a saved plan that was not applied (its display numbers stay used).</summary>
+    [RelayCommand]
+    private void AbandonBatch(BatchRow? row)
+    {
+        if (row is null || !row.CanApply) return;
+        _store.Abandon(row.Batch.BatchId);
+        Refresh();
+        Message = "変更計画を破棄しました。管理ファイルは変わっていません。候補は選び直せます。";
+    }
+
+    private void Apply(Guid batchId)
+    {
+        ApplyResult result;
+        try
+        {
+            result = _engine!.Apply(batchId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Refresh();
+            Message = $"管理ファイルに書き込めませんでした（{ex.Message}）。ほかのアプリで開いていないか確かめてください。何も変更していません。";
+            return;
+        }
+        catch (Exception ex) when (ex is DatabaseBusyException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            _dialogs.ShowError("管理ファイルに反映できません", ex.Message);
+            return;
+        }
+        Refresh();
+        Message = result.Problems.Count == 0 ? result.Message : result.Message + "\n" + string.Join("\n", result.Problems);
     }
 
     private void ClearPlan()

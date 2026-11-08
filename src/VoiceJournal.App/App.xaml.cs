@@ -86,6 +86,8 @@ public partial class App : Application
             // After the sessions are indexed and recovered: jobs reference them. Records reference transcripts.
             transcription.Startup();
             records.Startup();
+            // Management files last: a batch a crash left half applied is finished or stopped (detail spec 14.3).
+            _services.GetRequiredService<ManagementViewModel>().RecoverAtStartup();
             return report;
         });
     }
@@ -167,7 +169,10 @@ public partial class App : Application
             sp.GetRequiredService<IUiDispatcher>(), sp.GetRequiredService<RecordingEnvironment>(), sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<RecordIndex>()));
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton(sp => new ManagementStore(workspace, database, sp.GetRequiredService<TimeProvider>()));
-        services.AddSingleton(sp => new ManagementViewModel(sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new ApplyEngine(workspace, database, sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new ApplyRecovery(database, sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<ApplyEngine>()));
+        services.AddSingleton(sp => new ManagementViewModel(sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ApplyEngine>(), sp.GetRequiredService<ApplyRecovery>()));
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();
