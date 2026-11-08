@@ -48,6 +48,9 @@ public sealed record PlanningInput
     /// <summary>Candidates in a saved plan that is not applied yet: planning them again would apply them twice (AT-12).</summary>
     public IReadOnlySet<CandidateKey> Pending { get; init; } = new HashSet<CandidateKey>();
 
+    /// <summary>Items whose block edited by hand may be rewritten: the user chose to take the edit in or to discard it (11.5).</summary>
+    public IReadOnlySet<Guid> AcceptEditedBlocks { get; init; } = new HashSet<Guid>();
+
     /// <summary>Fingerprints of the creations in saved plans not applied yet: the same candidate from a regenerated record (AT-12).</summary>
     public IReadOnlySet<string> PendingFingerprints { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -233,13 +236,13 @@ public static class ChangePlanner
             if (!files.TryGetValue(kind, out var file)) { Skip("保存先の管理ファイルが登録されていません"); continue; }
             if (file.Problem is { } problem) { Skip(problem); continue; }
 
-            var evidence = review.Candidate.Evidence.Select(e => new ItemEvidence
+            var evidence = review.ItemEvidence?.ToList() ?? [.. review.Candidate.Evidence.Select(e => new ItemEvidence
             {
                 SessionId = key.SessionId,
                 TranscriptRevision = review.TranscriptRevision,
                 SegmentId = e.SegmentId,
                 Quote = e.Quote,
-            }).ToList();
+            })];
             var candidateUuid = CandidateUuid(key);
 
             switch (review.Choice)
@@ -285,7 +288,7 @@ public static class ChangePlanner
                 }
                 case ReviewChoice.Update or ReviewChoice.Mention:
                 {
-                    if (file.File.Mode == ManagedFileMode.ManagedBlocks && file.Text is { } current && file.Layout is { } layout
+                    if (file.File.Mode == ManagedFileMode.ManagedBlocks && !input.AcceptEditedBlocks.Contains(target!.Id) && file.Text is { } current && file.Layout is { } layout
                         && layout.Blocks.FirstOrDefault(b => b.ItemId == target!.Id) is { } block
                         && !SameBlock(current.Text.Substring(block.Start, block.Length), ManagementMarkdown.Block(original[target!.Id], original, current.LineEnd)))
                     {
@@ -553,6 +556,7 @@ public static class RevertBuilder
                 TargetItemId = now.Id,
                 TargetRevision = now.Revision,
                 ConfirmedIndividually = true, // the user asked for this undo item by item in the final check
+                ItemEvidence = now.Evidence, // the item's own evidence, never the batch id as a session
             });
         }
         return reviews;
@@ -567,6 +571,69 @@ public static class RevertBuilder
         ItemField.Assignee => a.Assignee != b.Assignee,
         _ => a.DueDate != b.DueDate,
     };
+}
+
+/// <summary>
+/// An edit made by hand inside a block (11.2, 11.5) becomes a review: 「取り込む」 updates the item with the fields read
+/// from the block, 「アプリの内容に戻す」 rewrites the block from the item (a mention: no field changes). Either way the
+/// block is rewritten in the app's form with the next revision, through the usual plan, diff and apply.
+/// </summary>
+public static class ExternalEditBuilder
+{
+    public static CandidateReview? Review(Guid operationId, int sequence, ManagementItem item, string block, bool takeIn, out string? problem)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(block);
+        problem = null;
+        var fields = new CandidateFields
+        {
+            Title = item.Title, Description = item.Description, Status = item.Status, Priority = item.Priority, Assignee = item.Assignee, DueDate = item.DueDate,
+        };
+        var changed = new List<ItemField>();
+        if (takeIn)
+        {
+            if (ManagementMarkdown.ReadFields(block, item.Kind, out _, out problem) is not { } read) return null;
+            fields = read;
+            if (read.Title != item.Title) changed.Add(ItemField.Title);
+            if (read.Description != item.Description) changed.Add(ItemField.Description);
+            if (read.Status != item.Status) changed.Add(ItemField.Status);
+            if (read.Priority != item.Priority) changed.Add(ItemField.Priority);
+            if (read.Assignee != item.Assignee) changed.Add(ItemField.Assignee);
+            if (read.DueDate != item.DueDate) changed.Add(ItemField.DueDate);
+        }
+        var candidate = new Candidate
+        {
+            CandidateId = $"E{sequence:0000}",
+            Kind = item.Kind,
+            Action = changed.Count > 0 ? CandidateAction.Update : CandidateAction.Mention,
+            SuggestedTargetId = item.Id,
+            ParentIssueCandidateId = null,
+            ParentIssueItemId = null,
+            Fields = fields,
+            ChangedFields = changed,
+            Certainty = Certainty.Stated,
+            DueExpression = null,
+            Evidence = [.. item.Evidence.Select(e => new Evidence { SegmentId = e.SegmentId, Quote = e.Quote })],
+            Rationale = takeIn ? "手編集の取込み" : "手編集を戻す",
+        };
+        if (candidate.Evidence.Count == 0)
+        {
+            problem = "この項目には根拠がないので、計画にできません";
+            return null;
+        }
+        return new CandidateReview
+        {
+            Key = new CandidateKey(operationId, 0, candidate.CandidateId),
+            Candidate = candidate,
+            TranscriptRevision = item.Evidence[0].TranscriptRevision,
+            Project = item.Project,
+            Choice = changed.Count > 0 ? ReviewChoice.Update : ReviewChoice.Mention,
+            TargetItemId = item.Id,
+            TargetRevision = item.Revision,
+            ConfirmedIndividually = true, // the user picked this block and saw its diff
+            ItemEvidence = item.Evidence, // the item's own evidence, never the batch id as a session
+        };
+    }
 }
 
 /// <summary>The canonical JSON of an item snapshot (fields and evidence).</summary>

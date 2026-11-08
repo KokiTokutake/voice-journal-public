@@ -78,6 +78,31 @@
             </WrapPanel>
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Style="{StaticResource Note}" Margin="0,6,0,0"
                        Visibility="{Binding Message, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" />
+            <!-- 11.5: blocks edited by hand are never written over; the user takes them in or discards them -->
+            <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="12,8" Visibility="{Binding HasEditedBlocks, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="管理ファイルの中で手で編集された項目があります。取り込むか、アプリの内容に戻すまで、この項目は更新しません。" TextWrapping="Wrap" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding EditedBlocks}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:EditedBlockRow}">
+                                <StackPanel Margin="0,6,0,0">
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                            <Button Content="取り込む" Padding="8,1" Margin="4,0" AutomationProperties.Name="手編集を取り込む"
+                                                    Command="{Binding DataContext.TakeInEditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                                            <Button Content="アプリの内容に戻す" Padding="8,1" AutomationProperties.Name="手編集を捨てる"
+                                                    Command="{Binding DataContext.DiscardEditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Header}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <TextBox Text="{Binding Diff, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas, MS Gothic" FontSize="12" MaxHeight="140"
+                                             TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
         <!-- UI-10: management list, UI-11: plans waiting and history -->

@@ -151,7 +151,8 @@ public static partial class ManagementMarkdown
             Line($"- 関連課題: {(item.ParentIssueId is { } parent && items.TryGetValue(parent, out var issue) ? issue.DisplayId : NotSet)}");
         Line($"- プロジェクト: {RecordMarkdown.Inline(item.Project)}");
         Line($"- 内容: {(item.Description.Length > 0 ? RecordMarkdown.Inline(item.Description) : NotSet)}");
-        foreach (var e in item.Evidence)
+        // A fixed order (session, then segment), so a block reads the same however the evidence was stored.
+        foreach (var e in item.Evidence.OrderBy(e => e.SessionId).ThenBy(e => e.SegmentId))
             Line($"- 根拠: session={e.SessionId:D} segment={e.SegmentId:D}");
         Line($"<!-- vj:item-end id={item.Id:D} -->");
         return sb.ToString();
@@ -202,6 +203,92 @@ public static partial class ManagementMarkdown
         if (open is { } unclosed) errors.Add($"項目のブロックに終わりがありません（{unclosed.Id:D}）");
         return new ManagedFileLayout { WorkspaceId = workspace, Blocks = blocks, Errors = errors };
     }
+
+    /// <summary>
+    /// Reads the fields back from a block edited by hand (11.2: an external change is taken in, never overwritten). Returns
+    /// null with <paramref name="problem"/> when a line cannot be read (an unknown status, a date that does not exist…).
+    /// </summary>
+    public static CandidateFields? ReadFields(string block, CandidateKind kind, out string? project, out string? problem)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        project = null;
+        problem = null;
+        string? title = null, description = null, status = null, priority = null, assignee = null, due = null;
+        foreach (var raw in block.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                var rest = line[4..];
+                var space = rest.IndexOf(' ', StringComparison.Ordinal);
+                title = space < 0 ? string.Empty : Unescape(rest[(space + 1)..]);
+            }
+            else if (Field().Match(line) is { Success: true } m)
+            {
+                var value = m.Groups[2].Value.Trim();
+                switch (m.Groups[1].Value)
+                {
+                    case "状態": status = value; break;
+                    case "優先度": priority = value; break;
+                    case "担当": assignee = value; break;
+                    case "期限": due = value; break;
+                    case "プロジェクト": project = Unescape(value); break;
+                    case "内容": description = value; break;
+                }
+            }
+        }
+        if (string.IsNullOrWhiteSpace(title)) { problem = "見出しにタイトルがありません"; return null; }
+        var parsedStatus = Enum.GetValues<ItemStatus>().Where(s => ItemStatuses.Label(s) == status).Select(s => (ItemStatus?)s).FirstOrDefault();
+        if (parsedStatus is null || !ItemStatuses.IsAllowed(kind, parsedStatus.Value)) { problem = $"状態「{status}」は使えません"; return null; }
+        ItemPriority? parsedPriority = null;
+        if (priority is not null && priority != NotSet)
+        {
+            if (!Enum.TryParse<ItemPriority>(priority, ignoreCase: true, out var p) || !Enum.IsDefined(p) || int.TryParse(priority, out _)) { problem = $"優先度「{priority}」は使えません"; return null; }
+            parsedPriority = p;
+        }
+        DateOnly? parsedDue = null;
+        if (due is not null && due != NotSet)
+        {
+            if (!DateOnly.TryParseExact(due, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) { problem = $"期限「{due}」は日付として読めません"; return null; }
+            parsedDue = d;
+        }
+        return new CandidateFields
+        {
+            Title = title.Trim(),
+            Description = description is null || description == NotSet ? string.Empty : Unescape(description),
+            Status = parsedStatus,
+            Priority = parsedPriority,
+            Assignee = assignee is null || assignee == NotSet ? null : Unescape(assignee),
+            DueDate = parsedDue,
+        };
+    }
+
+    /// <summary>The items whose block in <paramref name="text"/> is not what the app wrote: edited by hand (11.5).</summary>
+    public static IReadOnlyList<(ManagementItem Item, string Block, string Expected)> EditedBlocks(
+        string text, ManagedFileLayout layout, IReadOnlyDictionary<Guid, ManagementItem> items, string lineEnd)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(items);
+        var list = new List<(ManagementItem, string, string)>();
+        foreach (var b in layout.Blocks)
+        {
+            if (!items.TryGetValue(b.ItemId, out var item)) continue;
+            var inFile = text.Substring(b.Start, b.Length);
+            var expected = Block(item, items, lineEnd);
+            if (!ChangePlanner.SameBlock(inFile, expected)) list.Add((item, inFile, expected));
+        }
+        return list;
+    }
+
+    // Undoes RecordMarkdown.Inline's backslashes (and its broken scheme separator).
+    private static string Unescape(string text) => InlineEscape().Replace(text.Replace(@":\/\/", "://", StringComparison.Ordinal), "$1");
+
+    [GeneratedRegex(@"^- (状態|優先度|担当|期限|関連課題|プロジェクト|内容|根拠): ?(.*)$")]
+    private static partial Regex Field();
+
+    [GeneratedRegex(@"\\([\\`*_\[\]<>&~#|!.])")]
+    private static partial Regex InlineEscape();
 
     [GeneratedRegex(@"^<!-- vj:workspace ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) -->$")]
     private static partial Regex WorkspaceMarker();

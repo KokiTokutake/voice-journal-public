@@ -82,6 +82,12 @@ public sealed record CandidateReview
     /// <summary>For a task: the parent issue chosen by the user (an existing item).</summary>
     public Guid? ParentIssueId { get; init; }
 
+    /// <summary>
+    /// The evidence as item evidence, for reviews the app makes from an existing item (an undo, a hand edit). When null,
+    /// the evidence comes from the candidate with the session of <see cref="Key"/>.
+    /// </summary>
+    public IReadOnlyList<ItemEvidence>? ItemEvidence { get; init; }
+
     /// <summary>The user confirmed this one individually (required when <see cref="CandidateRules.Checks"/> is not empty).</summary>
     public bool ConfirmedIndividually { get; init; }
 

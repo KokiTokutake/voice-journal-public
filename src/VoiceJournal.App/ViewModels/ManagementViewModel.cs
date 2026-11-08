@@ -306,6 +306,12 @@ public sealed record BatchRow(BatchSummary Batch)
     public string Folder => Batch.PlanPath;
 }
 
+/// <summary>A block of a management file edited by hand (11.5): shown with its diff until it is taken in or discarded.</summary>
+public sealed record EditedBlockRow(ManagementItem Item, string Block, string Diff)
+{
+    public string Header => $"{Item.DisplayId} {Item.Title}";
+}
+
 /// <summary>An item of the management list (UI-10).</summary>
 public sealed record ItemRow(ManagementItem Item)
 {
@@ -346,6 +352,10 @@ public sealed partial class ManagementViewModel : ObservableObject
     }
 
     public ObservableCollection<BatchRow> Batches { get; } = [];
+
+    public ObservableCollection<EditedBlockRow> EditedBlocks { get; } = [];
+
+    public bool HasEditedBlocks => EditedBlocks.Count > 0;
 
     /// <summary>11.4: the issue file only gets new items appended; updates of existing ones are saved as proposals (AT-14).</summary>
     public bool IssuesAppendOnly
@@ -437,6 +447,16 @@ public sealed partial class ManagementViewModel : ObservableObject
         foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
         OnPropertyChanged(nameof(IssuesAppendOnly));
         OnPropertyChanged(nameof(TasksAppendOnly));
+        EditedBlocks.Clear();
+        var byId = _store.Items().ToDictionary(i => i.Id);
+        foreach (var file in _store.Files().Where(f => f.Mode == ManagedFileMode.ManagedBlocks && f.CurrentBytes is not null))
+        {
+            if (ManagedText.Decode(file.CurrentBytes!) is not { } text) continue;
+            var layout = ManagementMarkdown.Parse(text.Text, _store.WorkspaceGuid);
+            foreach (var (item, block, expected) in ManagementMarkdown.EditedBlocks(text.Text, layout, byId, text.LineEnd))
+                EditedBlocks.Add(new EditedBlockRow(item, block, TextDiff.Unified(expected, block, file.RelativePath)));
+        }
+        OnPropertyChanged(nameof(HasEditedBlocks));
         var again = Sessions.FirstOrDefault(s => s.Session.SessionId == selected) ?? Sessions.FirstOrDefault();
         if (again != SelectedSession) SelectedSession = again;
         else LoadCards();
@@ -654,6 +674,48 @@ public sealed partial class ManagementViewModel : ObservableObject
         }
         _plan = plan;
         PlanSummary = $"取消の計画: {plan.Changes.Count} 件の項目を反映の前の値に戻します（新規作成した項目は削除せず、取消・クローズにします）。差分を確かめてから反映してください。";
+    }
+
+    /// <summary>11.2: takes a hand edit in (the item gets the block's fields; the block is rewritten in the app's form).</summary>
+    [RelayCommand]
+    private void TakeInEdit(EditedBlockRow? row) => PlanEdit(row, takeIn: true);
+
+    /// <summary>Discards a hand edit (the block is rewritten from the item).</summary>
+    [RelayCommand]
+    private void DiscardEdit(EditedBlockRow? row) => PlanEdit(row, takeIn: false);
+
+    private void PlanEdit(EditedBlockRow? row, bool takeIn)
+    {
+        if (row is null) return;
+        ClearPlan();
+        var review = ExternalEditBuilder.Review(Guid.CreateVersion7(), 1, row.Item, row.Block, takeIn, out var problem);
+        if (review is null)
+        {
+            Message = $"{row.Item.DisplayId} の手編集を読めません（{problem}）。ファイルを直すか、「アプリの内容に戻す」を選んでください。";
+            return;
+        }
+        var (issue, task) = _store.NextNumbers();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _store.WorkspaceGuid,
+            Items = _store.Items(),
+            Reviews = [review],
+            AcceptEditedBlocks = new HashSet<Guid> { row.Item.Id },
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = _time.GetUtcNow(),
+        }, Guid.CreateVersion7);
+        foreach (var f in plan.Files) PlannedFiles.Add(new PlannedFileRow(f.RelativePath, f.Operation, TextDiff.Unified(f.BeforeText, f.AfterText, f.RelativePath)));
+        if (plan.IsEmpty)
+        {
+            Message = "計画にできませんでした。" + string.Join(" ", plan.Skipped.Select(s => s.Reason));
+            return;
+        }
+        _plan = plan;
+        PlanSummary = takeIn
+            ? $"{row.Item.DisplayId} の手編集を取り込む計画です。項目を手編集の値に更新し、ブロックをアプリの形で書き直します。差分を確かめてから反映してください。"
+            : $"{row.Item.DisplayId} の手編集を捨て、ブロックを今の項目の内容で書き直す計画です。差分を確かめてから反映してください。";
     }
 
     /// <summary>Discards a saved plan that was not applied (its display numbers stay used).</summary>

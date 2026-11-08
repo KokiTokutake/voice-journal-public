@@ -174,6 +174,7 @@ public sealed class ApplyEngineTests : IDisposable
 
         var back = _store.Items().Single();
         Assert.Equal(("田村", "", 3), (back.Assignee, back.Description, back.Revision)); // the old values, as a new revision
+        Assert.All(back.Evidence, e => Assert.Equal(M.Session, e.SessionId)); // only real sessions as evidence
         Assert.Contains("- 担当: 田村", File.ReadAllText(Tasks), StringComparison.Ordinal);
         Assert.Equal(3, _store.Batches().Count); // history is kept, not erased
         Assert.Null(Revert(update.BatchId, [])); // undone once only
@@ -222,6 +223,75 @@ public sealed class ApplyEngineTests : IDisposable
         Assert.Empty(plan.Changes);
         Assert.Contains("手で編集", Assert.Single(plan.Skipped).Reason, StringComparison.Ordinal);
         Assert.Equal(edited, File.ReadAllBytes(Tasks));
+    }
+
+    private SavedPlan PlanEdit(ManagementItem item, string block, bool takeIn)
+    {
+        var review = ExternalEditBuilder.Review(Guid.CreateVersion7(), 1, item, block, takeIn, out var problem);
+        Assert.Null(problem);
+        var (issue, task) = _store.NextNumbers();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _workspace.Info.WorkspaceId,
+            Items = _store.Items(),
+            Reviews = [review!],
+            AcceptEditedBlocks = new HashSet<Guid> { item.Id },
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = M.Now,
+        }, Guid.CreateVersion7);
+        return _store.SavePlan(plan);
+    }
+
+    private (ManagementItem Item, string Block) EditByHand(string from, string to)
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        File.WriteAllText(Tasks, "手前のメモ\r\n" + File.ReadAllText(Tasks).Replace(from, to, StringComparison.Ordinal));
+        var text = ManagedText.Decode(File.ReadAllBytes(Tasks))!;
+        var items = _store.Items().ToDictionary(i => i.Id);
+        var edited = Assert.Single(ManagementMarkdown.EditedBlocks(text.Text, ManagementMarkdown.Parse(text.Text, _workspace.Info.WorkspaceId), items, text.LineEnd));
+        return (edited.Item, edited.Block);
+    }
+
+    [Fact]
+    public void AnEditByHand_CanBeTakenIn_AndTheBlockIsRewrittenInTheAppsForm() // 11.2, 11.5
+    {
+        var (item, block) = EditByHand("- 担当: 未設定\r\n- 期限: 未設定", "- 担当: 佐藤\r\n- 期限: 2026-12-01");
+
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(PlanEdit(item, block, takeIn: true).BatchId).Outcome);
+
+        var now = _store.Items().Single();
+        Assert.Equal(("佐藤", new DateOnly(2026, 12, 1), 2), (now.Assignee, now.DueDate, now.Revision));
+        Assert.Equal(item.Evidence.Count, now.Evidence.Count);
+        Assert.All(now.Evidence, e => Assert.Equal(M.Session, e.SessionId));
+        var text = File.ReadAllText(Tasks);
+        Assert.StartsWith("手前のメモ", text, StringComparison.Ordinal); // outside the block: kept
+        Assert.Contains("revision=2", text, StringComparison.Ordinal);
+        var check = ManagedText.Decode(File.ReadAllBytes(Tasks))!;
+        Assert.Empty(ManagementMarkdown.EditedBlocks(check.Text, ManagementMarkdown.Parse(check.Text, _workspace.Info.WorkspaceId), _store.Items().ToDictionary(i => i.Id), check.LineEnd));
+    }
+
+    [Fact]
+    public void AnEditByHand_CanBeDiscarded_ByRewritingTheBlockFromTheItem()
+    {
+        var (item, block) = EditByHand("- 担当: 未設定", "- 担当: 佐藤");
+
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(PlanEdit(item, block, takeIn: false).BatchId).Outcome);
+
+        Assert.Null(_store.Items().Single().Assignee);
+        Assert.Contains("- 担当: 未設定", File.ReadAllText(Tasks), StringComparison.Ordinal);
+        Assert.DoesNotContain("佐藤", File.ReadAllText(Tasks), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnEditThatCannotBeRead_IsNotTakenIn()
+    {
+        var item = M.Item("TSK-000001", "見積書");
+        var block = ManagementMarkdown.Block(item, new Dictionary<Guid, ManagementItem>(), "\n").Replace("- 状態: todo", "- 状態: 進行中", StringComparison.Ordinal);
+        Assert.Null(ExternalEditBuilder.Review(Guid.NewGuid(), 1, item with { Evidence = [new ItemEvidence { SessionId = M.Session, TranscriptRevision = 1, SegmentId = Guid.NewGuid(), Quote = "q" }] }, block, true, out var problem));
+        Assert.Contains("進行中", problem, StringComparison.Ordinal);
     }
 
     [Fact]
