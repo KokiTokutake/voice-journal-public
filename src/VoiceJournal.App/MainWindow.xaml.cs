@@ -36,6 +36,28 @@ public partial class MainWindow : Window
         };
         // Once audio flows, get out of the way: minimize, which brings up the mini bar.
         _viewModel.Recording.RecordingStarted += (_, _) => WindowState = WindowState.Minimized;
+        if (System.Environment.GetEnvironmentVariable("VJ_UI_TIMING") is { Length: > 0 } timing) MeasurePageSwitches(timing);
+    }
+
+    /// <summary>
+    /// NFR-02 measurement (only with VJ_UI_TIMING=&lt;file&gt;): from the page change (before its refresh) until the dispatcher
+    /// is idle again after layout and rendering, one line per switch: page, milliseconds.
+    /// </summary>
+    private void MeasurePageSwitches(string path)
+    {
+        _viewModel.PropertyChanging += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainViewModel.CurrentPage)) return;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
+            {
+                try
+                {
+                    File.AppendAllText(path, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{_viewModel.CurrentPage},{watch.Elapsed.TotalMilliseconds:0.0}\n"));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            });
+        };
     }
 
     protected override void OnStateChanged(EventArgs e)
