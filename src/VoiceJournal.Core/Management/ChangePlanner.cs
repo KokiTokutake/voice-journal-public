@@ -145,7 +145,7 @@ public sealed record ChangePlan
     /// <summary>Item snapshots by id (canonical JSON objects, stored immutable).</summary>
     public required IReadOnlyDictionary<Guid, JsonObject> Snapshots { get; init; }
 
-    /// <summary>The plan JSON of detail spec 17 (null when nothing is written to a file: a database-only batch).</summary>
+    /// <summary>The plan JSON of detail spec 17 (with no files for a database-only batch); null when nothing is planned.</summary>
     public JsonObject? Json { get; init; }
 
     public string? PlanHash { get; init; }
@@ -367,7 +367,9 @@ public static class ChangePlanner
         var approvalId = newId();
         JsonObject? json = null;
         string? hash = null;
-        if (planned.Count is > 0 and <= MaxFiles && changes.Count > 0)
+        // A batch without file operations (a mention in an append-only file) keeps the same JSON with no files: the same
+        // approval, revision and idempotency rules apply to it (17).
+        if (planned.Count <= MaxFiles && changes.Count > 0)
         {
             json = new JsonObject
             {

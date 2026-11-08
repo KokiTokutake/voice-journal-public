@@ -347,6 +347,34 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     public ObservableCollection<BatchRow> Batches { get; } = [];
 
+    /// <summary>11.4: the issue file only gets new items appended; updates of existing ones are saved as proposals (AT-14).</summary>
+    public bool IssuesAppendOnly
+    {
+        get => Mode(CandidateKind.Issue) == ManagedFileMode.AppendOnly;
+        set => SetMode(CandidateKind.Issue, value);
+    }
+
+    /// <summary>Same as <see cref="IssuesAppendOnly"/> for the task file.</summary>
+    public bool TasksAppendOnly
+    {
+        get => Mode(CandidateKind.Task) == ManagedFileMode.AppendOnly;
+        set => SetMode(CandidateKind.Task, value);
+    }
+
+    private ManagedFileMode Mode(CandidateKind kind) => _store.Files().FirstOrDefault(f => f.Kind == kind)?.Mode ?? ManagedFileMode.ManagedBlocks;
+
+    private void SetMode(CandidateKind kind, bool appendOnly)
+    {
+        var mode = appendOnly ? ManagedFileMode.AppendOnly : ManagedFileMode.ManagedBlocks;
+        if (Mode(kind) == mode) return;
+        _store.SetMode(kind, mode);
+        ClearPlan();
+        OnPropertyChanged(kind == CandidateKind.Issue ? nameof(IssuesAppendOnly) : nameof(TasksAppendOnly));
+        Message = appendOnly
+            ? $"{(kind == CandidateKind.Issue ? "課題" : "タスク")}のファイルを追記専用にしました。既存の項目の更新は、ファイルを書き換えずに提案として保存します。"
+            : $"{(kind == CandidateKind.Issue ? "課題" : "タスク")}のファイルを、アプリが管理ブロックを更新する形に戻しました。";
+    }
+
     public bool CanApply => _engine is not null;
 
     /// <summary>
@@ -407,6 +435,8 @@ public sealed partial class ManagementViewModel : ObservableObject
         OnPropertyChanged(nameof(ItemsTitle));
         Batches.Clear();
         foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
+        OnPropertyChanged(nameof(IssuesAppendOnly));
+        OnPropertyChanged(nameof(TasksAppendOnly));
         var again = Sessions.FirstOrDefault(s => s.Session.SessionId == selected) ?? Sessions.FirstOrDefault();
         if (again != SelectedSession) SelectedSession = again;
         else LoadCards();

@@ -70,7 +70,11 @@
                 <Label Content="セッション(_N)" Target="{Binding ElementName=SessionBox}" VerticalAlignment="Center" Padding="0,0,8,0" />
                 <ComboBox x:Name="SessionBox" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}" DisplayMemberPath="Label"
                           MinWidth="420" Margin="0,0,10,0" />
-                <Button Content="再読み込み" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" />
+                <Button Content="再読み込み" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" Margin="0,0,16,0" />
+                <CheckBox Content="課題のファイルは追記だけ" IsChecked="{Binding IssuesAppendOnly}" VerticalAlignment="Center" Margin="0,0,12,0"
+                          ToolTip="既存の課題は書き換えず、更新は提案として保存します（11.4 追記専用）" />
+                <CheckBox Content="タスクのファイルは追記だけ" IsChecked="{Binding TasksAppendOnly}" VerticalAlignment="Center"
+                          ToolTip="既存のタスクは書き換えず、更新は提案として保存します（11.4 追記専用）" />
             </WrapPanel>
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Style="{StaticResource Note}" Margin="0,6,0,0"
                        Visibility="{Binding Message, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" />

@@ -240,6 +240,52 @@ public sealed class ApplyEngineTests : IDisposable
         Assert.Throws<UnauthorizedAccessException>(() => ManagedFileGuard.CheckLocation(Path.Combine(_dir.Path, "outside.md"), _workspace.Root));
     }
 
+    [Fact]
+    public void InAnAppendOnlyFile_UpdatesAreProposals_MentionsStayInTheDatabase_AndNewItemsAreAppended() // AT-14
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var item = _store.Items().Single();
+        _store.SetMode(CandidateKind.Task, ManagedFileMode.AppendOnly);
+        var before = File.ReadAllText(Tasks);
+
+        var update = Plan(M.R(M.C("C0002", "x", action: CandidateAction.Update, target: item.Id, description: "金額を直す", changed: [ItemField.Description]), ReviewChoice.Update, item.Id, 1),
+            M.R(M.C("C0003", "請求書の送付"), ReviewChoice.Create));
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(update.BatchId).Outcome);
+
+        var after = File.ReadAllText(Tasks);
+        Assert.StartsWith(before, after, StringComparison.Ordinal); // nothing existing is rewritten
+        Assert.Contains("TSK-000002 請求書の送付", after, StringComparison.Ordinal);
+        Assert.DoesNotContain("金額を直す", after, StringComparison.Ordinal);
+        Assert.Equal(("", 1), (_store.Items().Single(i => i.Id == item.Id).Description, _store.Items().Single(i => i.Id == item.Id).Revision));
+
+        var mention = Plan(M.R(M.C("C0004", "見積書", action: CandidateAction.Mention, target: item.Id), ReviewChoice.Mention, item.Id, 1));
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(mention.BatchId).Outcome);
+        Assert.Equal(after, File.ReadAllText(Tasks)); // a database-only batch
+        var mentioned = _store.Items().Single(i => i.Id == item.Id);
+        Assert.Equal((2, 2), (mentioned.Revision, mentioned.Evidence.Count));
+    }
+
+    [Fact]
+    public void AFolderRedirectedByAJunction_IsNotWritten() // AT-16: reparse point
+    {
+        var outside = Directory.CreateDirectory(Path.Combine(_dir.Path, "elsewhere")).FullName;
+        var management = Path.GetDirectoryName(Tasks)!;
+        using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{management}\" \"{outside}\"")
+        { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true }))
+        {
+            mklink!.WaitForExit();
+            Assert.Equal(0, mklink.ExitCode);
+        }
+        var saved = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));
+
+        Assert.Throws<UnauthorizedAccessException>(() => Engine().Apply(saved.BatchId));
+
+        Assert.Empty(Directory.GetFileSystemEntries(outside));
+        Assert.Equal("planned", State(saved.BatchId));
+        Directory.Delete(management); // the junction only
+    }
+
     public static TheoryData<ApplyStep, int> CrashPoints() => new()
     {
         { ApplyStep.Verified, 0 }, { ApplyStep.Locked, 0 }, { ApplyStep.BackupWritten, 1 }, { ApplyStep.TempWritten, 1 },
