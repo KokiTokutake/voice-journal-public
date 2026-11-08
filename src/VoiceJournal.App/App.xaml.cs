@@ -89,6 +89,7 @@ public partial class App : Application
         var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
         processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);
         processing.ShowFolder = _services.GetRequiredService<IShellService>().OpenFolder;
+        processing.Confirm = _services.GetRequiredService<IDialogService>().Confirm;
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {
             var report = WorkspaceStartup.Run(workspace, index);

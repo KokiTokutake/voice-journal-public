@@ -167,11 +167,16 @@ public sealed partial class ProcessingViewModel : ObservableObject
     /// <summary>Set by the app: shows a folder in Explorer.</summary>
     public Action<string>? ShowFolder { get; set; }
 
+    /// <summary>Set by the app: asks before writing (21.3: the user sees what the report holds). Null writes without asking.</summary>
+    public Func<string, string, bool>? Confirm { get; set; }
+
     /// <summary>UI-03 「診断情報を書き出す」: versions, hashes, settings, counts and error codes for a problem report.</summary>
     [RelayCommand]
     private async Task ExportDiagnosticsAsync()
     {
         if (WriteDiagnostics is not { } write) return;
+        if (Confirm is { } confirm && !confirm("診断情報の書き出し", "問題の報告に添えるための診断情報を、この PC に保存します。\n\n" + Infrastructure.Storage.DiagnosticsReport.Contents + "\n\n書き出しますか？"))
+            return;
         try
         {
             var path = await Task.Run(write);

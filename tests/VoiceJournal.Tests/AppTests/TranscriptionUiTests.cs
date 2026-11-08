@@ -262,6 +262,27 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Processing_Diagnostics_ShowWhatTheyHold_AndAreWrittenOnlyWhenTheUserAgrees() // 21.3
+    {
+        var processing = new ProcessingViewModel(_coordinator, _transcripts, _ui, new RecordingEnvironment(_workspace.Root, 0));
+        var written = 0;
+        string? asked = null;
+        var answer = false;
+        processing.WriteDiagnostics = () => { written++; return Path.Combine(_workspace.Root, "diagnostics.json"); };
+        processing.Confirm = (_, message) => { asked = message; return answer; };
+
+        await processing.ExportDiagnosticsCommand.ExecuteAsync(null);
+        Assert.Equal(0, written);
+        Assert.Contains("含めないもの: 原音、文字起こし・記録・課題・タスクの本文", asked, StringComparison.Ordinal);
+        Assert.Contains("どこにも送信しません", asked, StringComparison.Ordinal);
+
+        answer = true;
+        await processing.ExportDiagnosticsCommand.ExecuteAsync(null);
+        Assert.Equal(1, written);
+        Assert.Contains("診断情報を書き出しました", processing.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Processing_ShowsJobs_AndRetriesAFailedJobFromItsFinishedPieces()
     {
         var (dir, _) = Session();

@@ -15,6 +15,17 @@ namespace VoiceJournal.Infrastructure.Storage;
 /// </summary>
 public static class DiagnosticsReport
 {
+    /// <summary>21.3: what the report holds, shown to the user before it is written. Keep it in step with <see cref="Collect"/>.</summary>
+    public const string Contents =
+        "含めるもの:\n" +
+        "・アプリ・OS・.NET の版、CPU の数、メモリと空き容量\n" +
+        "・ワークスペースとデータベースのパス（Windows のユーザー名を含みます）、データベースの検査結果\n" +
+        "・セッション・文字起こし・記録・課題・タスクなどの件数、処理の状態とエラーコード、管理ファイルのパスとハッシュ\n" +
+        "・文字起こしと推論エンジンのツール・モデルのパス・SHA-256・サイズ、設定\n" +
+        "・最近の操作の種類と時刻（20 件）\n\n" +
+        "含めないもの: 原音、文字起こし・記録・課題・タスクの本文、プロンプト、タイトル\n\n" +
+        "この PC の logs フォルダーに保存するだけで、どこにも送信しません。";
+
     private static readonly string[] CountedTables =
         ["sessions", "transcript_revisions", "segments", "analyses", "records", "candidates", "items", "item_evidence", "apply_batches", "candidate_reviews"];
 
