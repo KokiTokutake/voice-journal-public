@@ -28,6 +28,12 @@ public sealed record LlmSettings
     /// <summary>One request may take this long (a 3,000-token piece takes about 1–2 minutes on the reference PC).</summary>
     public int RequestTimeoutMinutes { get; init; } = 10;
 
+    /// <summary>
+    /// NFR-05 strictly: start the engine only when it leaves 4 GiB free (its use + 4 GiB). Off by default: the engine
+    /// starts with its own requirement and the record warns when memory was short.
+    /// </summary>
+    public bool KeepFreeMemory { get; init; }
+
     public GenerationSettings ToGeneration() => new()
     {
         ModelId = ModelId,

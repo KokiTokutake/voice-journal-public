@@ -118,6 +118,19 @@ public sealed class LlamaServerHostTests : IDisposable
     }
 
     [Fact]
+    public async Task KeepingFreeMemory_RefusesToStart_WhenTheEngineWouldLeaveLessThan4GiB() // NFR-05, chosen in 設定
+    {
+        var (tool, model) = Registered();
+        var tools = new LlmToolSettings { LlamaServer = tool, Models = new Dictionary<string, LlmModelFiles> { ["m"] = model with { Model = model.Model with { RequiredMemoryMb = 4096 } } } };
+        using var host = new LlamaServerHost(() => tools, availableMemoryMb: () => 6000); // enough for the engine, not for 4 GiB more
+
+        var refused = await Assert.ThrowsAsync<LlmUnavailableException>(() => host.AcquireAsync(new LlamaServerLaunch("m", 8192, KeepFreeMemory: true), CancellationToken.None));
+
+        Assert.Contains("推論中も 4 GB 以上を空けておくには 8192 MB", refused.Message, StringComparison.Ordinal);
+        Assert.False(host.IsRunning);
+    }
+
+    [Fact]
     public void Defaults_RegisterTheEngineOfEnvironmentLock_AndTheE2bModelWithMtp()
     {
         var tools = LlmToolSettings.Defaults(@"C:\vj");

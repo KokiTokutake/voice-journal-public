@@ -254,6 +254,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         LlmContextLength = settings.ContextLength;
         LlmOutputReserve = settings.OutputReserve;
         LlmPieceTokens = settings.MaxPieceTokens;
+        LlmKeepFreeMemory = settings.KeepFreeMemory;
     }
 
     public SttToolSettings Tools { get; }
@@ -297,6 +298,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int LlmPieceTokens { get; set; }
 
+    /// <summary>NFR-05 strictly: start the engine only when 4 GiB stay free while it runs.</summary>
+    [ObservableProperty]
+    public partial bool LlmKeepFreeMemory { get; set; }
+
+    partial void OnLlmKeepFreeMemoryChanged(bool value) => SaveLlm();
+
     [ObservableProperty]
     public partial string? LlmMessage { get; set; }
 
@@ -325,6 +332,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ContextLength = LlmContextLength,
             OutputReserve = LlmOutputReserve,
             MaxPieceTokens = LlmPieceTokens,
+            KeepFreeMemory = LlmKeepFreeMemory,
         };
         var saved = wanted.Sanitized();
         try

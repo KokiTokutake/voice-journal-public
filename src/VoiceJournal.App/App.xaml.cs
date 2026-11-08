@@ -185,7 +185,7 @@ public partial class App : Application
             {
                 var settings = store.Load();
                 return (settings.ContextLength, TimeSpan.FromMinutes(settings.RequestTimeoutMinutes));
-            });
+            }, keepFreeMemory: () => store.Load().KeepFreeMemory);
         });
         services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<BundledLlmClient>());
         services.AddSingleton<IAnalysisSchemaValidator, AnalysisSchemaValidator>();

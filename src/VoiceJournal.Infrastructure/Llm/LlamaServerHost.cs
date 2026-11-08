@@ -13,7 +13,8 @@ namespace VoiceJournal.Infrastructure.Llm;
 
 /// <summary>What the bundled server is started with. A different value restarts it.</summary>
 /// <param name="Parallel">Server slots. Above 1 the slots share one KV buffer of <c>ContextLength × Parallel</c>, each limited to <c>ContextLength</c>.</param>
-public sealed record LlamaServerLaunch(string ModelId, int ContextLength, int Parallel = 1);
+/// <param name="KeepFreeMemory">NFR-05 strictly: do not start unless the engine leaves 4 GiB free (the user's choice in 設定).</param>
+public sealed record LlamaServerLaunch(string ModelId, int ContextLength, int Parallel = 1, bool KeepFreeMemory = false);
 
 /// <summary>A running server: where to send requests, with which key.</summary>
 /// <param name="Notice">Set when memory was short at start: inference may push free memory under 4 GiB (NFR-05).</param>
@@ -184,6 +185,8 @@ public sealed class LlamaServerHost : IDisposable
         await Task.Run(() => LlmToolCheck.Verify(tools.LlamaServer, model), cancellationToken).ConfigureAwait(false);
         if (_availableMemoryMb() is { } free && free < model.Model.RequiredMemoryMb)
             throw new LlmUnavailableException($"空きメモリが {free} MB で、モデル「{launch.ModelId}」には {model.Model.RequiredMemoryMb} MB 必要です。ほかのアプリを閉じてから、記録の作成をやり直してください。");
+        if (launch.KeepFreeMemory && _availableMemoryMb() is { } freeNow && freeNow < model.Model.RequiredMemoryMb + LowMemoryMarginMb)
+            throw new LlmUnavailableException($"空きメモリが {freeNow} MB で、推論中も 4 GB 以上を空けておくには {model.Model.RequiredMemoryMb + LowMemoryMarginMb} MB 必要です（設定で「推論中も空きメモリ 4 GB を保つ」を選んでいます）。ほかのアプリを閉じてから、記録の作成をやり直してください。");
         // NFR-05 (free physical memory 4 GiB or more while inferring): the engine still starts, the record says so.
         var notice = _availableMemoryMb() is { } before && before < model.Model.RequiredMemoryMb + LowMemoryMarginMb
             ? $"記録を作り始めたときの空きメモリは {before} MB でした。推論エンジンが約 {model.Model.RequiredMemoryMb} MB 使うため、推論中は空きが 4 GB を下回った可能性があります。ほかのアプリを閉じると安定します。"
@@ -518,12 +521,15 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     private OpenAiCompatibleClient? _client;
 
     /// <param name="parallel">Server slots (the record generator's parallelism); 1 when not given.</param>
-    public BundledLlmClient(LlamaServerHost host, Func<(int ContextLength, TimeSpan Timeout)> settings, Func<int>? parallel = null)
+    public BundledLlmClient(LlamaServerHost host, Func<(int ContextLength, TimeSpan Timeout)> settings, Func<int>? parallel = null, Func<bool>? keepFreeMemory = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _parallel = parallel ?? (() => 1);
+        _keepFreeMemory = keepFreeMemory ?? (() => false);
     }
+
+    private readonly Func<bool> _keepFreeMemory;
 
     public async Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken)
     {
@@ -547,7 +553,7 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     {
         ArgumentException.ThrowIfNullOrEmpty(modelId);
         var (context, timeout) = _settings();
-        var (endpoint, lease) = await _host.AcquireAsync(new LlamaServerLaunch(modelId, context, Math.Max(1, _parallel())), cancellationToken).ConfigureAwait(false);
+        var (endpoint, lease) = await _host.AcquireAsync(new LlamaServerLaunch(modelId, context, Math.Max(1, _parallel()), _keepFreeMemory()), cancellationToken).ConfigureAwait(false);
         lock (_lock)
         {
             if (_client is null || _key != (endpoint, timeout))
