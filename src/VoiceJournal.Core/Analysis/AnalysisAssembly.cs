@@ -570,6 +570,61 @@ public static partial class IntegrationConverter
         return Number(list);
     }
 
+    /// <summary>
+    /// Items for an upper level of a long recording: only the summary points of the records. Re-integrating every
+    /// statement does not converge (the answer is as long as its input, so two halves stay two halves; a 40-minute
+    /// meeting hit the level limit and fell back to 「（題名未生成）」 on 2026-11-08). The summary has at most 7 points.
+    /// </summary>
+    public static IReadOnlyList<(WireItem Item, Statement Statement)> SummaryOnly(IEnumerable<IntegratedRecord> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        return Number([.. records.SelectMany(r => r.Summary).Select(s => ((SectionKind?)null, (string?)null, s))]);
+    }
+
+    /// <summary>Whole records in order, grouped so the summary points of each group fit the budget.</summary>
+    public static IReadOnlyList<IReadOnlyList<IntegratedRecord>> GroupRecords(IReadOnlyList<IntegratedRecord> records, int inputTokenBudget, TokenEstimator estimator)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(estimator);
+        var groups = new List<IReadOnlyList<IntegratedRecord>>();
+        var current = new List<IntegratedRecord>();
+        var tokens = 0;
+        foreach (var record in records)
+        {
+            var cost = record.Summary.Sum(s => estimator.Estimate(s.Text) + 30);
+            if (current.Count > 0 && tokens + cost > inputTokenBudget)
+            {
+                groups.Add(current);
+                current = [];
+                tokens = 0;
+            }
+            current.Add(record);
+            tokens += cost;
+        }
+        if (current.Count > 0) groups.Add(current);
+        return groups;
+    }
+
+    /// <summary>
+    /// The record of an upper level: title, types and summary from <paramref name="top"/> (integrated from the parts'
+    /// summaries), the sections of the parts in order (same heading merged, at most 30), and summary points the top
+    /// level put back under <see cref="RestoredHeading"/>.
+    /// </summary>
+    public static IntegratedRecord CombineAbove(IntegratedRecord top, IReadOnlyList<IntegratedRecord> parts)
+    {
+        ArgumentNullException.ThrowIfNull(top);
+        ArgumentNullException.ThrowIfNull(parts);
+        var sections = new List<Section>();
+        foreach (var section in parts.SelectMany(p => p.Sections).Concat(top.Sections.Where(s => s.Heading == RestoredHeading)))
+            foreach (var statement in section.Statements) Append(sections, section.Heading, section.SectionKind, statement);
+        return top with
+        {
+            Sections = sections,
+            Warnings = [.. parts.SelectMany(p => p.Warnings).Concat(top.Warnings).Distinct(StringComparer.Ordinal)],
+            Dropped = [.. parts.SelectMany(p => p.Dropped), .. top.Dropped],
+        };
+    }
+
     private static List<(WireItem, Statement)> Number(List<(SectionKind? Kind, string? Heading, Statement Statement)> list) =>
         [.. list.Select((x, i) => (new WireItem { Id = ItemId(i), SectionKind = x.Kind, Heading = x.Heading, Text = x.Statement.Text, Certainty = x.Statement.Certainty }, x.Statement))];
 

@@ -484,37 +484,63 @@ public sealed class RecordGenerator
     {
         var budget = new ContextBudget(settings.ContextLength, settings.OutputReserve,
             Overhead(estimator, AnalysisPrompts.Integration, LlmSchemas.Integration) + 200).RequireInputTokens(200);
-        var items = IntegrationConverter.Items(pieces);
-        for (var level = 1; level <= MaxIntegrationLevels; level++)
+        // Level 1: every statement, in groups that fit (one group up to about 30 minutes of speech).
+        var groups = IntegrationConverter.Group(IntegrationConverter.Items(pieces), budget, estimator);
+        var records = new List<IntegratedRecord>();
+        for (var g = 0; g < groups.Count; g++)
         {
-            var groups = IntegrationConverter.Group(items, budget, estimator);
-            var records = new List<IntegratedRecord>();
-            for (var g = 0; g < groups.Count; g++)
+            var record = await IntegrateGroupAsync(1, g, groups[g], session, settings, estimator, stats, work, cancellationToken).ConfigureAwait(false);
+            if (record is null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var path = Path.Combine(work, $"integrate-{level}-{g + 1:000}.json");
-                var record = AnalysisFiles.TryRead<IntegratedRecord>(path);
-                if (record is null)
-                {
-                    var input = JsonSerializer.Serialize(IntegrationConverter.BuildInput(groups[g], session), AnalysisJson.Compact);
-                    var messages = new List<LlmMessage> { new(LlmRole.System, AnalysisPrompts.Integration), new(LlmRole.User, input) };
-                    var estimated = Overhead(estimator, AnalysisPrompts.Integration, LlmSchemas.Integration) + estimator.Estimate(input);
-                    var (output, _) = await AskAsync<IntegrationOutput>($"integrate-{level}-{g + 1}", messages, LlmSchemas.IntegrationName, LlmSchemas.Integration, settings, estimated, stats, cancellationToken).ConfigureAwait(false);
-                    if (output is null)
-                    {
-                        warnings.Add("記録の統合に失敗したため、区間ごとの要点をそのまま並べています。");
-                        return Fallback(pieces);
-                    }
-                    record = IntegrationConverter.Convert(output, groups[g], level);
-                    AnalysisFiles.Write(path, record);
-                }
-                records.Add(record);
+                warnings.Add("記録の統合に失敗したため、区間ごとの要点をそのまま並べています。");
+                return Fallback(pieces);
             }
-            if (records.Count == 1) return Complete(records[0], pieces, warnings);
-            items = IntegrationConverter.Items(records);
+            records.Add(record);
         }
-        warnings.Add("記録の統合が深くなりすぎたため、区間ごとの要点をそのまま並べています。");
-        return Fallback(pieces);
+        // Upper levels (longer recordings): only the summaries are integrated again; the sections are kept as they are.
+        // A summary has at most 7 points, so each level shrinks and this converges.
+        for (var level = 2; records.Count > 1; level++)
+        {
+            if (level > MaxIntegrationLevels)
+            {
+                warnings.Add("記録の統合が深くなりすぎたため、区間ごとの要点をそのまま並べています。");
+                return Fallback(pieces);
+            }
+            var next = new List<IntegratedRecord>();
+            var recordGroups = IntegrationConverter.GroupRecords(records, budget, estimator);
+            for (var g = 0; g < recordGroups.Count; g++)
+            {
+                var top = await IntegrateGroupAsync(level, g, IntegrationConverter.SummaryOnly(recordGroups[g]), session, settings, estimator, stats, work, cancellationToken,
+                    top => IntegrationConverter.CombineAbove(top, recordGroups[g])).ConfigureAwait(false);
+                if (top is null)
+                {
+                    warnings.Add("記録の統合に失敗したため、区間ごとの要点をそのまま並べています。");
+                    return Fallback(pieces);
+                }
+                next.Add(top);
+            }
+            records = next;
+        }
+        return Complete(records[0], pieces, warnings);
+    }
+
+    /// <summary>One integration request (saved, so a resumed job does not ask again); null when it failed.</summary>
+    private async Task<IntegratedRecord?> IntegrateGroupAsync(int level, int group, IReadOnlyList<(WireItem Item, Statement Statement)> items, WireSession session,
+        GenerationSettings settings, TokenEstimator estimator, List<RequestStat> stats, string work, CancellationToken cancellationToken,
+        Func<IntegratedRecord, IntegratedRecord>? finish = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = Path.Combine(work, $"integrate-{level}-{group + 1:000}.json");
+        if (AnalysisFiles.TryRead<IntegratedRecord>(path) is { } saved) return saved;
+        var input = JsonSerializer.Serialize(IntegrationConverter.BuildInput(items, session), AnalysisJson.Compact);
+        var messages = new List<LlmMessage> { new(LlmRole.System, AnalysisPrompts.Integration), new(LlmRole.User, input) };
+        var estimated = Overhead(estimator, AnalysisPrompts.Integration, LlmSchemas.Integration) + estimator.Estimate(input);
+        var (output, _) = await AskAsync<IntegrationOutput>($"integrate-{level}-{group + 1}", messages, LlmSchemas.IntegrationName, LlmSchemas.Integration, settings, estimated, stats, cancellationToken).ConfigureAwait(false);
+        if (output is null) return null;
+        var record = IntegrationConverter.Convert(output, items, level);
+        if (finish is not null) record = finish(record);
+        AnalysisFiles.Write(path, record);
+        return record;
     }
 
     // The integration must leave a summary (the schema needs 1–7 items) and a title.

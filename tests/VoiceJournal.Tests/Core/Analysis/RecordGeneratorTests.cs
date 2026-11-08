@@ -130,6 +130,32 @@ public sealed class RecordGeneratorTests
     }
 
     [Fact]
+    public async Task ALongRecording_IntegratesOnlyTheSummariesAboveTheFirstLevel_AndKeepsATitle() // 2026-11-08: 40 minutes fell back
+    {
+        using var dir = new TempDirectory();
+        var llm = new EchoLlm();
+        var transcript = Meeting(3000);
+
+        var result = await Generator(llm).GenerateAsync(Request(dir, transcript), null, CancellationToken.None);
+
+        Assert.Equal(GenerationOutcome.Generated, result.Outcome);
+        var integrations = llm.Requests.Where(r => r.SchemaName == LlmSchemas.IntegrationName)
+            .Select(r => JsonSerializer.Deserialize<IntegrationInput>(r.Messages.First(m => m.Role == LlmRole.User).Content, AnalysisJson.Options)!).ToList();
+        var firstLevel = integrations.TakeWhile(i => i.Items.Any(x => x.SectionKind is not null)).Count();
+        Assert.True(firstLevel > 1, $"the test needs more than one group at level 1 (got {firstLevel})");
+        var upper = integrations.Skip(firstLevel).ToList();
+        Assert.NotEmpty(upper);
+        Assert.All(upper, i => Assert.All(i.Items, x => Assert.Null(x.SectionKind))); // summaries only
+        Assert.True(upper.Count < firstLevel); // each level shrinks
+        var analysis = new AnalysisStore(dir.Path).Load(result.AnalysisRevision!.Value);
+        Assert.Empty(AnalysisValidator.Validate(analysis.Analysis, transcript));
+        var record = new RecordStore(dir.Path).Load(result.RecordRevision!.Value);
+        Assert.Equal("会議の記録", record.Title);
+        Assert.DoesNotContain(analysis.Analysis.Warnings, w => w.Contains("深くなりすぎた", StringComparison.Ordinal) || w.Contains("統合に失敗", StringComparison.Ordinal));
+        Assert.True(record.Sections.Count > 1); // the sections of the first level are kept
+    }
+
+    [Fact]
     public async Task ASection_IsRegeneratedFromItsEvidence_AndTheRestOfTheRecordStays()
     {
         using var dir = new TempDirectory();
