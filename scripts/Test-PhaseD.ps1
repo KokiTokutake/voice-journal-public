@@ -114,7 +114,7 @@ else {
     if (-not (Test-Path $result)) { throw "生成の結果がありません（終了コード $LASTEXITCODE）" }
     $r = Read-Json $result
     Write-Host ("   文字起こし: {0} 区間・{1} 字、生成: {2}、区間 {3}（失敗 {4}）、要求 {5} 回、入力 {6}・出力 {7} トークン" -f $r.segments, $r.characters, $r.outcome, $r.PieceCount, $r.failed.Count, $r.requests.Count, $r.prompt_tokens, $r.completion_tokens)
-    # NFR-07（詳細仕様書 1.1）: 30 分の音声を 420 秒以内。音声の長さ（録音の開始〜終了）で 30 分に換算して判定する
+    # NFR-07（詳細仕様書 1.3）: 30 分の音声を 480 秒以内。音声の長さ（録音の開始〜終了）で 30 分に換算して判定する
     $m = Read-Json (Join-Path $copy 'manifest.json')
     $audioMinutes = ([DateTimeOffset]$m.ended_at_utc - [DateTimeOffset]$m.started_at_utc).TotalMinutes
     # 素材をつないで長くした文字起こし（2026-11-08 の 35・40 分の素材）は manifest より長い: 文字起こしの最後の区間の終わりも見る
@@ -127,7 +127,7 @@ else {
         }
     }
     $per30 = [math]::Round($r.elapsed_seconds * 30 / $audioMinutes, 1)
-    Show 'NFR-07' ($r.outcome -eq 'Generated' -and $per30 -le 420) ("{0} 秒（音声 {1:N1} 分。30 分換算 {2} 秒、420 秒以内）" -f $r.elapsed_seconds, $audioMinutes, $per30)
+    Show 'NFR-07' ($r.outcome -eq 'Generated' -and $per30 -le 480) ("{0} 秒（音声 {1:N1} 分。30 分換算 {2} 秒、480 秒以内）" -f $r.elapsed_seconds, $audioMinutes, $per30)
     Write-Host "   結果: $result"
     Write-Host "   記録: $copy"
 }
