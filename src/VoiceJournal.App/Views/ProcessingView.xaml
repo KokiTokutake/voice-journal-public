@@ -36,7 +36,7 @@
             </WrapPanel>
         </Border>
 
-        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" />
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
 
         <Border Style="{StaticResource Card}" Padding="0">
             <DataGrid services:TextScaling.ScaleColumns="True" ItemsSource="{Binding Jobs}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"

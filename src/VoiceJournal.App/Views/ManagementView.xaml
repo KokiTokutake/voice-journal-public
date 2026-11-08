@@ -83,7 +83,7 @@
                           ToolTip="既存のタスクは書き換えず、更新は提案として保存します（11.4 追記専用）" />
             </WrapPanel>
             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Style="{StaticResource Note}" Margin="0,6,0,0"
-                       Visibility="{Binding Message, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" />
+                       Visibility="{Binding Message, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
             <!-- 11.5: blocks edited by hand are never written over; the user takes them in or discards them -->
             <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="12,8" Visibility="{Binding HasEditedBlocks, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>

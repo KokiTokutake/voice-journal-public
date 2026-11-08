@@ -70,11 +70,11 @@
                                 ToolTip="選んだ区間（同じ音源、複数可）の時間を、もう一度文字起こしして新しい Revision にします" />
                     </WrapPanel>
                     <TextBlock Text="{Binding NowPlaying}" Style="{StaticResource Note}" Margin="2,6,0,0" TextTrimming="CharacterEllipsis"
-                               Visibility="{Binding NowPlaying, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" />
+                               Visibility="{Binding NowPlaying, Converter={StaticResource TextToVisibility}}" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
                 </StackPanel>
             </Border>
 
-            <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding Message}" TextWrapping="Wrap" Margin="4,8,0,0" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
 
             <!-- Segments: the text column is editable on the revision in use -->
             <Border Style="{StaticResource Card}" Padding="0">

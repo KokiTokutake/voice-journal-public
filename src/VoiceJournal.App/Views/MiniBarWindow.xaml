@@ -1,6 +1,7 @@
 <Window x:Class="VoiceJournal.App.Views.MiniBarWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:VoiceJournal.App.Services"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
@@ -31,7 +32,7 @@
             <StackPanel VerticalAlignment="Center" Margin="0,0,14,0" MinWidth="96">
                 <TextBlock Text="{Binding ElapsedText}" FontSize="{DynamicResource VjFont18}" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
                            AutomationProperties.Name="経過時間" />
-                <TextBlock Text="{Binding ShortStatusText}" FontSize="{DynamicResource VjFont11}" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="{Binding ShortStatusText}" FontSize="{DynamicResource VjFont11}" Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
             </StackPanel>
             <StackPanel VerticalAlignment="Center" Margin="0,0,10,0">
                 <controls:LevelHistory Width="96" Height="14" BarCount="24" Level="{Binding MicLevel}" Tick="{Binding MeterTick}" IsRunning="{Binding IsActive}"

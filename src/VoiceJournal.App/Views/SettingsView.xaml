@@ -1,6 +1,7 @@
 <UserControl x:Class="VoiceJournal.App.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="clr-namespace:VoiceJournal.App.Services"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
@@ -39,7 +40,7 @@
                 </Grid>
                 <TextBlock Margin="0,12,0,0" Style="{StaticResource Note}" TextWrapping="Wrap"
                            Text="変更はすぐに保存され、次に始める文字起こしから使われます。録音中は文字起こしを一時停止し、録音が終わると再開します。" />
-                <TextBlock Margin="0,6,0,0" Text="{Binding Message}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Margin="0,6,0,0" Text="{Binding Message}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
             </StackPanel>
         </Border>
 
@@ -77,11 +78,11 @@
                 </Grid>
                 <TextBlock Margin="0,12,0,0" Style="{StaticResource Note}" TextWrapping="Wrap"
                            Text="推論エンジンは、記録を作るときだけ起動し、使わなければ 1 分ほどで終了します。空きメモリが足りないときは起動しません。録音中と文字起こし中は、記録の作成を待たせます。" />
-                <TextBlock Margin="0,6,0,0" Text="{Binding LlmMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                <TextBlock Margin="0,6,0,0" Text="{Binding LlmMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
                            Visibility="{Binding LlmMessage, Converter={StaticResource TextToVisibility}}" />
                 <Button Content="接続を確認(_T)" Tag="&#xE703;" Command="{Binding CheckLlmCommand}" Style="{StaticResource ActionButton}"
                         HorizontalAlignment="Left" Margin="0,10,0,6" />
-                <TextBlock Text="{Binding LlmStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                <TextBlock Text="{Binding LlmStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
                            Visibility="{Binding LlmStatus, Converter={StaticResource TextToVisibility}}" />
             </StackPanel>
         </Border>
@@ -138,7 +139,7 @@
                 </WrapPanel>
                 <TextBlock Text="{Binding NextWorkspaceText}" TextWrapping="Wrap" Margin="0,6,0,0" FontWeight="SemiBold"
                            Visibility="{Binding NextWorkspaceText, Converter={StaticResource TextToVisibility}}" />
-                <TextBlock Text="{Binding WorkspaceMessage}" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"
+                <TextBlock Text="{Binding WorkspaceMessage}" TextWrapping="Wrap" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
                            Visibility="{Binding WorkspaceMessage, Converter={StaticResource TextToVisibility}}" />
                 <!-- UI-01: storage, tools and models in one check; all present means the app works offline -->
                 <Button Content="環境をまとめて確認(_W)" Tag="&#xE9D9;" Command="{Binding CheckEnvironmentCommand}" Style="{StaticResource ActionButton}"
