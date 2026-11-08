@@ -27,11 +27,11 @@
                               ItemsSource="{Binding ModelOptions}" SelectedValuePath="Name" DisplayMemberPath="Label" SelectedValue="{Binding ModelName}"
                               AutomationProperties.Name="文字起こしのモデル" />
                     <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding UseVad}"
-                             >
+                              AutomationProperties.Name="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(V)">
                     <AccessText Text="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(_V)" TextWrapping="Wrap" />
                 </CheckBox>
                     <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding NormalizeGain}"
-                             >
+                              AutomationProperties.Name="小さい音声の音量をそろえてから認識する（原音は変えません）(N)">
                     <AccessText Text="小さい音声の音量をそろえてから認識する（原音は変えません）(_N)" TextWrapping="Wrap" />
                 </CheckBox>
                     <Label Grid.Row="3" Content="CPU のスレッド数(_H)" Target="{Binding ElementName=ThreadBox}" VerticalAlignment="Center" Padding="0" Margin="0,8,0,0" />
@@ -80,7 +80,7 @@
                            Text="推論エンジンは、記録を作るときだけ起動し、使わなければ 1 分ほどで終了します。空きメモリが足りないときは起動しません。録音中と文字起こし中は、記録の作成を待たせます。" />
                 <TextBlock Margin="0,6,0,0" Text="{Binding LlmMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
                            Visibility="{Binding LlmMessage, Converter={StaticResource TextToVisibility}}" />
-                <CheckBox Margin="0,8,0,0" IsChecked="{Binding LlmKeepFreeMemory}">
+                <CheckBox Margin="0,8,0,0" IsChecked="{Binding LlmKeepFreeMemory}" AutomationProperties.Name="推論中も空きメモリ 4 GB 以上を保つ（足りなければ記録の作成を始めません）">
                     <AccessText TextWrapping="Wrap" Text="推論中も空きメモリ 4 GB 以上を保つ(_E)（足りなければ記録の作成を始めません。オフのときは始めて、空きが少なかったことを記録の警告に出します）" />
                 </CheckBox>
                 <Button Content="接続を確認(_T)" Tag="&#xE703;" Command="{Binding CheckLlmCommand}" Style="{StaticResource ActionButton}"

@@ -164,7 +164,7 @@
                               Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}" />
                     <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,2,0,8" IsChecked="{Binding UseRawMic}"
                               Visibility="{Binding NeedsMic, Converter={StaticResource BoolToVisibility}}"
-                             >
+                              AutomationProperties.Name="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）">
                     <AccessText Text="マイクの音声処理（ノイズ抑制・自動音量）を使わずに録音する（推奨。文字起こしの精度が上がります）" TextWrapping="Wrap" />
                 </CheckBox>
 
@@ -185,11 +185,11 @@
                 <TextBlock Margin="0,8,0,0" Text="{Binding CaptureTestResult}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
                            AutomationProperties.Name="{Binding CaptureTestResult, StringFormat='録音テストの結果: {0}'}" />
                 <!-- Detail spec 18.3: "保存後 [✓]文字起こしをキューへ追加" -->
-                <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}">
+                <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}" AutomationProperties.Name="保存後に文字起こしする(A)（録音が終わると自動で順番待ちに入ります）">
                     <AccessText Text="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" TextWrapping="Wrap" />
                 </CheckBox>
                 <CheckBox Margin="0,8,0,0" IsChecked="{Binding GenerateRecordAfterTranscription}"
-                         >
+                          AutomationProperties.Name="文字起こしの後に記録を作る(K)（推論エンジンで要約と課題・タスクの候補を作ります。記録のない録音だけ）">
                     <AccessText Text="文字起こしの後に記録を作る(_K)（推論エンジンで要約と課題・タスクの候補を作ります。記録のない録音だけ）" TextWrapping="Wrap" />
                 </CheckBox>
             </StackPanel>
