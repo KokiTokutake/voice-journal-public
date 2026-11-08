@@ -208,7 +208,11 @@ public partial class App : Application
         services.AddSingleton(sp => new ApplyEngine(workspace, database, sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new ApplyRecovery(database, sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<ApplyEngine>()));
         services.AddSingleton(sp => new ManagementViewModel(sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ApplyEngine>(), sp.GetRequiredService<ApplyRecovery>()) { BackupSource = (workspace, database) });
+            sp.GetRequiredService<ApplyEngine>(), sp.GetRequiredService<ApplyRecovery>())
+        {
+            BackupSource = (workspace, database),
+            RetentionDays = () => sp.GetRequiredService<IUiSettingsStore>().Load().BackupRetentionDays,
+        });
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();

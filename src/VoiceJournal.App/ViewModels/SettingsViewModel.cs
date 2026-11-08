@@ -27,12 +27,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly long _minFreeBytes;
     private readonly IDialogService? _dialogs;
     private readonly IWorkspaceLocationStore? _location;
+    private readonly IUiSettingsStore? _ui;
     private bool _loading;
 
     public SettingsViewModel(ISttSettingsStore store, ISttEngine engine, SttToolSettings tools, RecordingEnvironment environment,
         ILlmSettingsStore? llmStore = null, ILlmClient? llm = null, IFreeSpaceProbe? disk = null, LlmToolSettings? llmTools = null,
-        IDialogService? dialogs = null, IWorkspaceLocationStore? location = null)
+        IDialogService? dialogs = null, IWorkspaceLocationStore? location = null, IUiSettingsStore? ui = null)
     {
+        _ui = ui;
         ArgumentNullException.ThrowIfNull(environment);
         _store = store;
         _engine = engine;
@@ -66,8 +68,29 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>UI-12 保持 (14.4): what is kept and for how long.</summary>
     public static string RetentionText =>
-        $"反映前のバックアップ: 反映から {Infrastructure.Storage.ManagementStore.BackupRetentionDays} 日（直近 {Infrastructure.Storage.ManagementStore.BackupsAlwaysKept} 回と、途中で止まった反映・見送った反映は期限なし）。" +
+        $"直近 {Infrastructure.Storage.ManagementStore.BackupsAlwaysKept} 回の反映と、途中で止まった反映・見送った反映の写しは期限なしで残します（起動時に古いものを消します）。" +
         "原音・文字起こし・記録は自動では消しません。容量が足りなくなっても、承認なしに古い原音やバックアップは消しません。";
+
+    public bool CanChangeRetention => _ui is not null;
+
+    /// <summary>14.4: days a pre-apply backup is kept; saved at once, applied at the next start.</summary>
+    public int BackupRetentionDays
+    {
+        get => _ui?.Load().BackupRetentionDays ?? Infrastructure.Storage.ManagementStore.BackupRetentionDays;
+        set
+        {
+            if (_ui is null) return;
+            var days = Math.Clamp(value, UiSettings.MinRetentionDays, UiSettings.MaxRetentionDays);
+            _ui.Save(_ui.Load() with { BackupRetentionDays = days });
+            RetentionMessage = days == value
+                ? $"保存しました。次に起動したときから、反映から {days} 日を過ぎた写しを消します。"
+                : $"{UiSettings.MinRetentionDays}〜{UiSettings.MaxRetentionDays} 日の範囲に直して {days} 日で保存しました。";
+            OnPropertyChanged();
+        }
+    }
+
+    [ObservableProperty]
+    public partial string? RetentionMessage { get; set; }
 
     public bool CanChangeWorkspace => _dialogs is not null && _location is not null;
 

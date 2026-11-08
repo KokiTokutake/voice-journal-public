@@ -99,6 +99,13 @@
                 <TextBlock Style="{StaticResource Note}" TextWrapping="Wrap" Margin="0,2,0,8"
                            Text="追記だけにする設定と、今使っている Markdown の取込みは「管理」タブにあります。" />
                 <TextBlock Text="保持" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding CanChangeRetention, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="反映前のバックアップを残す日数(_Q)" Target="{Binding ElementName=RetentionBox}" VerticalAlignment="Center" Padding="0,0,8,0" />
+                    <TextBox x:Name="RetentionBox" Width="80" Text="{Binding BackupRetentionDays, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="反映前のバックアップを残す日数" />
+                    <TextBlock Text="日（7〜3650、既定 90）" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+                <TextBlock Text="{Binding RetentionMessage}" TextWrapping="Wrap" Margin="0,2,0,0" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True"
+                           Visibility="{Binding RetentionMessage, Converter={StaticResource TextToVisibility}}" />
                 <TextBlock Text="{x:Static vm:SettingsViewModel.RetentionText}" TextWrapping="Wrap" Margin="0,2,0,8" />
                 <TextBlock Text="プライバシー" FontWeight="SemiBold" />
                 <TextBlock TextWrapping="Wrap" Margin="0,2,0,0"

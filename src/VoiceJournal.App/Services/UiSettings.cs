@@ -17,6 +17,13 @@ public sealed record UiSettings
 
     /// <summary>Queue a record when a whole-session transcription finishes (detail spec 18.3, on by default).</summary>
     public bool GenerateRecordAfterTranscription { get; init; } = true;
+
+    /// <summary>14.4: days a pre-apply backup is kept (the latest 10 and unfinished ones are always kept). 7–3650.</summary>
+    public int BackupRetentionDays { get; init; } = 90;
+
+    public const int MinRetentionDays = 7;
+
+    public const int MaxRetentionDays = 3650;
 }
 
 public interface IUiSettingsStore

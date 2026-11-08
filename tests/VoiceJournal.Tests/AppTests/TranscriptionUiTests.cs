@@ -417,6 +417,23 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Settings_BackupRetention_IsSaved_WithinItsRange() // 14.4, UI-12
+    {
+        var ui = new MemoryUiSettingsStore();
+        var settings = new SettingsViewModel(_settings, _engine, _tools, new RecordingEnvironment(_workspace.Root, 0), ui: ui);
+        Assert.True(settings.CanChangeRetention);
+        Assert.Equal(90, settings.BackupRetentionDays);
+
+        settings.BackupRetentionDays = 30;
+        Assert.Equal(30, ui.Load().BackupRetentionDays);
+        Assert.Contains("30 日", settings.RetentionMessage, StringComparison.Ordinal);
+
+        settings.BackupRetentionDays = 1; // too short: kept at the minimum
+        Assert.Equal(UiSettings.MinRetentionDays, ui.Load().BackupRetentionDays);
+        Assert.Contains("範囲に直して", settings.RetentionMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WorkspaceChoice_RefusesASyncFolder_AndTheLocationIsSavedAsJson()
     {
         var sync = _dir.File("OneDrive");

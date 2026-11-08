@@ -411,6 +411,9 @@ public sealed partial class ManagementViewModel : ObservableObject
         foreach (var r in rows) target.Add(r);
     }
 
+    /// <summary>Set by the app: how many days pre-apply backups are kept (設定; 90 when not set).</summary>
+    public Func<int>? RetentionDays { get; set; }
+
     /// <summary>Set by the window: a snapshot is taken only while nothing is recorded (14.4).</summary>
     public Func<bool>? IsRecording { get; set; }
 
@@ -541,7 +544,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         if (_recovery is null) return;
         var reports = _recovery.RecoverAll();
         // 14.4: after recovery (unfinished batches keep theirs), old pre-apply backups beyond the retention are removed
-        _store.PruneApplyBackups();
+        _store.PruneApplyBackups(Math.Clamp(RetentionDays?.Invoke() ?? ManagementStore.BackupRetentionDays, UiSettings.MinRetentionDays, UiSettings.MaxRetentionDays));
         if (reports.Count == 0) return;
         var stuck = reports.Count(r => r.Action == RecoveryAction.RecoveryRequired);
         _startupNote = stuck > 0
