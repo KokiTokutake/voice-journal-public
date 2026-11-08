@@ -322,6 +322,28 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Contains("✓ small（既定・速い）", settings.ToolStatus);
     }
 
+    [Fact]
+    public async Task Settings_CheckEnvironment_ReportsStorageSpaceAndTools_AndOfflineReadiness() // UI-01
+    {
+        var disk = new FakeFreeSpace(50L * 1024 * 1024 * 1024);
+        var settings = new SettingsViewModel(_settings, _engine, _tools, new RecordingEnvironment(_workspace.Root, 2L * 1024 * 1024 * 1024), disk: disk);
+        Assert.Equal("空き容量 50.0 GB（録音を始めるには 2.0 GB 以上が必要）", settings.FreeSpaceText);
+
+        await settings.CheckEnvironmentCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("✓ 保存先に書き込めます", settings.EnvironmentStatus[0], StringComparison.Ordinal);
+        Assert.Equal("✓ 空き容量 50.0 GB", settings.EnvironmentStatus[1]);
+        Assert.StartsWith("✓ 文字起こし: whisper-cli", settings.EnvironmentStatus[2], StringComparison.Ordinal);
+        Assert.StartsWith("✓ 必要なファイルはすべてこの PC にあります", settings.EnvironmentStatus[^1], StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(_workspace.Root, ".write-check-*")); // the probe is removed
+
+        disk.AvailableBytes = 1L * 1024 * 1024 * 1024;
+        await settings.CheckEnvironmentCommand.ExecuteAsync(null);
+
+        Assert.StartsWith("✗ ", settings.EnvironmentStatus[1], StringComparison.Ordinal);
+        Assert.StartsWith("✗ の項目を直すまで", settings.EnvironmentStatus[^1], StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("それでは始めます", "")]
     [InlineData("予算は3000円です", "数字")]

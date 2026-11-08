@@ -173,8 +173,14 @@
                     <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding LoopbackNotice}" Margin="0,4,0,0" Style="{StaticResource Note}"
                                Visibility="{Binding NeedsLoopback, Converter={StaticResource BoolToVisibility}}" />
                 </Grid>
-                <Button Content="デバイス一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ActionButton}"
-                        HorizontalAlignment="Left" Margin="0,16,0,0" />
+                <WrapPanel Margin="0,16,0,0">
+                    <Button Content="デバイス一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshDevicesCommand}" Style="{StaticResource ActionButton}" Margin="0,0,8,0" />
+                    <!-- UI-01: 10 秒録音テスト. Nothing is saved. -->
+                    <Button Content="10 秒の録音テスト(_E)" Tag="&#xE7F6;" Command="{Binding TestCaptureCommand}" Style="{StaticResource ActionButton}"
+                            ToolTip="選んだ音源とデバイスで 10 秒間だけ音を受け取り、届いたか・音量はどうかを確かめます（保存はしません）" />
+                </WrapPanel>
+                <TextBlock Margin="0,8,0,0" Text="{Binding CaptureTestResult}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.Name="録音テストの結果" />
                 <!-- Detail spec 18.3: "保存後 [✓]文字起こしをキューへ追加" -->
                 <CheckBox Margin="0,14,0,0" IsChecked="{Binding TranscribeAfterSaving}" Content="保存後に文字起こしする(_A)（録音が終わると自動で順番待ちに入ります）" />
                 <CheckBox Margin="0,8,0,0" IsChecked="{Binding GenerateRecordAfterTranscription}"

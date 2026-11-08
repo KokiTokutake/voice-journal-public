@@ -98,7 +98,7 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsMicMode), nameof(IsLoopbackMode), nameof(IsBothMode), nameof(NeedsMic), nameof(NeedsLoopback))]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand), nameof(TestCaptureCommand))]
     public partial CaptureMode Mode { get; set; } = CaptureMode.Both;
 
     public bool IsMicMode
@@ -128,11 +128,11 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     public ObservableCollection<AudioDeviceInfo> LoopbackDevices { get; } = [];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand), nameof(TestCaptureCommand))]
     public partial AudioDeviceInfo? SelectedMic { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand), nameof(TestCaptureCommand))]
     public partial AudioDeviceInfo? SelectedLoopback { get; set; }
 
     /// <summary>Raw capture (no noise suppression / AGC) is the default (Phase A: half the CER).</summary>
@@ -147,7 +147,7 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(ShortStatusText), nameof(IsActive), nameof(CanEditSettings), nameof(IndicatorText), nameof(ToggleLabel))]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(ToggleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(ToggleCommand), nameof(TestCaptureCommand))]
     public partial RecorderStatus Status { get; set; } = RecorderStatus.Idle;
 
     /// <summary>"保存後に文字起こし" (detail spec 18.3). Read by the transcription coordinator when a recording is saved.</summary>
@@ -225,7 +225,60 @@ public sealed partial class RecordingViewModel : ObservableObject, IDisposable
     // ---- commands ----------------------------------------------------------------------------
 
     private bool CanStart() =>
-        !IsActive && (!NeedsMic || SelectedMic is not null) && (!NeedsLoopback || SelectedLoopback is not null);
+        !IsActive && !IsTestingCapture && (!NeedsMic || SelectedMic is not null) && (!NeedsLoopback || SelectedLoopback is not null);
+
+    /// <summary>A capture test is running (recording waits for it; it takes 10 seconds).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(ToggleCommand), nameof(TestCaptureCommand))]
+    public partial bool IsTestingCapture { get; set; }
+
+    /// <summary>What the last capture test found, one line per source.</summary>
+    [ObservableProperty]
+    public partial string? CaptureTestResult { get; set; }
+
+    private bool CanTestCapture() => CanStart();
+
+    /// <summary>How long the capture test listens (10 seconds; tests shorten it).</summary>
+    public TimeSpan CaptureTestDuration { get; set; } = CaptureCheck.DefaultDuration;
+
+    /// <summary>
+    /// UI-01 「10 秒録音テスト」: opens the selected devices with the selected settings for 10 seconds and reports whether
+    /// sound arrived and how loud it was. Nothing is saved and no session is made.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanTestCapture))]
+    private async Task TestCaptureAsync()
+    {
+        IsTestingCapture = true;
+        var sources = RequiredSources(Mode);
+        CaptureTestResult = $"{CaptureTestDuration.TotalSeconds:0} 秒間、音を受け取っています（保存はしません）…" +
+            (sources.Contains(AudioSource.Mic) ? " マイクに向かって話してください。" : string.Empty) +
+            (sources.Contains(AudioSource.Loopback) ? " PC で音を再生してください。" : string.Empty);
+        var lines = new List<string>();
+        var opened = new List<IAudioCaptureSource>();
+        try
+        {
+            foreach (var source in sources)
+            {
+                var device = source == AudioSource.Mic ? SelectedMic! : SelectedLoopback!;
+                try
+                {
+                    opened.Add(_catalog.CreateSource(source, device.Id, UseRawMic ? MicProcessingMode.Raw : MicProcessingMode.Normal));
+                }
+                catch (AudioDeviceException ex)
+                {
+                    lines.Add($"✗ {UserMessages.SourceName(source)}（{device.Name}）: {UserMessages.StartFailure(ex)}");
+                }
+            }
+            var results = await Task.WhenAll(opened.Select(s => CaptureCheck.RunAsync(s, CaptureTestDuration, _time, CancellationToken.None)));
+            lines.AddRange(results.Select(UserMessages.CaptureCheck));
+            CaptureTestResult = string.Join("\n", lines);
+        }
+        finally
+        {
+            foreach (var s in opened) s.Dispose();
+            IsTestingCapture = false;
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()

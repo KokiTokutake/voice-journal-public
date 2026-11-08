@@ -3,7 +3,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VoiceJournal.App.Services;
 using VoiceJournal.Core.Analysis;
+using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Transcription;
+using VoiceJournal.Infrastructure.Llm;
 using VoiceJournal.Infrastructure.Stt;
 
 namespace VoiceJournal.App.ViewModels;
@@ -20,15 +22,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISttEngine _engine;
     private readonly ILlmSettingsStore? _llmStore;
     private readonly ILlmClient? _llm;
+    private readonly IFreeSpaceProbe? _disk;
+    private readonly LlmToolSettings? _llmTools;
+    private readonly long _minFreeBytes;
     private bool _loading;
 
     public SettingsViewModel(ISttSettingsStore store, ISttEngine engine, SttToolSettings tools, RecordingEnvironment environment,
-        ILlmSettingsStore? llmStore = null, ILlmClient? llm = null)
+        ILlmSettingsStore? llmStore = null, ILlmClient? llm = null, IFreeSpaceProbe? disk = null, LlmToolSettings? llmTools = null)
     {
+        ArgumentNullException.ThrowIfNull(environment);
         _store = store;
         _engine = engine;
         _llmStore = llmStore;
         _llm = llm;
+        _disk = disk;
+        _llmTools = llmTools;
+        _minFreeBytes = environment.MinFreeBytes;
         Tools = tools;
         WorkspaceRoot = environment.WorkspaceRoot;
         ModelOptions = [.. tools.Models.Keys.Order(StringComparer.Ordinal).Select(m => new TranscriptViewModel.ModelOption(m, UserMessages.ModelLabel(m)))];
@@ -41,6 +50,109 @@ public sealed partial class SettingsViewModel : ObservableObject
         Threads = Math.Clamp(c.Threads, 1, Environment.ProcessorCount);
         if (llmStore is not null) ShowLlm(llmStore.Load());
         _loading = false;
+        FreeSpaceText = FreeSpace();
+    }
+
+    /// <summary>The free space of the workspace's drive and the minimum a recording needs.</summary>
+    [ObservableProperty]
+    public partial string FreeSpaceText { get; set; } = string.Empty;
+
+    private string FreeSpace()
+    {
+        if (_disk is null) return string.Empty;
+        try
+        {
+            return $"空き容量 {UserMessages.Bytes(_disk.GetAvailableBytes(WorkspaceRoot))}（録音を始めるには {UserMessages.Bytes(_minFreeBytes)} 以上が必要）";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return "空き容量 不明";
+        }
+    }
+
+    public ObservableCollection<string> EnvironmentStatus { get; } = [];
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckEnvironmentCommand))]
+    public partial bool IsCheckingEnvironment { get; set; }
+
+    private bool CanCheckEnvironment() => !IsCheckingEnvironment;
+
+    /// <summary>
+    /// UI-01: checks in one go what the app needs, without the network: the workspace can be written and has room, the
+    /// selected whisper model and the record engine's files are here and match their registered SHA-256 (the engine is
+    /// not started). When all pass, the app works offline (recording, transcription and records).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCheckEnvironment))]
+    private async Task CheckEnvironmentAsync()
+    {
+        IsCheckingEnvironment = true;
+        EnvironmentStatus.Clear();
+        EnvironmentStatus.Add("確認しています…（モデルの SHA-256 の計算に数秒かかります）");
+        var lines = new List<string>();
+        var ok = true;
+        var probe = Path.Combine(WorkspaceRoot, $".write-check-{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(probe, [1]);
+            lines.Add($"✓ 保存先に書き込めます（{WorkspaceRoot}）");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ok = false;
+            lines.Add($"✗ 保存先に書き込めません（{ex.Message}）。");
+        }
+        finally
+        {
+            try { File.Delete(probe); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        if (_disk is not null)
+        {
+            FreeSpaceText = FreeSpace();
+            long? free = null;
+            try { free = _disk.GetAvailableBytes(WorkspaceRoot); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { }
+            if (free is not { } f) lines.Add("⚠ 空き容量を調べられませんでした。");
+            else if (f < _minFreeBytes)
+            {
+                ok = false;
+                lines.Add($"✗ {UserMessages.NotEnoughSpace(f, _minFreeBytes)}");
+            }
+            else lines.Add($"✓ 空き容量 {UserMessages.Bytes(f)}");
+        }
+        try
+        {
+            var info = await _engine.VerifyAsync(new SttConfiguration { ModelName = ModelName, UseVad = UseVad }, CancellationToken.None);
+            lines.Add($"✓ 文字起こし: whisper-cli（{info.EngineName} {info.EngineVersion}）と {UserMessages.ModelLabel(ModelName)}" + (UseVad ? "、VAD モデル" : string.Empty));
+        }
+        catch (SttException ex)
+        {
+            ok = false;
+            lines.Add($"✗ 文字起こし: {UserMessages.SttError(ex.Code)}（{ex.Message}）");
+        }
+        if (_llmTools is not null && _llmStore is not null)
+        {
+            var modelId = _llmStore.Load().ModelId;
+            try
+            {
+                if (!_llmTools.Models.TryGetValue(modelId, out var model))
+                    throw new LlmUnavailableException($"モデル「{modelId}」は推論エンジンに登録されていません。");
+                await Task.Run(() => LlmToolCheck.Verify(_llmTools.LlamaServer, model));
+                lines.Add($"✓ 記録の作成: 推論エンジン（llama.cpp {_llmTools.LlamaServer.Version}）とモデル {modelId}（起動はしていません。［接続を確認］で起動を試せます）");
+            }
+            catch (LlmUnavailableException ex)
+            {
+                ok = false;
+                lines.Add($"✗ 記録の作成: {ex.Message}");
+            }
+        }
+        lines.Add(ok
+            ? "✓ 必要なファイルはすべてこの PC にあります。インターネットに接続しなくても、録音・文字起こし・記録の作成ができます（このアプリは外部と通信しません）。"
+            : "✗ の項目を直すまで、その機能は使えません。原音の録音は、文字起こしや記録のツールがなくてもできます。");
+        EnvironmentStatus.Clear();
+        foreach (var l in lines) EnvironmentStatus.Add(l);
+        IsCheckingEnvironment = false;
     }
 
     private void ShowLlm(LlmSettings settings)

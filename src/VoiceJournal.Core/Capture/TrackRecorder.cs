@@ -218,15 +218,7 @@ internal sealed class TrackRecorder : IDisposable
 
     private void UpdatePeak(ReadOnlySpan<byte> data)
     {
-        float peak = 0;
-        if (_format.Encoding == AudioSampleEncoding.IeeeFloat && _format.BitsPerSample == 32)
-        {
-            foreach (var s in MemoryMarshal.Cast<byte, float>(data)) peak = Math.Max(peak, Math.Abs(s));
-        }
-        else if (_format.Encoding == AudioSampleEncoding.Pcm && _format.BitsPerSample == 16)
-        {
-            foreach (var s in MemoryMarshal.Cast<byte, short>(data)) peak = Math.Max(peak, Math.Abs(s / 32768f));
-        }
+        var peak = AudioPeak.Of(data, _format);
         if (peak > _peak) _peak = peak; // single capture thread per source; a lost race only affects the meter
     }
 

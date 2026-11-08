@@ -174,6 +174,30 @@ internal static class UserMessages
         _ => status.ToString(),
     };
 
+    /// <summary>One line of the capture test (UI-01) for a source.</summary>
+    public static string CaptureCheck(CaptureCheckResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var who = $"{SourceName(result.Source)}（{result.DeviceName}）";
+        if (result.Error is { } error) return $"✗ {who}: {StartFailure(error)}";
+        var level = double.IsNegativeInfinity(result.PeakDbfs) ? "無音" : string.Create(CultureInfo.InvariantCulture, $"最大 {result.PeakDbfs:0} dBFS");
+        var gaps = result.Discontinuities > 0 ? $"（途切れ {result.Discontinuities} 回）" : string.Empty;
+        var arrived = string.Create(CultureInfo.InvariantCulture, $"{result.Received.TotalSeconds:0.0} 秒分");
+        if (result.Source == AudioSource.Loopback)
+        {
+            return result.Audible
+                ? $"✓ {who}: PC の音が届きました（{level}）{gaps}。"
+                : $"⚠ {who}: PC の音が届きませんでした（{arrived}、{level}）。PC で音が鳴っていない間は届かないので、動画などを再生しながらもう一度試してください。";
+        }
+        if (!result.Arrived)
+            return $"⚠ {who}: {result.Expected.TotalSeconds:0} 秒のうち {arrived}しか届きませんでした{gaps}。デバイスの接続を確かめてください。";
+        if (!result.Audible)
+            return $"⚠ {who}: 音は届きましたが、ほぼ無音でした（{level}）。マイクのミュート、Windows の入力音量、選んだマイクが正しいかを確かめてください。";
+        return result.Peak >= 0.99f
+            ? $"⚠ {who}: 音が大きすぎて割れています（{level}）{gaps}。Windows の入力音量を下げてください。"
+            : $"✓ {who}: 音が届きました（{arrived}、{level}）{gaps}。";
+    }
+
     /// <summary>Why recording could not start, with what the user can do about it.</summary>
     public static string StartFailure(Exception error)
     {

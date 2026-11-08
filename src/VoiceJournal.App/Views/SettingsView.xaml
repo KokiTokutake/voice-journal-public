@@ -105,10 +105,22 @@
         <!-- Storage -->
         <Border Style="{StaticResource Card}">
             <StackPanel>
-                <TextBlock Text="保存先" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="保存先と環境の確認" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="{Binding WorkspaceRoot}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding FreeSpaceText}" TextWrapping="Wrap" Margin="0,4,0,0" />
                 <TextBlock Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="保存先の変更、管理ファイル、バックアップなどの設定は後のフェーズで追加します。" />
+                           Text="既定の保存先は %LOCALAPPDATA%\VoiceJournal\Workspace で、OneDrive などの同期フォルダーには置きません。管理ファイルとバックアップは「管理」タブで扱います。マイクとデバイスは「録音」タブの［10 秒の録音テスト］で確かめられます。" />
+                <!-- UI-01: storage, tools and models in one check; all present means the app works offline -->
+                <Button Content="環境をまとめて確認(_W)" Tag="&#xE9D9;" Command="{Binding CheckEnvironmentCommand}" Style="{StaticResource ActionButton}"
+                        HorizontalAlignment="Left" Margin="0,10,0,6"
+                        ToolTip="保存先に書き込めるか、空き容量、文字起こしと記録の作成に使うファイルがそろっているかを確かめます（ネットワークは使いません）" />
+                <ItemsControl ItemsSource="{Binding EnvironmentStatus}" AutomationProperties.Name="環境の確認結果">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </Border>
     </StackPanel>

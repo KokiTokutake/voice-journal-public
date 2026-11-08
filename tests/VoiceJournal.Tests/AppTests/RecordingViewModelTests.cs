@@ -39,6 +39,45 @@ public sealed class RecordingViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TheCaptureTest_ListensToTheSelectedDevices_WithoutMakingASession() // UI-01 10 秒録音テスト
+    {
+        _vm.CaptureTestDuration = TimeSpan.FromMilliseconds(300);
+        _vm.UseRawMic = false;
+
+        var test = _vm.TestCaptureCommand.ExecuteAsync(null);
+        Assert.True(_vm.IsTestingCapture);
+        Assert.False(_vm.StartCommand.CanExecute(null)); // recording waits for the test
+        Assert.Contains("保存はしません", _vm.CaptureTestResult, StringComparison.Ordinal);
+        var mic = _catalog.Latest(AudioSource.Mic);
+        var loopback = _catalog.Latest(AudioSource.Loopback);
+        mic.Push(new byte[(int)(mic.Format.AverageBytesPerSecond * 0.3)].Select((_, i) => (byte)(i % 2 == 1 ? 0x10 : 0)).ToArray()); // about −18 dBFS
+        await test;
+
+        Assert.False(_vm.IsTestingCapture);
+        Assert.True(_vm.StartCommand.CanExecute(null));
+        Assert.Equal(MicProcessingMode.Normal, _catalog.Created.Single(c => c.Source == AudioSource.Mic).Mode); // the selected settings
+        var lines = _vm.CaptureTestResult!.Split('\n');
+        Assert.StartsWith("✓ マイク（USB マイク）: 音が届きました", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("⚠ PC 内部音声（ヘッドホン）: PC の音が届きませんでした", lines[1], StringComparison.Ordinal);
+        Assert.False(mic.IsCapturing);
+        Assert.False(loopback.IsCapturing);
+        Assert.Empty(Directory.EnumerateDirectories(Path.Combine(_workspace.Root, "sessions"))); // nothing saved
+    }
+
+    [Fact]
+    public async Task TheCaptureTest_SaysWhyADeviceCannotOpen()
+    {
+        _vm.CaptureTestDuration = TimeSpan.FromMilliseconds(100);
+        _vm.Mode = CaptureMode.Mic;
+        _catalog.StartErrors[AudioSource.Mic] = new AudioDeviceException(AudioDeviceErrorKind.AccessDenied, "denied");
+
+        await _vm.TestCaptureCommand.ExecuteAsync(null);
+
+        Assert.Contains("✗ マイク（USB マイク）: マイクへのアクセスが許可されていません", _vm.CaptureTestResult, StringComparison.Ordinal);
+        Assert.Single(_catalog.Created);
+    }
+
+    [Fact]
     public void Defaults_FollowTheSpec()
     {
         Assert.Equal(CaptureMode.Both, _vm.Mode);
