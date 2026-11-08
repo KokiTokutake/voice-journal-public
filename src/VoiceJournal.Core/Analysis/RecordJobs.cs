@@ -313,6 +313,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
     private CancellationTokenSource? _current;
     private Guid? _currentJob;
     private bool _recording;
+    private bool _held;
     private bool _preempting;
     private int _disposed;
 
@@ -415,6 +416,18 @@ public sealed class RecordJobRunner : IAsyncDisposable
         JobChanged?.Invoke(this, new RecordJobChange(sessionDirectory, job));
     }
 
+    /// <summary>UI-03 キュー保留: while held, queued records wait; the running one finishes. Not saved.</summary>
+    public void SetHeld(bool held)
+    {
+        lock (_lock) _held = held;
+        if (!held) _signal.Release();
+    }
+
+    public bool IsHeld
+    {
+        get { lock (_lock) return _held; }
+    }
+
     /// <summary>Recording started: the running request is cancelled and the job waits. Stopped: the queue continues.</summary>
     public void SetRecording(bool recording)
     {
@@ -455,7 +468,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
                 return;
             }
             lock (_lock)
-                if (_recording || _queue.Count == 0) continue;
+                if (_recording || _held || _queue.Count == 0) continue;
 
             IDisposable slot;
             try
@@ -471,7 +484,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
                 (string Dir, Guid JobId) next;
                 lock (_lock)
                 {
-                    if (_recording || _queue.Count == 0) continue; // recording started while waiting for the recognizer
+                    if (_recording || _held || _queue.Count == 0) continue; // recording started (or a hold) while waiting for the recognizer
                     next = _queue.First!.Value;
                     _queue.RemoveFirst();
                     _current = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -499,7 +512,7 @@ public sealed class RecordJobRunner : IAsyncDisposable
                         _current?.Dispose();
                         _current = null;
                         _currentJob = null;
-                        if (_queue.Count > 0 && !_recording) _signal.Release();
+                        if (_queue.Count > 0 && !_recording && !_held) _signal.Release();
                     }
                 }
             }

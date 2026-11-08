@@ -96,6 +96,21 @@ public sealed class RecordJobTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task WhileTheQueueIsHeld_NoRecordStarts_AndItStartsWhenTheHoldIsLifted() // UI-03 キュー保留
+    {
+        var dir = Session(10);
+        _runner.SetHeld(true);
+        var job = _runner.Enqueue(dir, Guid.Empty, Settings);
+
+        await Task.Delay(300);
+        Assert.Empty(_llm.Requests);
+        Assert.Equal(ProcessingState.Queued, RecordJobStore.Load(dir, job.JobId).State);
+
+        _runner.SetHeld(false);
+        await WaitFor(() => RecordJobStore.Load(dir, job.JobId).State == ProcessingState.ReadyForReview, "ready after the hold");
+    }
+
+    [Fact]
     public async Task ServerDown_FailsWithLlm001_AndRetryWorksOnceItIsUp()
     {
         var dir = Session(10);

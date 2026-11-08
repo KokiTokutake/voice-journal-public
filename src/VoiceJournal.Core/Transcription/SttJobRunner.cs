@@ -23,6 +23,7 @@ public sealed class SttJobRunner : IAsyncDisposable
     private CancellationTokenSource? _current;
     private Guid? _currentJob;
     private bool _recording;
+    private bool _held;
     private int _disposed;
 
     public SttJobRunner(SttJobProcessor processor, TimeProvider? time = null, Analysis.InferenceGate? inference = null)
@@ -168,6 +169,20 @@ public sealed class SttJobRunner : IAsyncDisposable
 
     public bool IsPaused => _pause.IsPaused;
 
+    /// <summary>
+    /// UI-03 キュー保留: while held, queued jobs wait; the running one finishes. Not saved: the next start runs the queue.
+    /// </summary>
+    public void SetHeld(bool held)
+    {
+        lock (_gate) _held = held;
+        if (!held) _signal.Release();
+    }
+
+    public bool IsHeld
+    {
+        get { lock (_gate) return _held; }
+    }
+
     private async Task WorkAsync()
     {
         var token = _stopping.Token;
@@ -183,7 +198,7 @@ public sealed class SttJobRunner : IAsyncDisposable
             }
 
             lock (_gate)
-                if (_recording || _queue.Count == 0) continue; // woken again when recording ends or a job is added
+                if (_recording || _held || _queue.Count == 0) continue; // woken again when recording ends, the hold is lifted or a job is added
             IDisposable? slot = null;
             if (_inference is not null)
             {
@@ -201,7 +216,7 @@ public sealed class SttJobRunner : IAsyncDisposable
             (string Dir, Guid JobId) next;
             lock (_gate)
             {
-                if (_recording || _queue.Count == 0) continue; // woken again when recording ends or a job is added
+                if (_recording || _held || _queue.Count == 0) continue; // woken again when recording ends, the hold is lifted or a job is added
                 next = _queue.First!.Value;
                 _queue.RemoveFirst();
                 _current = CancellationTokenSource.CreateLinkedTokenSource(token);

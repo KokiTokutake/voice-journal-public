@@ -141,6 +141,26 @@ public sealed partial class ProcessingViewModel : ObservableObject
     [ObservableProperty]
     public partial string? Message { get; set; }
 
+    /// <summary>UI-03 キュー保留: queued transcriptions and records wait; the running one finishes.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HoldLabel))]
+    public partial bool IsQueueHeld { get; set; }
+
+    public string HoldLabel => IsQueueHeld ? "保留を解除(_H)" : "順番待ちを保留(_H)";
+
+    [RelayCommand]
+    private void ToggleHold()
+    {
+        var held = !IsQueueHeld;
+        _transcription.Runner.SetHeld(held);
+        _records?.Runner.SetHeld(held);
+        IsQueueHeld = held;
+        UpdatePaused();
+        Message = held
+            ? "順番待ちの処理を保留しました。実行中の処理は最後まで続け、次の処理は始めません（アプリを起動し直すと保留は解けます）。"
+            : "保留を解除しました。順番待ちの処理を続けます。";
+    }
+
     /// <summary>Set by the app: writes the diagnostics report (no transcript or item text) and returns its path.</summary>
     public Func<string>? WriteDiagnostics { get; set; }
 
@@ -194,7 +214,9 @@ public sealed partial class ProcessingViewModel : ObservableObject
     }
 
     private void UpdatePaused() =>
-        PausedText = _transcription.Runner.IsPaused ? "録音中のため一時停止しています。録音が終わると続きから再開します。" : null;
+        PausedText = _transcription.Runner.IsPaused ? "録音中のため一時停止しています。録音が終わると続きから再開します。"
+            : IsQueueHeld ? "順番待ちを保留しています。［保留を解除］を押すと続きを始めます。"
+            : null;
 
     private void QueueRefresh()
     {

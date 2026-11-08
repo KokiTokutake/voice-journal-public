@@ -27,6 +27,8 @@
                         ToolTip="順番待ちか実行中の処理を取り消します。終わった区間と録音は残ります" />
                 <Button Content="続きからやり直す(_T)" Tag="&#xE72C;" Command="{Binding RetryCommand}" Style="{StaticResource ActionButton}"
                         ToolTip="失敗・取り消しした処理を、終わった区間はそのままに残りだけ実行します" />
+                <Button Content="{Binding HoldLabel}" Tag="&#xE769;" Command="{Binding ToggleHoldCommand}" Style="{StaticResource ActionButton}"
+                        ToolTip="順番待ちの文字起こしと記録の作成を始めないでおきます（実行中の処理は最後まで続けます）" />
                 <Button Content="一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" />
                 <Button Content="診断情報を書き出す(_D)" Tag="&#xE9D9;" Command="{Binding ExportDiagnosticsCommand}" Style="{StaticResource ActionButton}"
                         ToolTip="版・ハッシュ・設定・件数・エラーコードを logs フォルダーに書き出します。文字起こしや課題・タスクの本文は含みません" />

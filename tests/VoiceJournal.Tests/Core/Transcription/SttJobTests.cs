@@ -454,6 +454,26 @@ public sealed class SttJobRunnerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task WhileTheQueueIsHeld_NoJobStarts_AndItStartsWhenTheHoldIsLifted() // UI-03 キュー保留
+    {
+        _runner.SetHeld(true);
+        var (dir, id) = Session();
+        var job = _runner.Enqueue(dir, id, JobSession.Config);
+
+        await Task.Delay(300);
+        Assert.True(_runner.IsHeld);
+        Assert.Empty(_engine.Runs);
+        Assert.Equal(ProcessingState.Queued, StateOf(dir, job));
+        _runner.SetRecording(true);
+        _runner.SetRecording(false); // the end of a recording does not lift the hold
+        await Task.Delay(200);
+        Assert.Empty(_engine.Runs);
+
+        _runner.SetHeld(false);
+        await JobSession.Until(() => StateOf(dir, job) == ProcessingState.Transcribed, "job after the hold");
+    }
+
+    [Fact]
     public async Task ARecordingPausesTheRunningRecognizer_ThroughTheGate()
     {
         using var started = new ManualResetEventSlim();
