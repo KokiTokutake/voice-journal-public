@@ -37,7 +37,10 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="24,8,24,24">
+    <!-- AT-25 / 18.1: below the minimum size (e.g. 200 % scaling on a small screen) the page scrolls instead of squeezing -->
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <Border Padding="24,8,24,24" MinHeight="520" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <Grid>
         <!-- Nothing opened yet -->
         <TextBlock Margin="12,16" TextWrapping="Wrap"
                    Text="ライブラリでセッションを選び、「記録を開く」を押すと、ここに表示します。">
@@ -275,4 +278,6 @@
             </Grid>
         </DockPanel>
     </Grid>
+    </Border>
+    </ScrollViewer>
 </UserControl>

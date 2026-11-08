@@ -63,8 +63,9 @@
     </UserControl.Resources>
 
     <!-- AT-25 / 18.1: below about 1100x720 the page scrolls instead of squeezing the cards; above, it fills the window -->
-    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="24,8,24,16" Focusable="False">
-    <DockPanel MinHeight="560" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <Border Padding="24,8,24,16" MinHeight="560" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <DockPanel>
         <!-- Session and refresh -->
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
             <TextBlock Text="課題・タスクの候補のレビュー" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
@@ -224,5 +225,6 @@
             </DockPanel>
         </Grid>
     </DockPanel>
+    </Border>
     </ScrollViewer>
 </UserControl>

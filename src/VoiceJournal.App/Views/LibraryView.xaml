@@ -5,7 +5,10 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:LibraryViewModel}">
-    <DockPanel Margin="24,8,24,24">
+    <!-- AT-25 / 18.1: below the minimum size (e.g. 200 % scaling on a small screen) the page scrolls instead of squeezing -->
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <Border Padding="24,8,24,24" MinHeight="460" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <DockPanel>
         <!-- Search and refresh -->
         <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
             <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" VerticalAlignment="Center" Margin="12,0,0,0" Style="{StaticResource Note}" />
@@ -64,4 +67,6 @@
             </DataGrid>
         </Border>
     </DockPanel>
+    </Border>
+    </ScrollViewer>
 </UserControl>

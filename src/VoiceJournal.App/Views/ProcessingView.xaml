@@ -5,7 +5,10 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:VoiceJournal.App.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:ProcessingViewModel}">
-    <DockPanel Margin="24,8,24,24">
+    <!-- AT-25 / 18.1: below the minimum size (e.g. 200 % scaling on a small screen) the page scrolls instead of squeezing -->
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <Border Padding="24,8,24,24" MinHeight="440" Height="{Binding ViewportHeight, ElementName=PageScroll}">
+    <DockPanel>
         <!-- The running job: stage, piece and measured progress only (no guessed remaining time, detail spec 3.2) -->
         <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,12">
             <StackPanel>
@@ -54,4 +57,6 @@
             </DataGrid>
         </Border>
     </DockPanel>
+    </Border>
+    </ScrollViewer>
 </UserControl>
