@@ -405,6 +405,38 @@ public sealed class ApplyEngineTests : IDisposable
         Assert.Equal((2, 2), (mentioned.Revision, mentioned.Evidence.Count));
     }
 
+    /// <summary>Another program writes the target at a given step (instead of the app stopping there).</summary>
+    private sealed class WriteAt(ApplyStep point, int sequence, string path, string text) : IApplyFaults
+    {
+        public void At(ApplyStep step, int seq)
+        {
+            if (step == point && seq == sequence) File.WriteAllText(path, text);
+        }
+    }
+
+    [Fact]
+    public void AFileSwappedJustBeforeTheReplacement_StopsTheApply_AndTheSwappedContentIsKept() // AT-16: path swap
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var item = _store.Items().Single();
+        var saved = Plan(M.R(M.C("C0002", "x", action: CandidateAction.Update, target: item.Id, description: "金額を直す", changed: [ItemField.Description]), ReviewChoice.Update, item.Id, 1));
+
+        var result = Engine(new WriteAt(ApplyStep.BeforeReplace, 1, Tasks, "別のプログラムが置いた内容")).Apply(saved.BatchId);
+
+        Assert.Equal(ApplyOutcome.RecoveryRequired, result.Outcome);
+        Assert.Equal("recovery_required", State(saved.BatchId));
+        var kept = Directory.GetFiles(Path.Combine(_store.FullPath(_store.Batches().Single(b => b.BatchId == saved.BatchId).PlanPath), "replaced"));
+        Assert.Equal("別のプログラムが置いた内容", File.ReadAllText(Assert.Single(kept))); // never lost
+        Assert.Equal(1, _store.Items().Single().Revision); // the database is not confirmed
+    }
+
+    [Theory]
+    [InlineData(@"\\server\share\management\tasks.md", @"\\server\share")]
+    [InlineData(@"\\?\UNC\server\share\management\tasks.md", @"\\?\UNC\server\share")]
+    public void ANetworkPath_IsNotWritten(string path, string root) => // AT-16: network
+        Assert.Throws<UnauthorizedAccessException>(() => ManagedFileGuard.CheckLocation(path, root));
+
     [Fact]
     public void AFolderRedirectedByAJunction_IsNotWritten() // AT-16: reparse point
     {
