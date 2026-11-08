@@ -128,8 +128,9 @@ public sealed partial class SectionRowViewModel : ObservableObject
 /// <summary>An issue or task candidate (read-only in Phase D: 未反映).</summary>
 public sealed class CandidateRowViewModel
 {
-    internal CandidateRowViewModel(RecordCandidate candidate, IReadOnlyList<EvidenceLink> evidence)
+    internal CandidateRowViewModel(RecordCandidate candidate, IReadOnlyList<EvidenceLink> evidence, string? state = null)
     {
+        State = state ?? "未反映";
         var c = candidate.Candidate;
         KindText = UserMessages.CandidateKindName(c.Kind);
         Title = c.Fields.Title;
@@ -158,8 +159,8 @@ public sealed class CandidateRowViewModel
 
     public string Rationale { get; }
 
-    /// <summary>Phase D never writes the management files; every candidate stays 未反映 (detail spec 10.2).</summary>
-    public static string StateText => "未反映";
+    /// <summary>未反映, 反映待ち or 反映済み（TSK-000001） (detail spec 10.2, 14.2-8: the record links to what was applied).</summary>
+    public string State { get; }
 
     public IReadOnlyList<EvidenceLink> Evidence { get; }
 }
@@ -182,6 +183,9 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     private TranscriptDocument? _transcript;
     private Guid? _activeJob;
     private bool _switching;
+
+    /// <summary>Set by the window: where a candidate stands on the 「管理」 page (null: not applied).</summary>
+    public Func<Core.Management.CandidateKey, string?>? CandidateState { get; set; }
 
     public RecordReviewViewModel(IRecordService records, IAudioPlayer player, IUiDispatcher ui, TimeProvider? time = null)
     {
@@ -409,7 +413,9 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             OnPropertyChanged(nameof(RecordTitle));
             BuildBlocks(doc, IsLatest ? null : latest);
             Candidates.Clear();
-            foreach (var c in doc.Candidates) Candidates.Add(new CandidateRowViewModel(c, Links(c.Candidate.Evidence)));
+            var analysis = doc.Provenance.AnalysisRevision ?? doc.Revision;
+            foreach (var c in doc.Candidates)
+                Candidates.Add(new CandidateRowViewModel(c, Links(c.Candidate.Evidence), CandidateState?.Invoke(new Core.Management.CandidateKey(doc.SessionId, analysis, c.Candidate.CandidateId))));
             OnPropertyChanged(nameof(CandidatesHeader));
             UpdateStatus();
             var p = doc.Provenance;

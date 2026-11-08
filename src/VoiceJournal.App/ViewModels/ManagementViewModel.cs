@@ -426,6 +426,14 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     public bool CanApply => _engine is not null;
 
+    /// <summary>For the record page (14.2-8): 「反映済み（TSK-000001）」, 「反映待ち」 or null (not applied).</summary>
+    public string? StateOf(CandidateKey key)
+    {
+        if (_store.AppliedItems().TryGetValue(key, out var itemId))
+            return _store.Items().FirstOrDefault(i => i.Id == itemId) is { } item ? $"反映済み（{item.DisplayId}）" : "反映済み";
+        return _store.Pending().Keys.Contains(key) ? "反映待ち" : null;
+    }
+
     /// <summary>
     /// At start-up, off the UI thread: finishes or stops batches a crash left half applied (detail spec 14.3). What it did
     /// is shown on the 「管理」 page.

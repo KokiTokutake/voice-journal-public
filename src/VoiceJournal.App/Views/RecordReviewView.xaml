@@ -245,7 +245,7 @@
                                 <!-- Candidates (read-only in Phase D) -->
                                 <TextBlock Text="{Binding CandidatesHeader}" Style="{StaticResource SectionTitle}" Margin="0,20,0,4" />
                                 <TextBlock Style="{StaticResource Note}" TextWrapping="Wrap"
-                                           Text="候補は提案です。記録を承認しても、課題・タスクの管理ファイルには書き込みません。候補は「管理」タブで 1 件ずつ確かめて承認します。" />
+                                           Text="候補は提案です。記録を承認しても、課題・タスクの管理ファイルには書き込みません。候補は「管理」タブで確かめて承認し、反映します。" />
                                 <Button Content="課題・タスクのレビューへ(_T)" Command="{Binding OpenManagementCommand}" Style="{StaticResource ActionButton}"
                                         HorizontalAlignment="Left" Margin="0,6,0,0" />
                                 <ItemsControl ItemsSource="{Binding Candidates}" Focusable="False">
@@ -254,7 +254,7 @@
                                             <Border BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" CornerRadius="8" Padding="12,8" Margin="0,8,0,0">
                                                 <StackPanel>
                                                     <TextBlock TextWrapping="Wrap">
-                                                        <Run Text="{Binding KindText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　" /><Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　［" /><Run Text="{x:Static vm:CandidateRowViewModel.StateText}" /><Run Text="］" />
+                                                        <Run Text="{Binding KindText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　" /><Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　［" /><Run Text="{Binding State, Mode=OneWay}" /><Run Text="］" />
                                                     </TextBlock>
                                                     <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Margin="0,4,0,0" />
                                                     <TextBlock Text="{Binding DetailText}" Style="{StaticResource Note}" TextWrapping="Wrap" Margin="0,4,0,0" />
