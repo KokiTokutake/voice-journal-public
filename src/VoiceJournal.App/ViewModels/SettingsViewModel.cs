@@ -59,6 +59,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowNextWorkspace();
     }
 
+    /// <summary>UI-12 管理パス: the management files the app writes (fixed in v1).</summary>
+    public string ManagementFilesText =>
+        $"課題: {Path.Combine(WorkspaceRoot, Infrastructure.Storage.ManagementStore.IssuesPath.Replace('/', Path.DirectorySeparatorChar))}\n" +
+        $"タスク: {Path.Combine(WorkspaceRoot, Infrastructure.Storage.ManagementStore.TasksPath.Replace('/', Path.DirectorySeparatorChar))}";
+
+    /// <summary>UI-12 保持 (14.4): what is kept and for how long.</summary>
+    public static string RetentionText =>
+        $"反映前のバックアップ: 反映から {Infrastructure.Storage.ManagementStore.BackupRetentionDays} 日（直近 {Infrastructure.Storage.ManagementStore.BackupsAlwaysKept} 回と、途中で止まった反映・見送った反映は期限なし）。" +
+        "原音・文字起こし・記録は自動では消しません。容量が足りなくなっても、承認なしに古い原音やバックアップは消しません。";
+
     public bool CanChangeWorkspace => _dialogs is not null && _location is not null;
 
     /// <summary>Set when the folder used from the next start differs from the one in use.</summary>

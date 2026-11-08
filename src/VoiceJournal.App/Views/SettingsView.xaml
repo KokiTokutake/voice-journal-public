@@ -82,6 +82,22 @@
             </StackPanel>
         </Border>
 
+        <!-- UI-12: management files, retention, privacy (shown; changing them is not offered in v1) -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="管理ファイル・保持・プライバシー" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="管理ファイル" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding ManagementFilesText, Mode=OneWay}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                <TextBlock Style="{StaticResource Note}" TextWrapping="Wrap" Margin="0,2,0,8"
+                           Text="追記だけにする設定と、今使っている Markdown の取込みは「管理」タブにあります。" />
+                <TextBlock Text="保持" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Static vm:SettingsViewModel.RetentionText}" TextWrapping="Wrap" Margin="0,2,0,8" />
+                <TextBlock Text="プライバシー" FontWeight="SemiBold" />
+                <TextBlock TextWrapping="Wrap" Margin="0,2,0,0"
+                           Text="このアプリはインターネットに接続しません（推論エンジンはこの PC の中だけで動き、外部から接続できません）。自動更新や利用状況の送信はありません。ログには時刻・エラーコード・処理時間などだけを残し、原音・文字起こし・プロンプトの本文は残しません。録音や文字起こしは暗号化せずに保存するので、必要なら BitLocker などでドライブを暗号化してください。" />
+            </StackPanel>
+        </Border>
+
         <!-- Tools -->
         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
             <StackPanel>
