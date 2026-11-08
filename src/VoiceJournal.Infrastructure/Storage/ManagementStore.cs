@@ -469,6 +469,15 @@ public sealed class ManagementStore
         return folder;
     }
 
+    /// <summary>How many items use the session as evidence (shown before the session is deleted).</summary>
+    public int ItemsWithEvidenceFrom(Guid sessionId) => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(DISTINCT item_id) FROM item_evidence WHERE session_id = $session";
+        cmd.Parameters.AddWithValue("$session", DbText.Id(sessionId));
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    });
+
     /// <summary>Sessions that have a record (newest first), with the number of candidates of their latest analysis.</summary>
     public IReadOnlyList<ReviewableSession> SessionsWithRecords() => _db.Read(c =>
     {

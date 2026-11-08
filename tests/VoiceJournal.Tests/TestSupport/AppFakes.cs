@@ -99,6 +99,20 @@ public sealed class FakeDialogs : IDialogService
     public string? PickedFile { get; set; }
 
     public string? PickFile(string title, string filter) => PickedFile;
+
+    public string? PickedFolder { get; set; }
+
+    public string? PickFolder(string title) => PickedFolder;
+
+    public bool ConfirmAnswer { get; set; }
+
+    public List<string> Confirmations { get; } = [];
+
+    public bool Confirm(string title, string message)
+    {
+        Confirmations.Add($"{title}: {message}");
+        return ConfirmAnswer;
+    }
 }
 
 public sealed class FakePower : IPowerService

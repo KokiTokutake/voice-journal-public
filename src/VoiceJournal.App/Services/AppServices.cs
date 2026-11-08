@@ -34,6 +34,12 @@ public interface IDialogService
 
     /// <summary>Asks for an existing file to open (null when cancelled).</summary>
     string? PickFile(string title, string filter) => null;
+
+    /// <summary>Asks for a folder (null when cancelled).</summary>
+    string? PickFolder(string title) => null;
+
+    /// <summary>A yes / no question; true only when the user answers yes.</summary>
+    bool Confirm(string title, string message) => false;
 }
 
 /// <summary>Sleep prevention and suspend / resume notifications.</summary>

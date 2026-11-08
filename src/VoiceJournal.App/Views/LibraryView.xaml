@@ -32,6 +32,10 @@
                     <Button Content="文字起こしを開く(_E)" Tag="&#xE8A5;" Command="{Binding OpenTranscriptCommand}" Style="{StaticResource AccentActionButton}" />
                     <Button Content="記録を開く(_O)" Tag="&#xE7C3;" Command="{Binding OpenRecordCommand}" Style="{StaticResource AccentActionButton}"
                             ToolTip="要約・章・課題とタスクの候補を確かめて承認する画面を開きます（記録がなければそこで作れます）" />
+                    <Button Content="書き出す(_W)" Tag="&#xEDE1;" Command="{Binding ExportCommand}" Style="{StaticResource ActionButton}"
+                            ToolTip="記録と文字起こしを Markdown で、選んだフォルダーに書き出します" />
+                    <Button Content="削除(_D)" Tag="&#xE74D;" Command="{Binding DeleteCommand}" Style="{StaticResource ActionButton}"
+                            ToolTip="確かめてから、セッションをワークスペースの trash フォルダーへ移します（すぐには消しません）" />
                 </WrapPanel>
                 <TextBlock Text="{Binding NowPlaying}" VerticalAlignment="Center" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
                            Style="{StaticResource Note}" AutomationProperties.LiveSetting="Polite" />

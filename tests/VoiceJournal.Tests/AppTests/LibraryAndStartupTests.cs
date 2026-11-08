@@ -66,6 +66,48 @@ public sealed class LibraryAndStartupTests : IDisposable
     }
 
     [Fact]
+    public async Task Export_WritesTheRecordAndTranscript_IntoAFolderNamedAfterTheSession() // UI-04
+    {
+        var dir = await Record("週次定例", "VJ", CaptureMode.Mic, TimeSpan.FromSeconds(5));
+        File.WriteAllText(Path.Combine(dir, "record.draft.md"), "# 草稿");
+        File.WriteAllText(Path.Combine(dir, "transcript.md"), "# 文字起こし");
+        _index.Rebuild();
+        await _library.RefreshAsync();
+        _library.Dialogs = _dialogs;
+        _dialogs.PickedFolder = Directory.CreateDirectory(_dir.File("Exports")).FullName;
+        _library.Selected = _library.Sessions.Single();
+
+        _library.ExportCommand.Execute(null);
+
+        var target = Assert.Single(Directory.GetDirectories(_dialogs.PickedFolder));
+        Assert.Contains("週次定例", Path.GetFileName(target), StringComparison.Ordinal);
+        Assert.Equal(["record.draft.md", "transcript.md"], Directory.GetFiles(target).Select(Path.GetFileName).Order());
+        Assert.Contains("2 個のファイル", _library.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Delete_AsksFirst_AndMovesTheSessionToTrash_WithoutErasingIt() // UI-04, 14.4
+    {
+        var dir = await Record("消す録音", null, CaptureMode.Mic, TimeSpan.FromSeconds(5));
+        _index.Rebuild();
+        await _library.RefreshAsync();
+        _library.Dialogs = _dialogs;
+        _library.ItemReferences = _ => 2;
+        _library.Selected = _library.Sessions.Single();
+
+        _dialogs.ConfirmAnswer = false;
+        await _library.DeleteCommand.ExecuteAsync(null);
+        Assert.True(Directory.Exists(dir)); // declined: nothing moves
+        Assert.Contains("課題・タスク 2 件の根拠", Assert.Single(_dialogs.Confirmations), StringComparison.Ordinal);
+
+        _dialogs.ConfirmAnswer = true;
+        await _library.DeleteCommand.ExecuteAsync(null);
+        Assert.False(Directory.Exists(dir));
+        Assert.True(Directory.Exists(Path.Combine(_workspace.Root, "trash", Path.GetFileName(dir))));
+        Assert.Empty(_library.Sessions);
+    }
+
+    [Fact]
     public async Task Library_PlaysATrack_AndOpensTheFolder()
     {
         await Record("再生テスト", null, CaptureMode.Both, TimeSpan.FromSeconds(70), chunk: TimeSpan.FromSeconds(30));

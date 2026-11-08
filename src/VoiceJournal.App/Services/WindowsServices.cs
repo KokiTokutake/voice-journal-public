@@ -41,6 +41,15 @@ public sealed class WpfDialogService : IDialogService
         return dialog.ShowDialog(Owner()) == true ? dialog.FileName : null;
     }
 
+    public string? PickFolder(string title)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = title, Multiselect = false };
+        return dialog.ShowDialog(Owner()) == true ? dialog.FolderName : null;
+    }
+
+    public bool Confirm(string title, string message) =>
+        MessageBox.Show(Owner(), message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
     private static Window Owner() => Application.Current.MainWindow;
 }
 

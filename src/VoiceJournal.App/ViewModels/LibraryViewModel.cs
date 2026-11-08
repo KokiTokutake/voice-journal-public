@@ -118,8 +118,78 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial string SearchText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand), nameof(TranscribeCommand), nameof(OpenTranscriptCommand), nameof(OpenRecordCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand), nameof(PlayMicCommand), nameof(PlayLoopbackCommand), nameof(TranscribeCommand), nameof(OpenTranscriptCommand), nameof(OpenRecordCommand),
+        nameof(ExportCommand), nameof(DeleteCommand))]
     public partial SessionRowViewModel? Selected { get; set; }
+
+    /// <summary>Set by the app: asks and answers (pick a folder, confirm a deletion).</summary>
+    public IDialogService? Dialogs { get; set; }
+
+    /// <summary>Set by the app: how many management items use the session as evidence (shown before deleting).</summary>
+    public Func<Guid, int>? ItemReferences { get; set; }
+
+    /// <summary>
+    /// UI-04 「書き出す」: the record (approved, else the draft) and the transcript as Markdown into a folder the user picks,
+    /// under 「日時 タイトル」. The original audio stays in the workspace.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private void Export()
+    {
+        if (Selected is not { } row || Dialogs?.PickFolder("書き出す先のフォルダーを選ぶ") is not { } folder) return;
+        var name = string.Concat($"{row.StartedText} {row.TitleText}".Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).Trim();
+        var target = Path.Combine(folder, name);
+        try
+        {
+            Directory.CreateDirectory(target);
+            var written = 0;
+            foreach (var file in new[] { "record.md", "record.draft.md", "transcript.md" })
+            {
+                var source = Path.Combine(row.Directory, file);
+                if (!File.Exists(source)) continue;
+                if (file == "record.draft.md" && File.Exists(Path.Combine(row.Directory, "record.md"))) continue; // the approved one is enough
+                File.Copy(source, Path.Combine(target, file), overwrite: false);
+                written++;
+            }
+            Message = written == 0 ? "書き出せる記録・文字起こしがまだありません。" : $"{written} 個のファイルを書き出しました: {target}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Message = $"書き出せませんでした（{ex.Message}）。同じ名前のフォルダーがあるときは、別の場所を選んでください。";
+        }
+    }
+
+    /// <summary>
+    /// UI-04 「削除」 with confirmation. Nothing is erased (14.4): the session folder moves to <c>trash\</c> in the workspace
+    /// and leaves the index; moving it back restores it. A session being recorded cannot be deleted.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private async Task DeleteAsync()
+    {
+        if (Selected is not { } row || Dialogs is null) return;
+        if (row.Summary.CaptureState is CaptureState.Recording or CaptureState.Stopping or CaptureState.Ready)
+        {
+            Message = "録音中のセッションは削除できません。";
+            return;
+        }
+        var references = ItemReferences?.Invoke(row.Summary.SessionId) ?? 0;
+        var question = $"「{row.TitleText}」（{row.StartedText}）を削除しますか？\n\n原音・文字起こし・記録はすぐには消さず、ワークスペースの trash フォルダーへ移します（戻せば元に戻ります）。"
+            + (references > 0 ? $"\n\nこのセッションは課題・タスク {references} 件の根拠になっています。項目は残りますが、根拠の区間は開けなくなります。" : string.Empty);
+        if (!Dialogs.Confirm("セッションの削除", question)) return;
+        try
+        {
+            var trash = Path.Combine(_environment.WorkspaceRoot, "trash", Path.GetFileName(Path.TrimEndingDirectorySeparator(row.Directory)));
+            Directory.CreateDirectory(Path.GetDirectoryName(trash)!);
+            Directory.Move(row.Directory, trash);
+            await Task.Run(_index.Rebuild);
+            Message = $"削除しました（trash へ移しました: {trash}）。";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Message = $"削除できませんでした（{ex.Message}）。ファイルを開いているアプリを閉じてから、やり直してください。";
+            return;
+        }
+        await RefreshAsync();
+    }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
