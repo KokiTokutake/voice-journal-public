@@ -209,6 +209,151 @@ internal static class Migrations
                 UNIQUE (analysis_id, local_candidate_id)
             ) STRICT;
             """),
+
+        // Phase E: management review. Unlike the tables above, these are the source of truth (detail spec 11.2), not an
+        // index: they are never rebuilt from files. Candidates are named by their key (session/analysis revision/candidate
+        // id, 12.2-2) because the candidates table above is an index that is deleted and written again.
+        new(4, "management", """
+            CREATE TABLE display_counters (
+                workspace_id  TEXT    NOT NULL REFERENCES workspaces (id),
+                kind          TEXT    NOT NULL CHECK (kind IN ('issue', 'task')),
+                next_number   INTEGER NOT NULL CHECK (next_number >= 1 AND next_number <= 1000000),
+                PRIMARY KEY (workspace_id, kind)
+            ) STRICT;
+
+            CREATE TABLE items (
+                id               TEXT    NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                workspace_id     TEXT    NOT NULL REFERENCES workspaces (id),
+                display_id       TEXT    NOT NULL CHECK (display_id GLOB 'ISS-[0-9][0-9][0-9][0-9][0-9][0-9]' OR display_id GLOB 'TSK-[0-9][0-9][0-9][0-9][0-9][0-9]'),
+                kind             TEXT    NOT NULL CHECK (kind IN ('issue', 'task')),
+                project          TEXT    NOT NULL,
+                title            TEXT    NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+                description      TEXT    NOT NULL CHECK (length(description) <= 8000),
+                status           TEXT    NOT NULL CHECK ((kind = 'issue' AND status IN ('open', 'in_progress', 'blocked', 'resolved', 'closed'))
+                                                      OR (kind = 'task' AND status IN ('todo', 'in_progress', 'blocked', 'done', 'cancelled'))),
+                priority         TEXT    CHECK (priority IS NULL OR priority IN ('low', 'medium', 'high', 'critical')),
+                assignee         TEXT,
+                due_date         TEXT    CHECK (due_date IS NULL OR due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+                parent_issue_id  TEXT    REFERENCES items (id) CHECK (parent_issue_id IS NULL OR (kind = 'task' AND parent_issue_id <> id)),
+                revision         INTEGER NOT NULL CHECK (revision >= 1),
+                created_at       TEXT    NOT NULL,
+                updated_at       TEXT    NOT NULL CHECK (updated_at >= created_at),
+                UNIQUE (workspace_id, display_id)
+            ) STRICT;
+            CREATE INDEX ix_items_search ON items (workspace_id, kind, status, due_date);
+
+            CREATE TABLE item_evidence (
+                id                   TEXT    NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                item_id              TEXT    NOT NULL REFERENCES items (id),
+                session_id           TEXT    NOT NULL CHECK (length(session_id) = 36),
+                transcript_revision  INTEGER NOT NULL CHECK (transcript_revision >= 1),
+                segment_id           TEXT    NOT NULL CHECK (length(segment_id) = 36),
+                quote                TEXT    NOT NULL,
+                batch_id             TEXT    CHECK (batch_id IS NULL OR length(batch_id) = 36),
+                UNIQUE (item_id, session_id, segment_id)
+            ) STRICT;
+
+            CREATE TABLE managed_files (
+                id            TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                workspace_id  TEXT NOT NULL REFERENCES workspaces (id),
+                kind          TEXT NOT NULL CHECK (kind IN ('issue', 'task')),
+                path          TEXT NOT NULL,
+                mode          TEXT NOT NULL CHECK (mode IN ('managed_blocks', 'append_only')),
+                last_hash     TEXT CHECK (last_hash IS NULL OR (length(last_hash) = 64 AND last_hash NOT GLOB '*[^0-9a-f]*')),
+                created_at    TEXT NOT NULL,
+                UNIQUE (workspace_id, path),
+                UNIQUE (workspace_id, kind)
+            ) STRICT;
+
+            CREATE TABLE candidate_reviews (
+                candidate_key        TEXT    NOT NULL PRIMARY KEY,
+                session_id           TEXT    NOT NULL CHECK (length(session_id) = 36),
+                analysis_revision    INTEGER NOT NULL CHECK (analysis_revision >= 1),
+                candidate_id         TEXT    NOT NULL CHECK (candidate_id GLOB 'C[0-9][0-9][0-9][0-9]'),
+                choice               TEXT    CHECK (choice IS NULL OR choice IN ('create', 'update', 'mention', 'reject', 'defer')),
+                target_item_id       TEXT    CHECK (target_item_id IS NULL OR length(target_item_id) = 36),
+                target_revision      INTEGER CHECK (target_revision IS NULL OR target_revision >= 1),
+                edited_fields_json   TEXT    CHECK (edited_fields_json IS NULL OR json_valid(edited_fields_json)),
+                fields_to_change     TEXT    CHECK (fields_to_change IS NULL OR json_valid(fields_to_change)),
+                parent_issue_id      TEXT    CHECK (parent_issue_id IS NULL OR length(parent_issue_id) = 36),
+                confirmed            INTEGER NOT NULL DEFAULT 0 CHECK (confirmed IN (0, 1)),
+                updated_at           TEXT    NOT NULL,
+                UNIQUE (session_id, analysis_revision, candidate_id)
+            ) STRICT;
+
+            CREATE TABLE approvals (
+                id                         TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                workspace_id               TEXT NOT NULL REFERENCES workspaces (id),
+                plan_hash                  TEXT CHECK (plan_hash IS NULL OR (length(plan_hash) = 64 AND plan_hash NOT GLOB '*[^0-9a-f]*')),
+                candidate_revisions_json   TEXT NOT NULL CHECK (json_valid(candidate_revisions_json)),
+                approved_at                TEXT NOT NULL,
+                actor                      TEXT NOT NULL,
+                state                      TEXT NOT NULL CHECK (state IN ('planned', 'applied', 'expired', 'abandoned'))
+            ) STRICT;
+
+            CREATE TABLE apply_batches (
+                id               TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                approval_id      TEXT NOT NULL UNIQUE REFERENCES approvals (id),
+                idempotency_key  TEXT NOT NULL UNIQUE CHECK (length(idempotency_key) = 36),
+                state            TEXT NOT NULL CHECK (state IN ('planned', 'prepared', 'applying', 'committed', 'recovery_required', 'abandoned')),
+                plan_path        TEXT NOT NULL,
+                created_at       TEXT NOT NULL,
+                committed_at     TEXT,
+                error_code       TEXT
+            ) STRICT;
+
+            CREATE TABLE apply_file_ops (
+                batch_id      TEXT    NOT NULL REFERENCES apply_batches (id),
+                sequence      INTEGER NOT NULL CHECK (sequence >= 1),
+                file_id       TEXT    NOT NULL REFERENCES managed_files (id),
+                operation     TEXT    NOT NULL CHECK (operation IN ('create', 'replace')),
+                before_hash   TEXT    CHECK (before_hash IS NULL OR (length(before_hash) = 64 AND before_hash NOT GLOB '*[^0-9a-f]*')),
+                after_hash    TEXT    NOT NULL CHECK (length(after_hash) = 64 AND after_hash NOT GLOB '*[^0-9a-f]*'),
+                staged_path   TEXT    NOT NULL,
+                backup_path   TEXT,
+                temp_path     TEXT,
+                state         TEXT    NOT NULL CHECK (state IN ('planned', 'prepared', 'replaced', 'verified')),
+                PRIMARY KEY (batch_id, sequence)
+            ) STRICT;
+
+            CREATE TABLE item_versions (
+                item_id      TEXT    NOT NULL REFERENCES items (id),
+                revision     INTEGER NOT NULL CHECK (revision >= 1),
+                batch_id     TEXT    REFERENCES apply_batches (id),
+                before_json  TEXT    CHECK (before_json IS NULL OR json_valid(before_json)),
+                after_json   TEXT    NOT NULL CHECK (json_valid(after_json)),
+                PRIMARY KEY (item_id, revision)
+            ) STRICT;
+
+            CREATE TABLE candidate_applications (
+                candidate_key  TEXT NOT NULL UNIQUE,
+                fingerprint    TEXT NOT NULL,
+                batch_id       TEXT NOT NULL REFERENCES apply_batches (id),
+                item_id        TEXT NOT NULL REFERENCES items (id),
+                decision_hash  TEXT NOT NULL
+            ) STRICT;
+            CREATE INDEX ix_candidate_applications_fingerprint ON candidate_applications (fingerprint);
+
+            CREATE TABLE item_proposals (
+                id              TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                batch_id        TEXT NOT NULL REFERENCES apply_batches (id),
+                candidate_key   TEXT NOT NULL,
+                target_item_id  TEXT NOT NULL REFERENCES items (id),
+                proposed_json   TEXT NOT NULL CHECK (json_valid(proposed_json)),
+                reason          TEXT NOT NULL,
+                created_at      TEXT NOT NULL
+            ) STRICT;
+
+            CREATE TABLE audit_events (
+                id            TEXT NOT NULL PRIMARY KEY CHECK (length(id) = 36),
+                timestamp     TEXT NOT NULL,
+                event_type    TEXT NOT NULL,
+                entity_type   TEXT NOT NULL,
+                entity_id     TEXT NOT NULL,
+                batch_id      TEXT,
+                details_json  TEXT NOT NULL CHECK (json_valid(details_json))
+            ) STRICT;
+            """),
     ];
 }
 
