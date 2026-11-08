@@ -184,8 +184,8 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     private Guid? _activeJob;
     private bool _switching;
 
-    /// <summary>Set by the window: where a candidate stands on the 「管理」 page (null: not applied).</summary>
-    public Func<Core.Management.CandidateKey, string?>? CandidateState { get; set; }
+    /// <summary>Set by the window: makes a lookup of where candidates stand on the 「管理」 page (null: not applied).</summary>
+    public Func<Func<Core.Management.CandidateKey, string?>>? CandidateStates { get; set; }
 
     /// <summary>Set by the app: renders a record with the applied candidates marked (14.2-8). Without it, all are 未反映.</summary>
     public Func<string, RecordDocument, bool, string>? Renderer { get; set; }
@@ -296,7 +296,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     public string CandidatesHeader => Candidates.Count == 0 ? "課題・タスクの候補（なし）" : $"課題・タスクの候補（{Candidates.Count} 件・未反映）";
 
     /// <summary>Left pane: the transcript revision the record was built on (evidence ids refer to it).</summary>
-    public ObservableCollection<SegmentRowViewModel> Segments { get; } = [];
+    public BulkObservableCollection<SegmentRowViewModel> Segments { get; } = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PlaySelectedCommand))]
@@ -454,8 +454,9 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             BuildBlocks(doc, IsLatest ? null : latest);
             Candidates.Clear();
             var analysis = doc.Provenance.AnalysisRevision ?? doc.Revision;
+            var states = doc.Candidates.Count > 0 ? CandidateStates?.Invoke() : null; // one lookup for all candidates
             foreach (var c in doc.Candidates)
-                Candidates.Add(new CandidateRowViewModel(c, Links(c.Candidate.Evidence), CandidateState?.Invoke(new Core.Management.CandidateKey(doc.SessionId, analysis, c.Candidate.CandidateId))));
+                Candidates.Add(new CandidateRowViewModel(c, Links(c.Candidate.Evidence), states?.Invoke(new Core.Management.CandidateKey(doc.SessionId, analysis, c.Candidate.CandidateId))));
             OnPropertyChanged(nameof(CandidatesHeader));
             UpdateStatus();
             var p = doc.Provenance;
@@ -487,7 +488,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
                 return;
             }
             _transcript = store.Load(shown.Value);
-            foreach (var s in _transcript.Segments) Segments.Add(new SegmentRowViewModel(s, null));
+            Segments.ReplaceAll(_transcript.Segments.Select(s => new SegmentRowViewModel(s, null)));
             TranscriptCaption = revision is null || revision == inUse
                 ? $"文字起こし Rev {shown}（使用中）"
                 : $"記録の元の文字起こし Rev {shown}（使用中は Rev {inUse}。根拠はこの版の区間を指します）";

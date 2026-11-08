@@ -40,7 +40,7 @@ public sealed partial class MainViewModel : ObservableObject
         Library.OpenRecordRequested += (_, row) => OpenRecord(row);
         if (Record is not null) Record.OpenManagementRequested += (_, sessionId) => OpenManagement(sessionId);
         if (Management is not null) Management.IsRecording = () => Recording.IsActive;
-        if (Management is not null && Record is not null) Record.CandidateState = Management.StateOf;
+        if (Management is not null && Record is not null) Record.CandidateStates = Management.StateLookup;
     }
 
     public RecordingViewModel Recording { get; }

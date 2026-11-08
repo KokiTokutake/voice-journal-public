@@ -127,7 +127,7 @@ public sealed partial class TranscriptViewModel : ObservableObject
     [ObservableProperty]
     public partial RevisionItem? SelectedRevision { get; set; }
 
-    public ObservableCollection<SegmentRowViewModel> Segments { get; } = [];
+    public BulkObservableCollection<SegmentRowViewModel> Segments { get; } = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RevertCommand), nameof(PlaySelectedCommand))]
@@ -267,14 +267,10 @@ public sealed partial class TranscriptViewModel : ObservableObject
     private void ApplyFilter()
     {
         var selectedId = Selected?.SegmentId;
-        Segments.Clear();
-        foreach (var row in _rows)
-        {
-            if (Filter == SourceFilter.Mic && row.Source != AudioSource.Mic) continue;
-            if (Filter == SourceFilter.Loopback && row.Source != AudioSource.Loopback) continue;
-            if (FlaggedOnly && !row.HasFlags && row.HintText.Length == 0) continue;
-            Segments.Add(row);
-        }
+        Segments.ReplaceAll(_rows.Where(row =>
+            !(Filter == SourceFilter.Mic && row.Source != AudioSource.Mic)
+            && !(Filter == SourceFilter.Loopback && row.Source != AudioSource.Loopback)
+            && !(FlaggedOnly && !row.HasFlags && row.HintText.Length == 0)));
         Selected = Segments.FirstOrDefault(r => r.SegmentId == selectedId);
         OnPropertyChanged(nameof(CountText));
     }

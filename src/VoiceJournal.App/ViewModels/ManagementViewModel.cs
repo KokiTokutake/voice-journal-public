@@ -516,11 +516,20 @@ public sealed partial class ManagementViewModel : ObservableObject
     public bool CanApply => _engine is not null;
 
     /// <summary>For the record page (14.2-8): 「反映済み（TSK-000001）」, 「反映待ち」 or null (not applied).</summary>
-    public string? StateOf(CandidateKey key)
+    public string? StateOf(CandidateKey key) => StateLookup()(key);
+
+    /// <summary>
+    /// <see cref="StateOf"/> for many candidates: the applied, pending and item tables are read once (NFR-02: reading them
+    /// for each candidate of a 25-minute meeting slowed opening its record by about 100 ms).
+    /// </summary>
+    public Func<CandidateKey, string?> StateLookup()
     {
-        if (_store.AppliedItems().TryGetValue(key, out var itemId))
-            return _store.Items().FirstOrDefault(i => i.Id == itemId) is { } item ? $"反映済み（{item.DisplayId}）" : "反映済み";
-        return _store.Pending().Keys.Contains(key) ? "反映待ち" : null;
+        var applied = _store.AppliedItems();
+        var items = _store.Items().ToDictionary(i => i.Id);
+        var pending = _store.Pending().Keys;
+        return key => applied.TryGetValue(key, out var itemId)
+            ? items.TryGetValue(itemId, out var item) ? $"反映済み（{item.DisplayId}）" : "反映済み"
+            : pending.Contains(key) ? "反映待ち" : null;
     }
 
     /// <summary>
