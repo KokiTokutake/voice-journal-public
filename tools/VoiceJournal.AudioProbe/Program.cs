@@ -51,6 +51,8 @@ internal static class Program
                 "cer" when args.Length >= 2 => EvaluateCommands.Cer(args, JsonOptions),
                 "organize" when args.Length >= 2 => OrganizeCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
                 "eval-record" when args.Length >= 2 => EvaluateRecordCommand.RunAsync(args, JsonOptions).GetAwaiter().GetResult(),
+                "apply-crash" when args.Length >= 2 => ApplyCrashCommand.Run(args, JsonOptions),
+                "apply-batch" when args.Length >= 5 => ApplyCrashCommand.ApplyBatch(args),
                 _ => Usage(),
             };
         }
