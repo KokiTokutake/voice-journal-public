@@ -697,6 +697,7 @@ public sealed partial class ManagementViewModel : ObservableObject
     private void OnCardChanged(CandidateCardViewModel card)
     {
         _store.SaveReview(card.Review);
+        _cardsSignature = SelectedSession is { } choice ? CardsSignature(choice) : null; // the cards already show this choice
         ClearPlan();
         OnPropertyChanged(nameof(ReadyText));
     }

@@ -245,6 +245,27 @@ public sealed class ManagementViewModelTests : IDisposable
     }
 
     [Fact]
+    public void OpeningTheTabAgain_KeepsTheCardsAndAPlanInProgress_UntilSomethingChanges() // NFR-02
+    {
+        var vm = Vm();
+        vm.Cards[0].Choices[0].IsChecked = true;
+        vm.BuildPlanCommand.Execute(null);
+        Assert.True(vm.HasPlan);
+        var card = vm.Cards[0];
+        var sessions = vm.Sessions.ToList();
+
+        vm.Refresh(); // what switching to the tab does
+
+        Assert.True(vm.HasPlan);
+        Assert.Same(card, vm.Cards[0]); // not rebuilt
+        Assert.Equal(sessions, vm.Sessions);
+
+        vm.SaveAndApplyCommand.Execute(null); // a change: the cards show it
+        Assert.NotSame(card, vm.Cards[0]);
+        Assert.Equal("反映済み（TSK-000001）", vm.Cards[0].StateText);
+    }
+
+    [Fact]
     public void NothingApproved_GivesNoPlan()
     {
         var vm = Vm();
