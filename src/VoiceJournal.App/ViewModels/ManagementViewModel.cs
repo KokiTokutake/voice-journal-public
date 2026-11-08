@@ -349,6 +349,7 @@ public sealed partial class ManagementViewModel : ObservableObject
     private readonly ApplyRecovery? _recovery;
     private ChangePlan? _plan;
     private string? _startupNote;
+    private string? _cardsSignature;
 
     public ManagementViewModel(ManagementStore store, IDialogService dialogs, TimeProvider time, ApplyEngine? engine = null, ApplyRecovery? recovery = null)
     {
@@ -394,9 +395,20 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     private void LoadItems()
     {
-        Items.Clear();
-        foreach (var i in _store.Search(SearchText, SelectedStatusFilter?.Status)) Items.Add(new ItemRow(i));
+        var rows = _store.Search(SearchText, SelectedStatusFilter?.Status).Select(i => new ItemRow(i)).ToList();
+        if (!rows.Select(r => (r.Item.Id, r.Item.Revision)).SequenceEqual(Items.Select(r => (r.Item.Id, r.Item.Revision))))
+            Replace(Items, rows);
         OnPropertyChanged(nameof(ItemsTitle));
+    }
+
+    /// <summary>
+    /// Replaces the contents of a list shown on the page. Opening the 「管理」 tab refreshes everything; rebuilding lists
+    /// whose contents did not change made the switch take about 360 ms (NFR-02: 200 ms), so callers skip unchanged ones.
+    /// </summary>
+    private static void Replace<T>(ObservableCollection<T> target, IReadOnlyList<T> rows)
+    {
+        target.Clear();
+        foreach (var r in rows) target.Add(r);
     }
 
     /// <summary>Set by the window: a snapshot is taken only while nothing is recorded (14.4).</summary>
@@ -412,9 +424,8 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     private void LoadSnapshots()
     {
-        Snapshots.Clear();
-        if (BackupSource is { } source)
-            foreach (var s in WorkspaceBackup.List(source.Workspace)) Snapshots.Add(Path.GetFileName(s));
+        var names = BackupSource is { } source ? WorkspaceBackup.List(source.Workspace).Select(s => Path.GetFileName(s)).ToList() : [];
+        if (!names.SequenceEqual(Snapshots, StringComparer.Ordinal)) Replace(Snapshots, names);
         SelectedSnapshot ??= Snapshots.FirstOrDefault();
     }
 
@@ -565,23 +576,25 @@ public sealed partial class ManagementViewModel : ObservableObject
     public void Refresh()
     {
         var selected = SelectedSession?.Session.SessionId;
-        Sessions.Clear();
-        foreach (var s in _store.SessionsWithRecords()) Sessions.Add(new SessionChoice(s));
+        var sessions = _store.SessionsWithRecords().Select(s => new SessionChoice(s)).ToList();
+        if (!sessions.SequenceEqual(Sessions)) Replace(Sessions, sessions); // clearing it also clears the selection
         LoadItems();
-        Batches.Clear();
-        foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
+        var batches = _store.Batches().Take(30).Select(b => new BatchRow(b)).ToList();
+        if (!batches.SequenceEqual(Batches)) Replace(Batches, batches);
         OnPropertyChanged(nameof(IssuesAppendOnly));
         OnPropertyChanged(nameof(TasksAppendOnly));
         LoadSnapshots();
-        EditedBlocks.Clear();
+        var edited = new List<EditedBlockRow>();
         var byId = _store.Items().ToDictionary(i => i.Id);
         foreach (var file in _store.Files().Where(f => f.Mode == ManagedFileMode.ManagedBlocks && f.CurrentBytes is not null))
         {
             if (ManagedText.Decode(file.CurrentBytes!) is not { } text) continue;
             var layout = ManagementMarkdown.Parse(text.Text, _store.WorkspaceGuid);
             foreach (var (item, block, expected) in ManagementMarkdown.EditedBlocks(text.Text, layout, byId, text.LineEnd))
-                EditedBlocks.Add(new EditedBlockRow(item, block, TextDiff.Unified(expected, block, file.RelativePath)));
+                edited.Add(new EditedBlockRow(item, block, TextDiff.Unified(expected, block, file.RelativePath)));
         }
+        if (!edited.Select(e => (e.Item.Id, e.Item.Revision, e.Block)).SequenceEqual(EditedBlocks.Select(e => (e.Item.Id, e.Item.Revision, e.Block))))
+            Replace(EditedBlocks, edited);
         OnPropertyChanged(nameof(HasEditedBlocks));
         var again = Sessions.FirstOrDefault(s => s.Session.SessionId == selected) ?? Sessions.FirstOrDefault();
         if (again != SelectedSession) SelectedSession = again;
@@ -605,15 +618,20 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     private void LoadCards()
     {
-        Cards.Clear();
-        ClearPlan();
-        Message = null;
         if (SelectedSession is not { } choice)
         {
+            _cardsSignature = null;
+            Cards.Clear();
+            ClearPlan();
+            Message = null;
             OnPropertyChanged(nameof(HasCards));
             OnPropertyChanged(nameof(ReadyText));
             return;
         }
+        if (CardsSignature(choice) is { } signature && signature == _cardsSignature) return; // nothing changed: keep the cards and a plan in progress
+        Cards.Clear();
+        ClearPlan();
+        Message = null;
         var records = new RecordStore(choice.Session.Directory);
         var status = records.Status(null);
         var revision = status.ApprovedRevision ?? status.LatestRevision;
@@ -649,8 +667,31 @@ public sealed partial class ManagementViewModel : ObservableObject
         if (revision != status.LatestRevision) Message = $"承認済みの記録（Revision {revision}）の候補を表示しています。";
         else if (status.ApprovedRevision is null) Message = "記録はまだ承認されていません。候補の承認は記録の承認と別に行えます（AT-11）。";
         if (Cards.Count == 0) Message = "この記録には課題・タスクの候補がありません。";
+        _cardsSignature = CardsSignature(choice);
         OnPropertyChanged(nameof(HasCards));
         OnPropertyChanged(nameof(ReadyText));
+    }
+
+    /// <summary>
+    /// What the cards are made of: the record revision, the stored choices, the items (for duplicates and targets) and
+    /// what was applied or is waiting. Null when it cannot be read (the cards are then built again).
+    /// </summary>
+    private string? CardsSignature(SessionChoice choice)
+    {
+        try
+        {
+            var status = new RecordStore(choice.Session.Directory).Status(null);
+            var reviews = _store.Reviews(choice.Session.SessionId).OrderBy(r => r.Key.ToString(), StringComparer.Ordinal)
+                .Select(r => System.Text.Json.JsonSerializer.Serialize(r));
+            var items = _store.Items().Select(i => $"{i.Id:N}.{i.Revision}");
+            var applied = _store.AppliedItems().Select(a => $"{a.Key}>{a.Value:N}").Order(StringComparer.Ordinal);
+            var pending = _store.Pending().Keys.Select(k => k.ToString()).Order(StringComparer.Ordinal);
+            return string.Join("|", [$"{choice.Session.SessionId:N}", $"{status.ApprovedRevision}/{status.LatestRevision}", .. reviews, .. items, .. applied, .. pending]);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private void OnCardChanged(CandidateCardViewModel card)
