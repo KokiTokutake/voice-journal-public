@@ -82,7 +82,9 @@ public partial class App : Application
         };
         var library = _services.GetRequiredService<LibraryViewModel>();
         library.Dialogs = _services.GetRequiredService<IDialogService>();
-        library.ItemReferences = _services.GetRequiredService<ManagementStore>().ItemsWithEvidenceFrom;
+        var managementStore = _services.GetRequiredService<ManagementStore>();
+        library.ItemReferences = managementStore.ItemsWithEvidenceFrom;
+        _services.GetRequiredService<RecordReviewViewModel>().Renderer = (dir, record, approved) => RecordLinks.Render(managementStore, dir, record, approved);
         var processing = _services.GetRequiredService<ProcessingViewModel>();
         var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
         processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);

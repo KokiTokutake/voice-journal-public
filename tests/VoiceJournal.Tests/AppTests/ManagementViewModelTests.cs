@@ -174,6 +174,10 @@ public sealed class ManagementViewModelTests : IDisposable
         Assert.Contains("見積書の作成", File.ReadAllText(_store.FullPath(ManagementStore.TasksPath)), StringComparison.Ordinal);
         Assert.False(File.Exists(_store.FullPath(ManagementStore.IssuesPath))); // the deferred issue was not written
 
+        var draft = File.ReadAllText(Path.Combine(_store.SessionsWithRecords().Single().Directory, "record.draft.md"));
+        Assert.Contains("［タスク］見積書の作成（反映済み: TSK-000001", draft, StringComparison.Ordinal); // 14.2-8
+        Assert.Contains("［課題］ログイン不具合の原因調査（未反映", draft, StringComparison.Ordinal);
+
         vm.BuildPlanCommand.Execute(null);
         Assert.False(vm.HasPlan);
         Assert.Equal("反映済み（TSK-000001）", vm.Cards[0].StateText);

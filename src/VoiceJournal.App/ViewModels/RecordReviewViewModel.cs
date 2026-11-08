@@ -187,6 +187,12 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     /// <summary>Set by the window: where a candidate stands on the 「管理」 page (null: not applied).</summary>
     public Func<Core.Management.CandidateKey, string?>? CandidateState { get; set; }
 
+    /// <summary>Set by the app: renders a record with the applied candidates marked (14.2-8). Without it, all are 未反映.</summary>
+    public Func<string, RecordDocument, bool, string>? Renderer { get; set; }
+
+    private string Render(string directory, RecordDocument record, bool approved) =>
+        Renderer?.Invoke(directory, record, approved) ?? RecordMarkdown.RenderFor(directory, record, approved);
+
     public RecordReviewViewModel(IRecordService records, IAudioPlayer player, IUiDispatcher ui, TimeProvider? time = null)
     {
         _records = records ?? throw new ArgumentNullException(nameof(records));
@@ -550,7 +556,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             var previous = _document.Revision;
             var next = edit(_store.NextRevision());
             var directory = _directory;
-            _store.Save(next, d => RecordMarkdown.RenderFor(directory, d, approved: false));
+            _store.Save(next, d => Render(directory, d, approved: false));
             _document = next;
             _switching = true;
             var index = Revisions.IndexOf(Revisions.First(r => r.Revision == previous));
@@ -655,9 +661,9 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         var directory = _directory;
         try
         {
-            var result = _store.Approve(_document.Revision, _document.TranscriptRevision, _time.GetUtcNow(), d => RecordMarkdown.RenderFor(directory, d, approved: true));
+            var result = _store.Approve(_document.Revision, _document.TranscriptRevision, _time.GetUtcNow(), d => Render(directory, d, approved: true));
             Reload(_document.Revision);
-            Message = $"Rev {result.Approval.Revision} を承認し、record.md に保存しました。課題・タスクの候補は未反映のままです。" +
+            Message = $"Rev {result.Approval.Revision} を承認し、record.md に保存しました（課題・タスクの候補は、「管理」タブで反映するまで管理ファイルには入りません）。" +
                 (result.PreservedExternalEdit is { } kept ? $"\nアプリの外で変更された record.md は {Path.GetRelativePath(directory, kept)} に残しました。" : string.Empty);
             _ = _records.RecordSavedAsync(directory);
         }

@@ -50,6 +50,9 @@ public enum RecordReviewState
     ApprovedOutdated,
 }
 
+/// <summary>What <see cref="RecordStore.RefreshRenderings"/> did with the approved <c>record.md</c>.</summary>
+public sealed record RecordRefresh(bool ApprovedUpdated, bool ApprovedSkipped);
+
 public sealed record RecordStatus(RecordReviewState State, int? LatestRevision, int? ApprovedRevision, bool TranscriptChanged, bool NewerDraft);
 
 /// <summary>Result of an approval: where an externally edited <c>record.md</c> was kept, if there was one.</summary>
@@ -189,6 +192,33 @@ public sealed class RecordStore
             };
             WriteReview(review with { Approved = approval, DeferredSinceUtc = null });
             return new ApprovalResult(approval, preserved);
+        }
+    }
+
+    /// <summary>
+    /// 14.2-8: renders <c>record.draft.md</c> (the latest revision) and the approved <c>record.md</c> again, so they show
+    /// which candidates were applied as which items. A <c>record.md</c> edited outside the app is left as it is
+    /// (<see cref="RecordRefresh.ApprovedSkipped"/>); revision folders are never rewritten.
+    /// </summary>
+    /// <param name="render">The record and whether it is the approved rendering.</param>
+    public RecordRefresh RefreshRenderings(Func<RecordDocument, bool, string> render)
+    {
+        ArgumentNullException.ThrowIfNull(render);
+        lock (Gates.GetOrAdd(_sessionDirectory, _ => new object()))
+        {
+            if (Revisions() is not { Count: > 0 } revisions) return new RecordRefresh(false, false);
+            var draft = Encoding.UTF8.GetBytes(render(Load(revisions[^1]), false));
+            if (!File.Exists(DraftMarkdownPath) || !AtomicFile.ReadAllBytes(DraftMarkdownPath).AsSpan().SequenceEqual(draft))
+                AtomicFile.WriteAllBytes(DraftMarkdownPath, draft);
+            var review = ReadReview();
+            if (review.Approved is not { } approval || !File.Exists(ApprovedMarkdownPath)) return new RecordRefresh(false, false);
+            var current = AtomicFile.ReadAllBytes(ApprovedMarkdownPath);
+            if (Sha256(current) != approval.MarkdownSha256) return new RecordRefresh(false, true);
+            var markdown = Encoding.UTF8.GetBytes(render(Load(approval.Revision), true));
+            if (current.AsSpan().SequenceEqual(markdown)) return new RecordRefresh(false, false);
+            AtomicFile.WriteAllBytes(ApprovedMarkdownPath, markdown);
+            WriteReview(review with { Approved = approval with { MarkdownSha256 = Sha256(markdown) } });
+            return new RecordRefresh(true, false);
         }
     }
 

@@ -478,6 +478,39 @@ public sealed class ManagementStore
         return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
     });
 
+    /// <summary>14.2-8: the candidates of one analysis that were applied, as candidate id → display id of the item.</summary>
+    public IReadOnlyDictionary<string, string> AppliedDisplayIds(Guid sessionId, int analysisRevision) => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT a.candidate_key, i.display_id FROM candidate_applications a JOIN items i ON i.id = a.item_id
+            WHERE substr(a.candidate_key, 1, length($prefix)) = $prefix
+            """;
+        var prefix = new CandidateKey(sessionId, analysisRevision, string.Empty).ToString();
+        cmd.Parameters.AddWithValue("$prefix", prefix);
+        using var r = cmd.ExecuteReader();
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (r.Read()) map[r.GetString(0)[prefix.Length..]] = r.GetString(1);
+        return (IReadOnlyDictionary<string, string>)map;
+    });
+
+    /// <summary>14.2-8: the sessions (with a record) whose candidates a batch applied.</summary>
+    public IReadOnlyList<ReviewableSession> SessionsAppliedIn(Guid batchId)
+    {
+        var ids = _db.Read(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT substr(candidate_key, 1, 36) FROM candidate_applications WHERE batch_id = $batch";
+            cmd.Parameters.AddWithValue("$batch", DbText.Id(batchId));
+            using var r = cmd.ExecuteReader();
+            var set = new HashSet<Guid>();
+            while (r.Read())
+                if (Guid.TryParse(r.GetString(0), out var id)) set.Add(id);
+            return set;
+        });
+        return ids.Count == 0 ? [] : [.. SessionsWithRecords().Where(s => ids.Contains(s.SessionId))];
+    }
+
     /// <summary>Sessions that have a record (newest first), with the number of candidates of their latest analysis.</summary>
     public IReadOnlyList<ReviewableSession> SessionsWithRecords() => _db.Read(c =>
     {
@@ -511,6 +544,70 @@ public sealed class ManagementStore
             list.Add(new AppliedChange(r.IsDBNull(0) ? null : ItemJson.FromNode(JsonNode.Parse(r.GetString(0))!), ItemJson.FromNode(JsonNode.Parse(r.GetString(1))!)));
         return (IReadOnlyList<AppliedChange>)list;
     });
+
+    /// <summary>14.4: pre-apply backups are kept 90 days by default.</summary>
+    public const int BackupRetentionDays = 90;
+
+    /// <summary>14.4: the latest applies keep their backups whatever their age.</summary>
+    public const int BackupsAlwaysKept = 10;
+
+    /// <summary>
+    /// 14.4 retention of pre-apply backups: removes the <c>backup</c> folder (the copies of the management files taken
+    /// before replacing them) of committed batches older than <paramref name="retentionDays"/>, except the latest
+    /// <paramref name="keepLatest"/> batches. Unfinished batches, batches stopped for recovery and abandoned ones (which
+    /// may have replaced some files) keep theirs. The plan, the item snapshots and the history stay, so undo still works.
+    /// Audio, transcripts and workspace snapshots are never touched. Returns the batches whose backups were removed.
+    /// </summary>
+    public IReadOnlyList<Guid> PruneApplyBackups(int retentionDays = BackupRetentionDays, int keepLatest = BackupsAlwaysKept)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(retentionDays);
+        ArgumentOutOfRangeException.ThrowIfNegative(keepLatest);
+        var cutoff = _time.GetUtcNow() - TimeSpan.FromDays(retentionDays);
+        var expired = _db.Read(c =>
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                SELECT id, committed_at FROM apply_batches
+                WHERE state = 'committed' AND committed_at IS NOT NULL
+                  AND id NOT IN (SELECT id FROM apply_batches ORDER BY created_at DESC LIMIT $keep)
+                """;
+            cmd.Parameters.AddWithValue("$keep", keepLatest);
+            using var r = cmd.ExecuteReader();
+            var list = new List<Guid>();
+            while (r.Read())
+            {
+                if (DateTimeOffset.Parse(r.GetString(1), System.Globalization.CultureInfo.InvariantCulture) < cutoff)
+                    list.Add(Guid.Parse(r.GetString(0)));
+            }
+            return (IReadOnlyList<Guid>)list;
+        });
+        var pruned = new List<Guid>();
+        foreach (var id in expired)
+        {
+            var folder = FullPath($"transactions/{id:D}/backup");
+            if (!Directory.Exists(folder)) continue;
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue; // tried again at the next start
+            }
+            _db.Write((c, tx) =>
+            {
+                Exec(c, tx, "UPDATE apply_file_ops SET backup_path = NULL WHERE batch_id = $id", ("$id", DbText.Id(id)));
+                Exec(c, tx, """
+                    INSERT INTO audit_events (id, timestamp, event_type, entity_type, entity_id, batch_id, details_json)
+                    VALUES ($eid, $at, 'backup_pruned', 'apply_batch', $id, $id, $details)
+                    """, ("$eid", DbText.Id(Guid.CreateVersion7())), ("$at", DbText.Utc(_time.GetUtcNow())), ("$id", DbText.Id(id)),
+                    ("$details", JsonSerializer.Serialize(new { retention_days = retentionDays, kept_latest = keepLatest })));
+                return 0;
+            });
+            pruned.Add(id);
+        }
+        return pruned;
+    }
 
     /// <summary>
     /// Marks a planned batch, or one stopped for recovery, as abandoned. Its reserved display numbers stay used. Files a

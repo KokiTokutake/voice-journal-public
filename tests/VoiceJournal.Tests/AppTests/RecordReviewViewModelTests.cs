@@ -218,7 +218,7 @@ public sealed class RecordReviewViewModelTests : IDisposable
         Assert.Contains("review_status: \"approved\"", File.ReadAllText(Store.ApprovedMarkdownPath), StringComparison.Ordinal);
         Assert.Equal(RecordReviewState.Approved, Store.Status(1).State);
         Assert.Contains("承認済み", _vm.StatusText, StringComparison.Ordinal);
-        Assert.Contains("候補は未反映のまま", _vm.Message, StringComparison.Ordinal);
+        Assert.Contains("「管理」タブで反映するまで管理ファイルには入りません", _vm.Message, StringComparison.Ordinal);
         Assert.Contains("［承認済み］", _vm.Revisions.Single().Label, StringComparison.Ordinal);
         Assert.False(_vm.IsOutdated);
 

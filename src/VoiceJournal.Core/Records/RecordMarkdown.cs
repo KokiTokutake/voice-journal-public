@@ -8,7 +8,9 @@ using VoiceJournal.Core.Transcription;
 namespace VoiceJournal.Core.Records;
 
 /// <summary>Session facts the front matter needs (detail spec 10.2).</summary>
-public sealed record RecordContext(DateTimeOffset StartedAtUtc, string TimeZoneId, TranscriptDocument? Transcript, bool Approved);
+/// <param name="Applied">Candidate id → display id of the management item it was applied as (14.2-8); others are 未反映.</param>
+public sealed record RecordContext(DateTimeOffset StartedAtUtc, string TimeZoneId, TranscriptDocument? Transcript, bool Approved,
+    IReadOnlyDictionary<string, string>? Applied = null);
 
 /// <summary>
 /// Renders a record as Markdown (detail spec 10): UTF-8 without BOM and LF (the caller encodes), front matter,
@@ -21,7 +23,7 @@ public static partial class RecordMarkdown
     /// Renders a saved or edited record of a session: the session facts from <c>manifest.json</c> and the transcript
     /// revision the record was built on (evidence links and times). A missing transcript renders without them.
     /// </summary>
-    public static string RenderFor(string sessionDirectory, RecordDocument record, bool approved)
+    public static string RenderFor(string sessionDirectory, RecordDocument record, bool approved, IReadOnlyDictionary<string, string>? applied = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
         ArgumentNullException.ThrowIfNull(record);
@@ -35,7 +37,7 @@ public static partial class RecordMarkdown
         {
             transcript = null;
         }
-        return Render(record, new RecordContext(manifest.StartedAtUtc, manifest.TimeZoneId, transcript, approved));
+        return Render(record, new RecordContext(manifest.StartedAtUtc, manifest.TimeZoneId, transcript, approved, applied));
     }
 
     public static string Render(RecordDocument record, RecordContext context)
@@ -76,7 +78,7 @@ public static partial class RecordMarkdown
         if (record.Candidates.Count > 0)
         {
             md.Append("\n## 課題・タスク候補\n");
-            foreach (var c in record.Candidates) Candidate(md, c);
+            foreach (var c in record.Candidates) Candidate(md, c, context.Applied);
         }
 
         md.Append("\n## 関連資料\n");
@@ -105,11 +107,11 @@ public static partial class RecordMarkdown
         return $"[{label}](transcript.md#seg-{e.SegmentId:D})";
     }
 
-    private static void Candidate(StringBuilder md, RecordCandidate rc)
+    private static void Candidate(StringBuilder md, RecordCandidate rc, IReadOnlyDictionary<string, string>? applied)
     {
         var c = rc.Candidate;
         md.Append("- ").Append(c.Kind == CandidateKind.Issue ? "［課題］" : "［タスク］").Append(Inline(c.Fields.Title));
-        var parts = new List<string> { "未反映" };
+        var parts = new List<string> { applied is not null && applied.TryGetValue(c.CandidateId, out var displayId) ? "反映済み: " + Inline(displayId) : "未反映" };
         parts.Add(c.Fields.Assignee is { } a ? "担当: " + Inline(a) : "担当未確認");
         if (c.Fields.DueDate is { } d) parts.Add("期限: " + d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         else if (c.DueExpression is { } e) parts.Add("期限未確定（「" + Inline(e) + "」）");

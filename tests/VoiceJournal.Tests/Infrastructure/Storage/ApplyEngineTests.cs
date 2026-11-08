@@ -511,4 +511,35 @@ public sealed class ApplyEngineTests : IDisposable
         Assert.Contains("原因はキャッシュ", File.ReadAllText(Issues), StringComparison.Ordinal); // the partial apply is visible, not undone
         Assert.All(_store.Items(), i => Assert.Equal(1, i.Revision)); // the database is not confirmed
     }
+
+    [Fact]
+    public void OldBackups_AreRemovedAfterTheRetention_ExceptTheLatestTenAndUnfinishedBatches() // 14.4
+    {
+        string[] titles = ["見積書の作成", "請求書の送付", "議事録の共有", "会議室の予約", "資料の印刷", "契約書の確認", "出張の手配",
+            "名刺の発注", "備品の購入", "研修の申込", "面談の日程調整", "経費の精算"];
+        var batches = new List<Guid>();
+        for (var i = 0; i < titles.Length; i++)
+        {
+            var saved = Plan(M.R(M.C($"C{i:0000}", titles[i]), ReviewChoice.Create));
+            Assert.Equal(ApplyOutcome.Committed, Engine().Apply(saved.BatchId).Outcome);
+            batches.Add(saved.BatchId);
+        }
+        var stuck = Plan(M.R(M.C("C9999", "未反映の計画"), ReviewChoice.Create)); // planned, never applied
+        string Backup(Guid id) => _store.FullPath($"transactions/{id:D}/backup");
+        Assert.All(batches, b => Assert.True(Directory.Exists(Backup(b))));
+
+        var soon = new ManagementStore(_workspace, _db, new ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(30)));
+        Assert.Empty(soon.PruneApplyBackups());
+
+        var later = new ManagementStore(_workspace, _db, new ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(100)));
+        var pruned = later.PruneApplyBackups();
+
+        Assert.Equal(batches.Take(3).Order(), pruned.Order()); // 13 batches: the latest 10 (one of them planned) keep theirs
+        Assert.All(batches.Take(3), b => Assert.False(Directory.Exists(Backup(b))));
+        Assert.All(batches.Skip(3), b => Assert.True(Directory.Exists(Backup(b))));
+        Assert.All(batches.Take(3), b => Assert.True(File.Exists(_store.FullPath($"transactions/{b:D}/plan.json")))); // the history stays
+        Assert.Equal("planned", State(stuck.BatchId));
+        Assert.Equal(titles.Length, _store.Items().Count);
+        Assert.Empty(later.PruneApplyBackups()); // nothing left to remove
+    }
 }

@@ -226,6 +226,38 @@ public sealed class RecordStoreTests
     }
 
     [Fact]
+    public void AppliedCandidates_AreMarked_AndTheRenderingsAreRefreshed_ButNotAnExternallyEditedFile() // 14.2-8
+    {
+        using var dir = new TempDirectory();
+        var (t, a) = R.Analysis();
+        var store = new RecordStore(dir.Path);
+        var r1 = RecordFactory.FromAnalysis(t.SessionId, a, 1, R.Now);
+        var id = r1.Candidates.First(c => c.Candidate.Fields.Title == "手順書を書く").Candidate.CandidateId;
+        Dictionary<string, string>? applied = null;
+        string Render(RecordDocument d, bool approved) => RecordMarkdown.Render(d, R.Context(t) with { Approved = approved, Applied = applied });
+        store.Save(r1, d => Render(d, false));
+        store.Approve(1, 3, R.Now, d => Render(d, true));
+        var revisionFile = File.ReadAllBytes(Path.Combine(store.RevisionDirectory(1), "record.md"));
+
+        applied = new Dictionary<string, string> { [id] = "TSK-000007" };
+        var refreshed = store.RefreshRenderings(Render);
+
+        Assert.True(refreshed.ApprovedUpdated);
+        Assert.Contains("- ［タスク］手順書を書く（反映済み: TSK-000007・担当: 田中さん", File.ReadAllText(store.ApprovedMarkdownPath), StringComparison.Ordinal);
+        Assert.Contains("反映済み: TSK-000007", File.ReadAllText(store.DraftMarkdownPath), StringComparison.Ordinal);
+        Assert.Contains("review_status: " + '"' + "approved" + '"', File.ReadAllText(store.ApprovedMarkdownPath), StringComparison.Ordinal);
+        Assert.False(store.HasExternalEdit()); // the app's own rewrite is not an external edit
+        Assert.Equal(revisionFile, File.ReadAllBytes(Path.Combine(store.RevisionDirectory(1), "record.md"))); // written once
+        Assert.False(store.RefreshRenderings(Render).ApprovedUpdated); // nothing new
+
+        File.AppendAllText(store.ApprovedMarkdownPath, "外部のエディターで追記\n", new UTF8Encoding(false));
+        var edited = File.ReadAllBytes(store.ApprovedMarkdownPath);
+        applied[id] = "TSK-000008";
+        Assert.True(store.RefreshRenderings(Render).ApprovedSkipped);
+        Assert.Equal(edited, File.ReadAllBytes(store.ApprovedMarkdownPath));
+    }
+
+    [Fact]
     public void ExternalEdit_IsKept_BeforeANewApproval()
     {
         using var dir = new TempDirectory();

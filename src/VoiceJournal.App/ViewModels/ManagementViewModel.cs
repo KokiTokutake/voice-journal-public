@@ -520,6 +520,8 @@ public sealed partial class ManagementViewModel : ObservableObject
     {
         if (_recovery is null) return;
         var reports = _recovery.RecoverAll();
+        // 14.4: after recovery (unfinished batches keep theirs), old pre-apply backups beyond the retention are removed
+        _store.PruneApplyBackups();
         if (reports.Count == 0) return;
         var stuck = reports.Count(r => r.Action == RecoveryAction.RecoveryRequired);
         _startupNote = stuck > 0
@@ -968,6 +970,16 @@ public sealed partial class ManagementViewModel : ObservableObject
         }
         Refresh();
         Message = result.Problems.Count == 0 ? result.Message : result.Message + "\n" + string.Join("\n", result.Problems);
+        if (result.Outcome != ApplyOutcome.Committed) return;
+        // 14.2-8: a separate step after the commit; it never repeats or undoes the apply
+        try
+        {
+            if (RecordLinks.RefreshAfter(_store, batchId) is { } note) Message += "\n" + note;
+        }
+        catch (Exception ex) when (ex is DatabaseBusyException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Message += "\n記録に反映済みの印を書き込めませんでした（反映そのものは完了しています）。";
+        }
     }
 
     private void ClearPlan()
