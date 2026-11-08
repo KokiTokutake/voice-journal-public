@@ -45,6 +45,20 @@ public partial class MainWindow : Window
     /// </summary>
     private void MeasurePageSwitches(string path)
     {
+        // Every button click too (also when invoked through UI Automation): click → dispatcher idle after rendering.
+        AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler((_, e) =>
+        {
+            var name = (e.OriginalSource as System.Windows.Controls.ContentControl)?.Content as string ?? e.OriginalSource.GetType().Name;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
+            {
+                try
+                {
+                    File.AppendAllText(path, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"click:{name.Replace(',', ' ')},{watch.Elapsed.TotalMilliseconds:0.0}\n"));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            });
+        }), handledEventsToo: true);
         _viewModel.PropertyChanging += (_, e) =>
         {
             if (e.PropertyName != nameof(MainViewModel.CurrentPage)) return;

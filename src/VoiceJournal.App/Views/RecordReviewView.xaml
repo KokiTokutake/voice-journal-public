@@ -149,16 +149,32 @@
                     <Grid>
                         <TextBlock Margin="16" TextWrapping="Wrap" Style="{StaticResource Note}" Visibility="{Binding HasNoRecord, Converter={StaticResource BoolToVisibility}}"
                                    Text="まだ記録がありません。下の「記録を作る」で、使用中の文字起こしから推論エンジンが要約と課題・タスクの候補を作ります。" />
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Visibility="{Binding HasRecord, Converter={StaticResource BoolToVisibility}}"
-                                      Padding="16,12">
-                            <StackPanel>
-                                <Label Content="題名(_I)" Target="{Binding ElementName=TitleBox}" Padding="0,0,0,4" />
+                        <!-- NFR-02: one virtualized list (title, sections, footer); only the rows near the screen are built.
+                             CacheLength keeps a page above and below built, so Tab reaches the next rows. -->
+                        <ItemsControl x:Name="RecordRows" ItemsSource="{Binding Rows}" Focusable="False" Visibility="{Binding HasRecord, Converter={StaticResource BoolToVisibility}}"
+                                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Standard" VirtualizingPanel.ScrollUnit="Pixel"
+                                      VirtualizingPanel.CacheLength="1,1" VirtualizingPanel.CacheLengthUnit="Page" ScrollViewer.CanContentScroll="True">
+                            <ItemsControl.Template>
+                                <ControlTemplate TargetType="ItemsControl">
+                                    <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Padding="16,12">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ItemsControl.Template>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VirtualizingStackPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.Resources>
+                                <DataTemplate DataType="{x:Type vm:RecordHeaderRow}">
+                                    <StackPanel DataContext="{Binding Owner}" Margin="0,0,0,8">
+                                        <Label Content="題名(_I)" Target="{Binding ElementName=TitleBox}" Padding="0,0,0,4" />
                                 <TextBox x:Name="TitleBox" Text="{Binding RecordTitle, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsTitleReadOnly}"
                                          Style="{StaticResource EditableText}" FontSize="{DynamicResource VjFont20}" FontWeight="SemiBold" AutomationProperties.Name="記録の題名" />
-
-                                <ItemsControl ItemsSource="{Binding Blocks}" Focusable="False" Margin="0,8,0,0">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:SectionRowViewModel}">
+                                    </StackPanel>
+                                </DataTemplate>
+                                <DataTemplate DataType="{x:Type vm:SectionRowViewModel}">
                                             <StackPanel Margin="0,12,0,0">
                                                 <DockPanel>
                                                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
@@ -230,10 +246,9 @@
                                                 </DockPanel>
                                             </StackPanel>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- Add a section -->
+                                <DataTemplate DataType="{x:Type vm:RecordFooterRow}">
+                                    <StackPanel DataContext="{Binding Owner}">
+                                        <!-- Add a section -->
                                 <Border BorderThickness="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" CornerRadius="8" Padding="12,10" Margin="0,16,0,0"
                                         Visibility="{Binding IsLatest, Converter={StaticResource BoolToVisibility}}">
                                     <StackPanel>
@@ -272,8 +287,10 @@
                                 </ItemsControl>
 
                                 <TextBlock Text="{Binding ProvenanceText}" Style="{StaticResource Note}" TextWrapping="Wrap" Margin="0,20,0,0" />
-                            </StackPanel>
-                        </ScrollViewer>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.Resources>
+                        </ItemsControl>
                     </Grid>
                 </Border>
             </Grid>

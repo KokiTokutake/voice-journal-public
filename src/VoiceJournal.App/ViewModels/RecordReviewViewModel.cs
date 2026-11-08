@@ -202,6 +202,40 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         _records.JobChanged += (_, change) => _ui.Post(() => OnJobChanged(change));
         _records.Progress += (_, p) => _ui.Post(() => OnProgress(p));
         _player.Ended += (_, _) => _ui.Post(() => NowPlaying = null);
+        _header = new RecordHeaderRow(this);
+        _footer = new RecordFooterRow(this);
+        Rows.Add(_header);
+        Rows.Add(_footer);
+        Blocks.CollectionChanged += OnBlocksChanged;
+    }
+
+    private readonly RecordHeaderRow _header;
+    private readonly RecordFooterRow _footer;
+
+    /// <summary>
+    /// What the record pane lists, in one virtualized list (NFR-02): the title, the summary and sections, then the
+    /// footer (add a section, the candidates). Only the rows on screen are built: a 25-minute meeting has about 90
+    /// statements, and building them all took 500–700 ms when the record was opened.
+    /// </summary>
+    public ObservableCollection<object> Rows { get; } = [];
+
+    private void OnBlocksChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add when e.NewItems is { } added:
+                for (var i = 0; i < added.Count; i++) Rows.Insert(e.NewStartingIndex + 1 + i, added[i]!);
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove when e.OldItems is { } removed:
+                for (var i = 0; i < removed.Count; i++) Rows.RemoveAt(e.OldStartingIndex + 1);
+                break;
+            default:
+                Rows.Clear();
+                Rows.Add(_header);
+                foreach (var b in Blocks) Rows.Add(b);
+                Rows.Add(_footer);
+                break;
+        }
     }
 
     [ObservableProperty]
@@ -853,3 +887,9 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         }
     }
 }
+
+/// <summary>The first row of the record pane (the title); <see cref="Owner"/> is the page.</summary>
+public sealed record RecordHeaderRow(RecordReviewViewModel Owner);
+
+/// <summary>The last row of the record pane (add a section, the candidates, provenance).</summary>
+public sealed record RecordFooterRow(RecordReviewViewModel Owner);
