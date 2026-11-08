@@ -25,9 +25,12 @@ internal sealed class EchoLlm : ILlmClient
 
     public int LoadedContext { get; set; } = 8192;
 
+    /// <summary>A note the engine gives with the model (e.g. memory was short at start).</summary>
+    public string? Notice { get; set; }
+
     public Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken) =>
         Unavailable ? throw new LlmUnavailableException("down")
-        : Task.FromResult(Unloaded ? new LlmModelInfo(modelId, null, 131072, false) : new LlmModelInfo(modelId, LoadedContext, 131072, true));
+        : Task.FromResult(Unloaded ? new LlmModelInfo(modelId, null, 131072, false) : new LlmModelInfo(modelId, LoadedContext, 131072, true, Notice));
 
     public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken cancellationToken)
     {
@@ -342,6 +345,18 @@ public sealed class RecordGeneratorTests
         var analysis = new AnalysisStore(dir.Path).Load(result.AnalysisRevision!.Value);
         Assert.Equal(6144, analysis.Provenance.ContextLength);
         Assert.Contains(analysis.Analysis.Warnings, w => w.Contains("コンテキスト長が 6144", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ANoticeFromTheEngine_IsAWarningOfTheRecord() // NFR-05: memory was short when the engine started
+    {
+        using var dir = new TempDirectory();
+        var llm = new EchoLlm { Notice = "記録を作り始めたときの空きメモリは 6000 MB でした。" };
+
+        var result = await Generator(llm).GenerateAsync(Request(dir, Meeting(10), Settings), null, CancellationToken.None);
+
+        var analysis = new AnalysisStore(dir.Path).Load(result.AnalysisRevision!.Value);
+        Assert.Contains(analysis.Analysis.Warnings, w => w.Contains("空きメモリは 6000 MB", StringComparison.Ordinal));
     }
 
     [Fact]

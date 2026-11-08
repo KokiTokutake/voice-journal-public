@@ -45,7 +45,8 @@ public sealed record LlmResponse
 /// <paramref name="Loaded"/> is false when the server lists the model but has not loaded it (on-demand loading
 /// or an unload after idle); null when the server does not say.
 /// </summary>
-public sealed record LlmModelInfo(string Id, int? LoadedContextLength, int? MaxContextLength, bool? Loaded = null);
+/// <param name="Notice">A note from the engine for the record (e.g. memory was short when it started, NFR-05).</param>
+public sealed record LlmModelInfo(string Id, int? LoadedContextLength, int? MaxContextLength, bool? Loaded = null, string? Notice = null);
 
 /// <summary>LLM-001: the server is not running, not reachable on loopback, or the model is not loaded.</summary>
 public sealed class LlmUnavailableException : Exception

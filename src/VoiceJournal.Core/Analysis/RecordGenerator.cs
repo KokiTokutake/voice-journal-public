@@ -381,6 +381,7 @@ public sealed class RecordGenerator
             }, cancellationToken).ConfigureAwait(false);
             model = await _llm.GetModelAsync(settings.ModelId, cancellationToken).ConfigureAwait(false);
         }
+        if (model.Notice is { Length: > 0 } notice) warnings.Add(notice);
         if (model.LoadedContextLength is { } loaded && loaded < settings.ContextLength)
         {
             warnings.Add($"推論エンジンのコンテキスト長が {loaded} のため、設定の {settings.ContextLength} ではなく {loaded} で区間を分けました。空きメモリが足りなかった可能性があります。");

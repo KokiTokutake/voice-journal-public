@@ -16,7 +16,8 @@ namespace VoiceJournal.Infrastructure.Llm;
 public sealed record LlamaServerLaunch(string ModelId, int ContextLength, int Parallel = 1);
 
 /// <summary>A running server: where to send requests, with which key.</summary>
-public sealed record LlamaServerEndpoint(LlmEndpoint Endpoint, string ApiKey, LlamaServerLaunch Launch);
+/// <param name="Notice">Set when memory was short at start: inference may push free memory under 4 GiB (NFR-05).</param>
+public sealed record LlamaServerEndpoint(LlmEndpoint Endpoint, string ApiKey, LlamaServerLaunch Launch, string? Notice = null);
 
 /// <summary>
 /// Runs the bundled llama.cpp <c>llama-server.exe</c> as a child process (docs/phase-d-engine-plan.md): only while
@@ -28,6 +29,9 @@ public sealed record LlamaServerEndpoint(LlmEndpoint Endpoint, string ApiKey, Ll
 public sealed class LlamaServerHost : IDisposable
 {
     private const int TailLines = 20;
+
+    /// <summary>NFR-05: the free memory to keep while inferring.</summary>
+    public const int LowMemoryMarginMb = 4096;
 
     private readonly Func<LlmToolSettings> _tools;
     private readonly Func<long?> _availableMemoryMb;
@@ -180,6 +184,10 @@ public sealed class LlamaServerHost : IDisposable
         await Task.Run(() => LlmToolCheck.Verify(tools.LlamaServer, model), cancellationToken).ConfigureAwait(false);
         if (_availableMemoryMb() is { } free && free < model.Model.RequiredMemoryMb)
             throw new LlmUnavailableException($"空きメモリが {free} MB で、モデル「{launch.ModelId}」には {model.Model.RequiredMemoryMb} MB 必要です。ほかのアプリを閉じてから、記録の作成をやり直してください。");
+        // NFR-05 (free physical memory 4 GiB or more while inferring): the engine still starts, the record says so.
+        var notice = _availableMemoryMb() is { } before && before < model.Model.RequiredMemoryMb + LowMemoryMarginMb
+            ? $"記録を作り始めたときの空きメモリは {before} MB でした。推論エンジンが約 {model.Model.RequiredMemoryMb} MB 使うため、推論中は空きが 4 GB を下回った可能性があります。ほかのアプリを閉じると安定します。"
+            : null;
 
         var port = FreeLoopbackPort();
         var key = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
@@ -228,7 +236,7 @@ public sealed class LlamaServerHost : IDisposable
             StopCore();
             throw;
         }
-        return new LlamaServerEndpoint(endpoint, key, launch);
+        return new LlamaServerEndpoint(endpoint, key, launch, notice);
     }
 
     /// <summary>The command line (no secrets: the key goes through the environment).</summary>
@@ -521,7 +529,10 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     {
         var (client, lease) = await ClientAsync(modelId, cancellationToken).ConfigureAwait(false);
         using (lease)
-            return await client.GetModelAsync(modelId, cancellationToken).ConfigureAwait(false);
+        {
+            var info = await client.GetModelAsync(modelId, cancellationToken).ConfigureAwait(false);
+            return _key?.Endpoint.Notice is { } notice ? info with { Notice = notice } : info;
+        }
     }
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken cancellationToken)
