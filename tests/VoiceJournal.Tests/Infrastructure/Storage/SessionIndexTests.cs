@@ -145,6 +145,7 @@ public sealed class SessionIndexTests : IDisposable
         var report = _index.Rebuild();
 
         Assert.Equal([goneId], report.MissingOnDisk);
+        Assert.DoesNotContain(_index.ListSessions(), x => x.SessionId == goneId); // the index follows the files
         Assert.Equal(3, report.Failed.Count);
         Assert.Contains(report.Failed, f => f.RelativePath == _workspace.RelativePathOf(broken) && f.Reason.StartsWith(nameof(InvalidDataException), StringComparison.Ordinal));
         Assert.Contains(report.Failed, f => f.RelativePath == _workspace.RelativePathOf(noManifest) && f.Reason.Contains("missing", StringComparison.Ordinal));

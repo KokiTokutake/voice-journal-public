@@ -89,8 +89,39 @@ public sealed class SessionIndex : ISessionIndex
             }
             return list;
         });
+        // The index follows the files: a session whose folder is gone leaves the index (its rows can be rebuilt if the
+        // folder comes back). Management tables are not an index and keep their references (detail spec 11.2, 15.3).
+        foreach (var id in missing) RemoveFromIndex(id);
         return new IndexRebuildReport(indexed, unchanged, failed, missing, needsRecovery);
     }
+
+    private static readonly string[] IndexTablesOfASession =
+    [
+        "DELETE FROM segments WHERE transcript_revision_id IN (SELECT id FROM transcript_revisions WHERE session_id = $id)",
+        "DELETE FROM transcript_revisions WHERE session_id = $id",
+        "DELETE FROM jobs WHERE session_id = $id",
+        "DELETE FROM candidates WHERE analysis_id IN (SELECT id FROM analyses WHERE session_id = $id)",
+        "DELETE FROM analyses WHERE session_id = $id",
+        "DELETE FROM records WHERE session_id = $id",
+        "DELETE FROM record_jobs WHERE session_id = $id",
+        "DELETE FROM audio_events WHERE track_id IN (SELECT id FROM audio_tracks WHERE session_id = $id)",
+        "DELETE FROM audio_chunks WHERE track_id IN (SELECT id FROM audio_tracks WHERE session_id = $id)",
+        "DELETE FROM audio_tracks WHERE session_id = $id",
+        "DELETE FROM sessions WHERE id = $id",
+    ];
+
+    private void RemoveFromIndex(Guid sessionId) => _db.Write((c, tx) =>
+    {
+        foreach (var sql in IndexTablesOfASession)
+        {
+            using var cmd = c.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$id", DbText.Id(sessionId));
+            cmd.ExecuteNonQuery();
+        }
+        return 0;
+    });
 
     public IReadOnlyList<SessionSummary> ListSessions() => _db.Read(c =>
     {
