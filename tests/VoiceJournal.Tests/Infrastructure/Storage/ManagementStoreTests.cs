@@ -52,7 +52,7 @@ public sealed class ManagementStoreTests : IDisposable
         Assert.Equal([(CandidateKind.Issue, ManagementStore.IssuesPath), (CandidateKind.Task, ManagementStore.TasksPath)], files.Select(f => (f.Kind, f.RelativePath)));
         Assert.All(files, f => Assert.Null(f.CurrentBytes));
         Assert.Equal(files.Select(f => f.FileId), _store.Files().Select(f => f.FileId)); // registered once
-        Assert.Throws<InvalidOperationException>(() => _store.FullPath("../outside.md"));
+        Assert.Throws<UnauthorizedAccessException>(() => _store.FullPath("../outside.md")); // 21.1
 
         _store.SetMode(CandidateKind.Task, ManagedFileMode.AppendOnly);
         Assert.Equal(ManagedFileMode.AppendOnly, _store.Files().Single(f => f.Kind == CandidateKind.Task).Mode);
