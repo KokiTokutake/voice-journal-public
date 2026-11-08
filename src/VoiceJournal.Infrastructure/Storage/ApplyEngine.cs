@@ -344,6 +344,7 @@ public static class ManagedFileGuard
         var full = Path.GetFullPath(path);
         var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("管理ファイルがワークスペースの外にあります。");
+        if (Core.IO.SafePath.Problem(Path.GetRelativePath(root, full)) is { } problem) throw new UnauthorizedAccessException($"管理ファイルのパスが使えません: {problem}");
         if (full.StartsWith(@"\\", StringComparison.Ordinal)) throw new UnauthorizedAccessException("ネットワーク上のファイルは自動では更新しません。");
         var drive = new DriveInfo(Path.GetPathRoot(full)!);
         if (drive.DriveType != DriveType.Fixed) throw new UnauthorizedAccessException("固定ディスク以外（ネットワーク・取り外し可能）のファイルは自動では更新しません。");

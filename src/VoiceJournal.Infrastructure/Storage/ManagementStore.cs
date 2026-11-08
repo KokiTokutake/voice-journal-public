@@ -108,10 +108,7 @@ public sealed class ManagementStore
     public string FullPath(string relativePath)
     {
         ArgumentNullException.ThrowIfNull(relativePath);
-        var full = Path.GetFullPath(Path.Combine(_workspace.Root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-        var root = Path.GetFullPath(_workspace.Root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("The management file is outside the workspace.");
-        return full;
+        return Core.IO.SafePath.Under(_workspace.Root, relativePath); // 21.1: no .., drive, device path, stream or device name
     }
 
     /// <summary>The confirmed items with their evidence.</summary>
@@ -458,7 +455,7 @@ public sealed class ManagementStore
         ArgumentNullException.ThrowIfNull(bytes);
         var folder = FullPath($"imports/{importId:D}");
         Directory.CreateDirectory(folder);
-        AtomicFile.WriteAllBytes(Path.Combine(folder, "original" + Path.GetExtension(sourcePath)), bytes);
+        AtomicFile.WriteAllBytes(Path.Combine(folder, "original" + Core.IO.SafePath.Extension(sourcePath, ".md")), bytes);
         AtomicFile.WriteAllBytes(Path.Combine(folder, "source.json"), JsonSerializer.SerializeToUtf8Bytes(new
         {
             path = sourcePath,
