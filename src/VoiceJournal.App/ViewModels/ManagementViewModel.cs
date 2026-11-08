@@ -360,6 +360,40 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     public ObservableCollection<EditedBlockRow> EditedBlocks { get; } = [];
 
+    /// <summary>Set by the window: a snapshot is taken only while nothing is recorded (14.4).</summary>
+    public Func<bool>? IsRecording { get; set; }
+
+    /// <summary>The workspace and database the snapshot is taken of (null in tests that do not need it).</summary>
+    public (Workspace Workspace, VoiceJournalDatabase Db)? BackupSource { get; set; }
+
+    /// <summary>
+    /// 14.4: a snapshot of the whole workspace (audio, transcripts, records, management files, plans) with hashes, and the
+    /// database through the Online Backup API. Restoring makes a new workspace and checks it (WorkspaceBackup.Restore).
+    /// </summary>
+    [RelayCommand]
+    private async Task CreateBackupAsync()
+    {
+        if (BackupSource is not { } source) return;
+        if (IsRecording?.Invoke() == true)
+        {
+            Message = "録音中はバックアップを作りません。録音を止めてからやり直してください。";
+            return;
+        }
+        Message = "ワークスペースのバックアップを作っています…（原音が多いと時間がかかります）";
+        try
+        {
+            var report = await Task.Run(() => WorkspaceBackup.Create(source.Workspace, source.Db, _time));
+            var problems = await Task.Run(() => WorkspaceBackup.Verify(report.Directory));
+            Message = problems.Count == 0
+                ? $"バックアップを作りました（{report.Files} ファイル、{report.Bytes / 1024.0 / 1024.0:0.0} MB、ハッシュを確認済み）: {report.Directory}"
+                : "バックアップを作りましたが、確認で問題がありました: " + string.Join("、", problems);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Message = $"バックアップを作れませんでした（{ex.Message}）。";
+        }
+    }
+
     public bool HasEditedBlocks => EditedBlocks.Count > 0;
 
     /// <summary>11.4: the issue file only gets new items appended; updates of existing ones are saved as proposals (AT-14).</summary>

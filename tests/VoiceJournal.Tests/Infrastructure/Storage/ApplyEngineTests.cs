@@ -201,6 +201,31 @@ public sealed class ApplyEngineTests : IDisposable
     }
 
     [Fact]
+    public void AWorkspaceSnapshot_RestoresIntoANewFolder_WithTheSameHashes_AndAConsistentDatabase() // AT-20, 14.4
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create), M.R(M.C("C0002", "ログイン不具合", CandidateKind.Issue), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var session = Directory.CreateDirectory(Path.Combine(_workspace.SessionsRoot, "2026", "11", Guid.NewGuid().ToString("D"))).FullName;
+        File.WriteAllBytes(Path.Combine(session, "000001.wav"), [1, 2, 3, 4]); // stands for original audio
+
+        var snapshot = WorkspaceBackup.Create(_workspace, _db);
+        Assert.Empty(WorkspaceBackup.Verify(snapshot.Directory));
+
+        var restored = Path.Combine(_dir.Path, "Restored");
+        Assert.Empty(WorkspaceBackup.Restore(snapshot.Directory, restored));
+        Assert.Equal(File.ReadAllBytes(Tasks), File.ReadAllBytes(Path.Combine(restored, "management", "tasks.md")));
+        Assert.Equal([1, 2, 3, 4], File.ReadAllBytes(Path.Combine(restored, Path.GetRelativePath(_workspace.Root, session), "000001.wav")));
+        var db2 = VoiceJournalDatabase.Open(Path.Combine(restored, "db", "voicejournal.db"));
+        var store2 = new ManagementStore(Workspace.OpenOrCreate(restored, syncRoots: []), db2);
+        Assert.Equal(_store.Items().Select(i => (i.DisplayId, i.Revision)), store2.Items().Select(i => (i.DisplayId, i.Revision)));
+
+        File.AppendAllText(Path.Combine(restored, "management", "tasks.md"), "x");
+        Assert.Contains(WorkspaceBackup.Verify(restored, Path.Combine(snapshot.Directory, WorkspaceBackup.HashesFile)), p => p.Contains("tasks.md", StringComparison.Ordinal));
+        Assert.Throws<IOException>(() => WorkspaceBackup.Restore(snapshot.Directory, restored)); // never over an existing folder
+        SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
     public void AnAppliedUpdate_CanBeUndone_AsANewBatch_Once() // AT-20
     {
         var first = Plan(M.R(M.C("C0001", "見積書の作成", assignee: "田村"), ReviewChoice.Create));

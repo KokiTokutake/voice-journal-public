@@ -127,7 +127,11 @@
             </DataGrid>
         </StackPanel>
         <StackPanel Grid.Column="2">
-            <TextBlock Text="変更計画（反映待ち・履歴）" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <DockPanel Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="ワークスペースのバックアップ" Padding="8,1" Command="{Binding CreateBackupCommand}"
+                        ToolTip="原音・文字起こし・記録・管理ファイル・変更計画とデータベースを、ハッシュつきで backups フォルダーに写します" />
+                <TextBlock Text="変更計画（反映待ち・履歴）" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
             <ListBox ItemsSource="{Binding Batches}" MaxHeight="180" AutomationProperties.Name="変更計画の履歴" HorizontalContentAlignment="Stretch">
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type vm:BatchRow}">

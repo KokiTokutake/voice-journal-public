@@ -39,6 +39,7 @@ public sealed partial class MainViewModel : ObservableObject
         Library.OpenTranscriptRequested += (_, row) => OpenTranscript(row);
         Library.OpenRecordRequested += (_, row) => OpenRecord(row);
         if (Record is not null) Record.OpenManagementRequested += (_, sessionId) => OpenManagement(sessionId);
+        if (Management is not null) Management.IsRecording = () => Recording.IsActive;
     }
 
     public RecordingViewModel Recording { get; }
