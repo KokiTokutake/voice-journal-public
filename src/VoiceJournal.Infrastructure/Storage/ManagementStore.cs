@@ -414,10 +414,13 @@ public sealed class ManagementStore
         return (IReadOnlyList<AppliedChange>)list;
     });
 
-    /// <summary>Marks a planned batch as abandoned (the user re-plans). Its reserved display numbers stay used.</summary>
+    /// <summary>
+    /// Marks a planned batch, or one stopped for recovery, as abandoned. Its reserved display numbers stay used. Files a
+    /// stopped batch already replaced keep the new blocks; they show as edited blocks to take in or discard (11.5).
+    /// </summary>
     public void Abandon(Guid batchId) => _db.Write((c, tx) =>
     {
-        Exec(c, tx, "UPDATE apply_batches SET state = 'abandoned' WHERE id = $id AND state = 'planned'", ("$id", DbText.Id(batchId)));
+        Exec(c, tx, "UPDATE apply_batches SET state = 'abandoned' WHERE id = $id AND state IN ('planned', 'recovery_required')", ("$id", DbText.Id(batchId)));
         Exec(c, tx, "UPDATE approvals SET state = 'abandoned' WHERE id = (SELECT approval_id FROM apply_batches WHERE id = $id) AND state = 'planned'", ("$id", DbText.Id(batchId)));
         return 0;
     });

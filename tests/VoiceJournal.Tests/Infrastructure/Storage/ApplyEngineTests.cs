@@ -156,6 +156,50 @@ public sealed class ApplyEngineTests : IDisposable
         return plan.Changes.Count == 0 ? null! : _store.SavePlan(plan);
     }
 
+    private (SavedPlan Saved, byte[] TasksBefore) StoppedForRecovery()
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create), M.R(M.C("C0002", "ログイン不具合", CandidateKind.Issue), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var task = _store.Items().Single(i => i.Kind == CandidateKind.Task);
+        var issue = _store.Items().Single(i => i.Kind == CandidateKind.Issue);
+        var saved = Plan(
+            M.R(M.C("C0003", "x", action: CandidateAction.Update, target: issue.Id, description: "原因はキャッシュ", changed: [ItemField.Description], kind: CandidateKind.Issue), ReviewChoice.Update, issue.Id, 1),
+            M.R(M.C("C0004", "x", action: CandidateAction.Update, target: task.Id, description: "金額を直す", changed: [ItemField.Description]), ReviewChoice.Update, task.Id, 1));
+        var tasksBefore = File.ReadAllBytes(Tasks);
+        Assert.Throws<SimulatedCrashException>(() => Engine(new CrashAt(ApplyStep.AfterReplace, 1)).Apply(saved.BatchId));
+        File.AppendAllText(Tasks, "外部で足した行\r\n");
+        Assert.Equal(RecoveryAction.RecoveryRequired, Assert.Single(new ApplyRecovery(_db, _store, Engine()).RecoverAll()).Action);
+        return (saved, tasksBefore);
+    }
+
+    [Fact]
+    public void AfterTheUserUndoesTheExternalEdit_TheStoppedBatchIsFinished() // AT-18: consistent after manual resolution
+    {
+        var (saved, tasksBefore) = StoppedForRecovery();
+        File.WriteAllBytes(Tasks, tasksBefore); // the user removes the line they added
+
+        var report = new ApplyRecovery(_db, _store, Engine()).Recover(saved.BatchId);
+
+        Assert.Equal(RecoveryAction.Completed, report.Action);
+        Assert.Equal("committed", State(saved.BatchId));
+        Assert.All(_store.Items(), i => Assert.Equal(2, i.Revision));
+        Assert.Contains("金額を直す", File.ReadAllText(Tasks), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AStoppedBatchGivenUp_LeavesTheReplacedBlocksToBeTakenIn() // AT-18
+    {
+        var (saved, _) = StoppedForRecovery();
+
+        _store.Abandon(saved.BatchId);
+
+        Assert.Equal("abandoned", State(saved.BatchId));
+        var text = ManagedText.Decode(File.ReadAllBytes(Issues))!;
+        var edited = Assert.Single(ManagementMarkdown.EditedBlocks(text.Text, ManagementMarkdown.Parse(text.Text, _workspace.Info.WorkspaceId), _store.Items().ToDictionary(i => i.Id), text.LineEnd));
+        Assert.Equal("ISS-000001", edited.Item.DisplayId); // replaced before the stop, not confirmed: offered to take in
+        Assert.Contains("外部で足した行", File.ReadAllText(Tasks), StringComparison.Ordinal); // the external edit is kept
+    }
+
     [Fact]
     public void AnAppliedUpdate_CanBeUndone_AsANewBatch_Once() // AT-20
     {

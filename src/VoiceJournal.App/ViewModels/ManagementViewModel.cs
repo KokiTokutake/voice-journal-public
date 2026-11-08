@@ -303,6 +303,11 @@ public sealed record BatchRow(BatchSummary Batch)
 
     public bool CanRevert => Batch.State == "committed";
 
+    /// <summary>Stopped because a file had unknown content: check again after the user fixed it, or give up.</summary>
+    public bool NeedsRecovery => Batch.State == "recovery_required";
+
+    public bool CanAbandon => CanApply || NeedsRecovery;
+
     public string Folder => Batch.PlanPath;
 }
 
@@ -718,14 +723,40 @@ public sealed partial class ManagementViewModel : ObservableObject
             : $"{row.Item.DisplayId} の手編集を捨て、ブロックを今の項目の内容で書き直す計画です。差分を確かめてから反映してください。";
     }
 
+    /// <summary>A batch stopped for recovery: decide again from the files now (14.3), after the user fixed them.</summary>
+    [RelayCommand]
+    private void RetryBatch(BatchRow? row)
+    {
+        if (row is null || !row.NeedsRecovery || _recovery is null) return;
+        RecoveryReport report;
+        try
+        {
+            report = _recovery.Recover(row.Batch.BatchId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Message = $"確かめられませんでした（{ex.Message}）。";
+            return;
+        }
+        Refresh();
+        Message = report.Action switch
+        {
+            RecoveryAction.Reset => "どのファイルも反映の前の内容でした。この計画をもう一度反映できます。",
+            RecoveryAction.RecoveryRequired => "まだ承認の前とも後とも違うファイルがあります。" + string.Join(" ", report.Notes),
+            _ => "反映を最後まで終えました。" + string.Join(" ", report.Notes),
+        };
+    }
+
     /// <summary>Discards a saved plan that was not applied (its display numbers stay used).</summary>
     [RelayCommand]
     private void AbandonBatch(BatchRow? row)
     {
-        if (row is null || !row.CanApply) return;
+        if (row is null || !row.CanAbandon) return;
         _store.Abandon(row.Batch.BatchId);
         Refresh();
-        Message = "変更計画を破棄しました。管理ファイルは変わっていません。候補は選び直せます。";
+        Message = row.NeedsRecovery
+            ? "途中で止まった反映をあきらめました。すでに書き換えたファイルの項目は「手で編集された項目」に出るので、取り込むか戻すかを選んでください。"
+            : "変更計画を破棄しました。管理ファイルは変わっていません。候補は選び直せます。";
     }
 
     private void Apply(Guid batchId)
