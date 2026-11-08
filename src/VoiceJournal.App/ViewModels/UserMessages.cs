@@ -118,6 +118,15 @@ internal static class UserMessages
     };
 
     /// <summary>What the app checked about a candidate (shown as 要確認).</summary>
+    public static string DifferenceName(Core.Management.DuplicateDifference difference) => difference switch
+    {
+        Core.Management.DuplicateDifference.Assignee => "担当が違う",
+        Core.Management.DuplicateDifference.DueDate => "期限が違う",
+        Core.Management.DuplicateDifference.Status => "状態が違う",
+        Core.Management.DuplicateDifference.Negation => "否定の有無が違う",
+        _ => "数値が違う",
+    };
+
     public static string ConcernName(CandidateConcern concern) => concern switch
     {
         CandidateConcern.Doubtful => "推測・提案の言い方",

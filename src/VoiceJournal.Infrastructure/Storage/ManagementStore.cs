@@ -12,6 +12,8 @@ namespace VoiceJournal.Infrastructure.Storage;
 /// <summary>A saved change plan: its batch, where its files are, and whether an earlier identical approval was reused (AT-12).</summary>
 public sealed record SavedPlan(Guid BatchId, Guid ApprovalId, string Directory, bool Reused, string State);
 
+public sealed record ReviewableSession(Guid SessionId, string Directory, string? Title, string? Project, DateTimeOffset StartedAtUtc, int Candidates);
+
 public sealed record BatchSummary(Guid BatchId, Guid ApprovalId, string State, DateTimeOffset CreatedAtUtc, string PlanPath, int Changes, int Files);
 
 /// <summary>A user's choice for a candidate as stored (without the candidate, which lives in the record).</summary>
@@ -41,6 +43,8 @@ public sealed class ManagementStore
     }
 
     private string WorkspaceId => DbText.Id(_workspace.Info.WorkspaceId);
+
+    public Guid WorkspaceGuid => _workspace.Info.WorkspaceId;
 
     /// <summary>The management files, registered on first use (the app creates them: no existing files, CLAUDE.md), with their bytes now.</summary>
     public IReadOnlyList<ManagedFile> Files()
@@ -193,6 +197,21 @@ public sealed class ManagementStore
         return ((IReadOnlySet<CandidateKey>)keys, (IReadOnlySet<string>)prints);
     });
 
+    /// <summary>Candidates in saved plans that are not applied or abandoned yet.</summary>
+    public IReadOnlySet<CandidateKey> Pending() => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT json_extract(j.value, '$.key') FROM apply_batches b JOIN approvals a ON a.id = b.approval_id, json_each(a.candidate_revisions_json) j
+            WHERE b.state IN ('planned', 'prepared', 'applying', 'recovery_required')
+            """;
+        using var r = cmd.ExecuteReader();
+        var keys = new HashSet<CandidateKey>();
+        while (r.Read())
+            if (!r.IsDBNull(0) && ParseKey(r.GetString(0)) is { } key) keys.Add(key);
+        return (IReadOnlySet<CandidateKey>)keys;
+    });
+
     public IReadOnlyDictionary<CandidateKey, StoredReview> Reviews(Guid sessionId) => _db.Read(c =>
     {
         using var cmd = c.CreateCommand();
@@ -335,6 +354,27 @@ public sealed class ManagementStore
         var list = new List<BatchSummary>();
         while (r.Read())
             list.Add(new BatchSummary(Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), r.GetString(2), DbText.ParseUtc(r.GetString(3)), r.GetString(4), r.GetInt32(5), r.GetInt32(6)));
+        return list;
+    });
+
+    /// <summary>Sessions that have a record (newest first), with the number of candidates of their latest analysis.</summary>
+    public IReadOnlyList<ReviewableSession> SessionsWithRecords() => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.id, s.relative_path, s.title, s.project, s.started_at,
+                   (SELECT COUNT(*) FROM candidates k JOIN analyses a ON a.id = k.analysis_id
+                     WHERE a.session_id = s.id AND a.revision = (SELECT MAX(revision) FROM analyses WHERE session_id = s.id))
+            FROM sessions s
+            WHERE s.workspace_id = $ws AND EXISTS (SELECT 1 FROM records r WHERE r.session_id = s.id)
+            ORDER BY s.started_at DESC
+            """;
+        cmd.Parameters.AddWithValue("$ws", WorkspaceId);
+        using var r = cmd.ExecuteReader();
+        var list = new List<ReviewableSession>();
+        while (r.Read())
+            list.Add(new ReviewableSession(Guid.Parse(r.GetString(0)), Path.Combine(_workspace.Root, r.GetString(1).Replace('/', Path.DirectorySeparatorChar)),
+                r.IsDBNull(2) ? null : r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3), DbText.ParseUtc(r.GetString(4)), r.GetInt32(5)));
         return list;
     });
 

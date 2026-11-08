@@ -45,6 +45,9 @@ public sealed record PlanningInput
     /// <summary>The applied ledger (12.2-2): candidates already applied in an earlier batch.</summary>
     public IReadOnlySet<CandidateKey> Applied { get; init; } = new HashSet<CandidateKey>();
 
+    /// <summary>Candidates in a saved plan that is not applied yet: planning them again would apply them twice (AT-12).</summary>
+    public IReadOnlySet<CandidateKey> Pending { get; init; } = new HashSet<CandidateKey>();
+
     /// <summary>Kind + evidence hash + normalized title of applied creations: the same candidate from a regenerated analysis (AT-12).</summary>
     public IReadOnlySet<string> AppliedFingerprints { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -203,6 +206,7 @@ public static class ChangePlanner
             void Skip(string reason) => skipped.Add(new SkippedCandidate(key, title, reason));
 
             if (input.Applied.Contains(key)) { Skip("この候補はすでに反映済みです"); continue; }
+            if (input.Pending.Contains(key)) { Skip("保存済みの変更計画（反映待ち）に入っています"); continue; }
             if (!seen.Add(key)) { Skip("同じ候補が 2 回選ばれています"); continue; }
             if (changes.Count >= MaxChanges) { Skip($"1 回の反映は {MaxChanges} 件までです"); continue; }
 

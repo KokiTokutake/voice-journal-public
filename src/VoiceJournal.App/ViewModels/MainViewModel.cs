@@ -24,7 +24,7 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         RecordingViewModel recording, LibraryViewModel library, IDialogService dialogs,
         TranscriptViewModel? transcript = null, ProcessingViewModel? processing = null, SettingsViewModel? settings = null,
-        RecordReviewViewModel? record = null)
+        RecordReviewViewModel? record = null, ManagementViewModel? management = null)
     {
         Recording = recording;
         Library = library;
@@ -32,11 +32,13 @@ public sealed partial class MainViewModel : ObservableObject
         Record = record;
         Processing = processing;
         Settings = settings;
+        Management = management;
         _dialogs = dialogs;
         Recording.PropertyChanged += OnRecordingChanged;
         Recording.RecordingCompleted += async (_, _) => await Library.RefreshAsync();
         Library.OpenTranscriptRequested += (_, row) => OpenTranscript(row);
         Library.OpenRecordRequested += (_, row) => OpenRecord(row);
+        if (Record is not null) Record.OpenManagementRequested += (_, sessionId) => OpenManagement(sessionId);
     }
 
     public RecordingViewModel Recording { get; }
@@ -50,6 +52,8 @@ public sealed partial class MainViewModel : ObservableObject
     public RecordReviewViewModel? Record { get; }
 
     public SettingsViewModel? Settings { get; }
+
+    public ManagementViewModel? Management { get; }
 
     /// <summary>UI-06 for the session chosen in the library.</summary>
     public void OpenTranscript(SessionRowViewModel row)
@@ -69,9 +73,18 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentPage = AppPage.Record;
     }
 
+    /// <summary>UI-08 for the session of the record page.</summary>
+    public void OpenManagement(Guid sessionId)
+    {
+        if (Management is null) return;
+        Management.Open(sessionId);
+        CurrentPage = AppPage.Management;
+    }
+
     partial void OnCurrentPageChanged(AppPage value)
     {
         if (value == AppPage.Processing && Processing is not null) _ = Processing.RefreshAsync();
+        if (value == AppPage.Management && Management is not null) Management.Refresh();
     }
 
     [ObservableProperty]

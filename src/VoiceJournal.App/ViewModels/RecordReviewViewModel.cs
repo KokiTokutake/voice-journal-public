@@ -734,6 +734,15 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         }
     }
 
+    /// <summary>The user wants to review this session's candidates on the 「管理」 page.</summary>
+    public event EventHandler<Guid>? OpenManagementRequested;
+
+    [RelayCommand]
+    private void OpenManagement()
+    {
+        if (_document is { } doc) OpenManagementRequested?.Invoke(this, doc.SessionId);
+    }
+
     [RelayCommand]
     private void ShowEvidence(EvidenceLink? link)
     {

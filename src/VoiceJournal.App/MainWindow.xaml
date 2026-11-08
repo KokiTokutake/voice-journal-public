@@ -46,7 +46,7 @@
                 <views:RecordReviewView DataContext="{Binding Record}" />
             </TabItem>
             <TabItem Header="管理(_G)">
-                <TextBlock Margin="36,24" Style="{StaticResource Note}" Text="課題・タスクの管理は Phase F で実装します。" />
+                <views:ManagementView DataContext="{Binding Management}" />
             </TabItem>
             <TabItem Header="処理状況(_J)">
                 <views:ProcessingView DataContext="{Binding Processing}" />

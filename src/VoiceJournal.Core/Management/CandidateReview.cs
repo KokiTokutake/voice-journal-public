@@ -190,3 +190,25 @@ public static class CandidateRules
         return Convert.ToHexStringLower(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(candidate.Evidence, AnalysisJson.Compact)));
     }
 }
+
+/// <summary>The candidates of a record, as reviews not yet decided.</summary>
+public static class ReviewSource
+{
+    /// <summary>
+    /// One review per candidate of <paramref name="record"/>. The key uses the record's analysis revision (12.2-2); a record
+    /// without one (made by hand) uses its own revision. The project is the session's (「未分類」 when it has none).
+    /// </summary>
+    public static IReadOnlyList<CandidateReview> FromRecord(Records.RecordDocument record, string? project)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        var analysis = record.Provenance.AnalysisRevision ?? record.Revision;
+        return [.. record.Candidates.Select(c => new CandidateReview
+        {
+            Key = new CandidateKey(record.SessionId, analysis, c.Candidate.CandidateId),
+            Candidate = c.Candidate,
+            TranscriptRevision = record.TranscriptRevision,
+            Project = string.IsNullOrWhiteSpace(project) ? ManagementItem.Unclassified : project.Trim(),
+            Concerns = c.Flags,
+        })];
+    }
+}

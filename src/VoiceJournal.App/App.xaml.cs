@@ -166,6 +166,8 @@ public partial class App : Application
         services.AddSingleton(sp => new ProcessingViewModel(sp.GetRequiredService<TranscriptionCoordinator>(), sp.GetRequiredService<TranscriptIndex>(),
             sp.GetRequiredService<IUiDispatcher>(), sp.GetRequiredService<RecordingEnvironment>(), sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<RecordIndex>()));
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton(sp => new ManagementStore(workspace, database, sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new ManagementViewModel(sp.GetRequiredService<ManagementStore>(), sp.GetRequiredService<IDialogService>(), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<RecordingViewModel>();
         services.AddSingleton<LibraryViewModel>();
         services.AddSingleton<MainViewModel>();
