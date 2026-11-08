@@ -34,6 +34,15 @@ public sealed class LlamaServerHost : IDisposable
     /// <summary>NFR-05: the free memory to keep while inferring.</summary>
     public const int LowMemoryMarginMb = 4096;
 
+    /// <summary>
+    /// NFR-05 for a server that is already running (its own memory is in use): a note when less than 4 GiB is free now,
+    /// else null.
+    /// </summary>
+    public string? LowMemoryNow() =>
+        _availableMemoryMb() is { } free && free < LowMemoryMarginMb
+            ? $"記録を作り始めたときの空きメモリは {free} MB で、推論中に保ちたい 4 GB を下回っていました。ほかのアプリを閉じると安定します。"
+            : null;
+
     private readonly Func<LlmToolSettings> _tools;
     private readonly Func<long?> _availableMemoryMb;
     private readonly TimeSpan _idleTimeout;
@@ -530,6 +539,7 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
     }
 
     private readonly Func<bool> _keepFreeMemory;
+    private LlamaServerEndpoint? _noticedEndpoint;
 
     public async Task<LlmModelInfo> GetModelAsync(string modelId, CancellationToken cancellationToken)
     {
@@ -537,7 +547,16 @@ public sealed class BundledLlmClient : ILlmClient, IDisposable
         using (lease)
         {
             var info = await client.GetModelAsync(modelId, cancellationToken).ConfigureAwait(false);
-            return _key?.Endpoint.Notice is { } notice ? info with { Notice = notice } : info;
+            // The note measured when the server started goes with the first record only; a reused server is judged by
+            // the memory free now (review 2026-11-08: the start-time note was repeated on every later record).
+            string? notice;
+            lock (_lock)
+            {
+                var endpoint = _key?.Endpoint;
+                notice = endpoint is not null && !ReferenceEquals(endpoint, _noticedEndpoint) ? endpoint.Notice ?? _host.LowMemoryNow() : _host.LowMemoryNow();
+                _noticedEndpoint = endpoint;
+            }
+            return notice is not null ? info with { Notice = notice } : info;
         }
     }
 

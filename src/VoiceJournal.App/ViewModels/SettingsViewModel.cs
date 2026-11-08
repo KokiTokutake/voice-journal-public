@@ -135,7 +135,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (_dialogs is null || _location is null) return;
         if (_dialogs.PickFolder("新しい保存先のフォルダーを選ぶ（空のフォルダーか、既存のワークスペース）") is not { } folder) return;
-        if (WorkspaceChoice.Problem(folder) is { } problem)
+        if (WorkspaceChoice.Problem(folder, current: WorkspaceRoot) is { } problem)
         {
             WorkspaceMessage = $"このフォルダーは保存先にできません: {problem}";
             return;
@@ -203,6 +203,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task CheckEnvironmentAsync()
     {
         IsCheckingEnvironment = true;
+        try
+        {
+            await CheckEnvironmentCoreAsync();
+        }
+        finally
+        {
+            IsCheckingEnvironment = false; // also when something unexpected failed (review 2026-11-08)
+        }
+    }
+
+    /// <summary>A tool that cannot even be started (e.g. blocked by Smart App Control or an antivirus) is a ✗ line, not a crash.</summary>
+    private static bool IsToolFailure(Exception ex) =>
+        ex is SttException or LlmUnavailableException or System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or InvalidOperationException;
+
+    private async Task CheckEnvironmentCoreAsync()
+    {
         EnvironmentStatus.Clear();
         EnvironmentStatus.Add("確認しています…（モデルの SHA-256 の計算に数秒かかります）");
         var lines = new List<string>();
@@ -242,10 +258,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             var info = await _engine.VerifyAsync(new SttConfiguration { ModelName = ModelName, UseVad = UseVad }, CancellationToken.None);
             lines.Add($"✓ 文字起こし: whisper-cli（{info.EngineName} {info.EngineVersion}）と {UserMessages.ModelLabel(ModelName)}" + (UseVad ? "、VAD モデル" : string.Empty));
         }
-        catch (SttException ex)
+        catch (Exception ex) when (IsToolFailure(ex))
         {
             ok = false;
-            lines.Add($"✗ 文字起こし: {UserMessages.SttError(ex.Code)}（{ex.Message}）");
+            lines.Add(ex is SttException stt ? $"✗ 文字起こし: {UserMessages.SttError(stt.Code)}（{ex.Message}）" : $"✗ 文字起こし: whisper-cli を確かめられませんでした（{ex.Message}）");
         }
         if (_llmTools is not null && _llmStore is not null)
         {
@@ -257,7 +273,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 await Task.Run(() => LlmToolCheck.Verify(_llmTools.LlamaServer, model));
                 lines.Add($"✓ 記録の作成: 推論エンジン（llama.cpp {_llmTools.LlamaServer.Version}）とモデル {modelId}（起動はしていません。［接続を確認］で起動を試せます）");
             }
-            catch (LlmUnavailableException ex)
+            catch (Exception ex) when (IsToolFailure(ex))
             {
                 ok = false;
                 lines.Add($"✗ 記録の作成: {ex.Message}");
@@ -268,7 +284,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             : "✗ の項目を直すまで、その機能は使えません。原音の録音は、文字起こしや記録のツールがなくてもできます。");
         EnvironmentStatus.Clear();
         foreach (var l in lines) EnvironmentStatus.Add(l);
-        IsCheckingEnvironment = false;
     }
 
     private void ShowLlm(LlmSettings settings)
@@ -456,9 +471,9 @@ public sealed partial class SettingsViewModel : ObservableObject
                 if (lines.Count == 0) lines.Add($"✓ whisper-cli（{info.EngineName} {info.EngineVersion}）");
                 lines.Add($"✓ {UserMessages.ModelLabel(model)}");
             }
-            catch (SttException ex)
+            catch (Exception ex) when (IsToolFailure(ex))
             {
-                lines.Add($"✗ {UserMessages.ModelLabel(model)}: {UserMessages.SttError(ex.Code)}（{ex.Message}）");
+                lines.Add(ex is SttException stt ? $"✗ {UserMessages.ModelLabel(model)}: {UserMessages.SttError(stt.Code)}（{ex.Message}）" : $"✗ {UserMessages.ModelLabel(model)}: whisper-cli を確かめられませんでした（{ex.Message}）");
             }
         }
         if (UseVad) lines.Add(lines.Any(l => l.StartsWith('✓')) ? "✓ VAD モデル（Silero v6.2.0）" : "VAD モデルは上の確認に含まれています");

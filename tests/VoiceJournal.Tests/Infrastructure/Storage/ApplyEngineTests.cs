@@ -534,10 +534,10 @@ public sealed class ApplyEngineTests : IDisposable
         var later = new ManagementStore(_workspace, _db, new ManualTimeProvider(DateTimeOffset.UtcNow.AddDays(100)));
         var pruned = later.PruneApplyBackups();
 
-        Assert.Equal(batches.Take(3).Order(), pruned.Order()); // 13 batches: the latest 10 (one of them planned) keep theirs
-        Assert.All(batches.Take(3), b => Assert.False(Directory.Exists(Backup(b))));
-        Assert.All(batches.Skip(3), b => Assert.True(Directory.Exists(Backup(b))));
-        Assert.All(batches.Take(3), b => Assert.True(File.Exists(_store.FullPath($"transactions/{b:D}/plan.json")))); // the history stays
+        Assert.Equal(batches.Take(2).Order(), pruned.Order()); // 12 applies: the latest 10 applies keep theirs (the planned one does not count)
+        Assert.All(batches.Take(2), b => Assert.False(Directory.Exists(Backup(b))));
+        Assert.All(batches.Skip(2), b => Assert.True(Directory.Exists(Backup(b))));
+        Assert.All(batches.Take(2), b => Assert.True(File.Exists(_store.FullPath($"transactions/{b:D}/plan.json")))); // the history stays
         Assert.Equal("planned", State(stuck.BatchId));
         Assert.Equal(titles.Length, _store.Items().Count);
         Assert.Empty(later.PruneApplyBackups()); // nothing left to remove

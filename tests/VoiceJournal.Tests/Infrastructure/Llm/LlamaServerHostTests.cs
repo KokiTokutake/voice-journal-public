@@ -131,6 +131,16 @@ public sealed class LlamaServerHostTests : IDisposable
     }
 
     [Fact]
+    public void ARunningServer_IsJudgedByTheMemoryFreeNow() // review 2026-11-08: the start-time note was repeated
+    {
+        long free = 3000;
+        using var host = new LlamaServerHost(() => LlmToolSettings.Defaults(@"C:\vj"), availableMemoryMb: () => free);
+        Assert.Contains("3000 MB", host.LowMemoryNow(), StringComparison.Ordinal);
+        free = 9000;
+        Assert.Null(host.LowMemoryNow());
+    }
+
+    [Fact]
     public void Defaults_RegisterTheEngineOfEnvironmentLock_AndTheE2bModelWithMtp()
     {
         var tools = LlmToolSettings.Defaults(@"C:\vj");

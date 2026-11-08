@@ -417,6 +417,32 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Settings_ChecksSurviveAToolThatCannotStart() // review 2026-11-08: the check stayed busy
+    {
+        _engine.VerifyError = new System.ComponentModel.Win32Exception(1260, "blocked by policy");
+        var settings = new SettingsViewModel(_settings, _engine, _tools, new RecordingEnvironment(_workspace.Root, 0));
+
+        await settings.CheckEnvironmentCommand.ExecuteAsync(null);
+        await settings.VerifyToolsCommand.ExecuteAsync(null);
+
+        Assert.False(settings.IsCheckingEnvironment);
+        Assert.False(settings.IsVerifying);
+        Assert.Contains(settings.EnvironmentStatus, l => l.StartsWith("✗ 文字起こし: whisper-cli を確かめられませんでした", StringComparison.Ordinal));
+        Assert.Equal(_tools.Models.Count, settings.ToolStatus.Count(l => l.StartsWith("✗ ", StringComparison.Ordinal) && l.Contains("確かめられませんでした", StringComparison.Ordinal)));
+        _engine.VerifyError = null;
+    }
+
+    [Fact]
+    public void WorkspaceChoice_RefusesAFolderInsideOrAroundTheWorkspaceInUse()
+    {
+        var inside = Path.Combine(_workspace.Root, "backups", "new");
+        Directory.CreateDirectory(inside);
+        Assert.Contains("ワークスペースの中に別のワークスペース", WorkspaceChoice.Problem(inside, [], _workspace.Root), StringComparison.Ordinal);
+        Assert.Contains("ワークスペースの中に別のワークスペース", WorkspaceChoice.Problem(Path.GetDirectoryName(_workspace.Root)!, [], _workspace.Root), StringComparison.Ordinal);
+        Assert.Null(WorkspaceChoice.Problem(_dir.File("elsewhere"), [], _workspace.Root));
+    }
+
+    [Fact]
     public void Settings_BackupRetention_IsSaved_WithinItsRange() // 14.4, UI-12
     {
         var ui = new MemoryUiSettingsStore();

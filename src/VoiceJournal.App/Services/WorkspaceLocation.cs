@@ -55,9 +55,18 @@ public sealed class JsonWorkspaceLocationStore(string path) : IWorkspaceLocation
 public static class WorkspaceChoice
 {
     /// <summary>Why the folder cannot be the workspace, or null. <paramref name="syncRoots"/> defaults to the user's OneDrive folders.</summary>
-    public static string? Problem(string folder, IReadOnlyList<string>? syncRoots = null)
+    /// <param name="current">The workspace in use: a folder inside it or around it is refused (one workspace inside another).</param>
+    public static string? Problem(string folder, IReadOnlyList<string>? syncRoots = null, string? current = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(folder);
+        if (current is not null)
+        {
+            var f = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+            var c = Path.TrimEndingDirectorySeparator(Path.GetFullPath(current));
+            if (!string.Equals(f, c, StringComparison.OrdinalIgnoreCase)
+                && (f.StartsWith(c + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || c.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                return "今の保存先の中か、それを含むフォルダーです（ワークスペースの中に別のワークスペースはつくれません）";
+        }
         var issues = WorkspaceRootPolicy.Check(folder, syncRoots);
         if (issues.Count > 0) return string.Join("、", issues.Select(ViewModels.UserMessages.WorkspaceIssue));
         if (IsWorkspace(folder)) return null;

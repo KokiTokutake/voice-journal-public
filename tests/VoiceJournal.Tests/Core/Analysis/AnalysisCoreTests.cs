@@ -819,6 +819,27 @@ public sealed class IntegrationAndAssemblyTests
     }
 
     [Fact]
+    public void CombineAbove_KeepsThePartsSections_AndTheTopsOwnSections() // review 2026-11-08: a decision only in a top section was lost
+    {
+        static Statement St(string text) => new() { Text = text, Certainty = Certainty.Stated, Evidence = [new Evidence { SegmentId = Guid.NewGuid(), Quote = text }] };
+        static IntegratedRecord Rec(string title, Statement[] summary, params Section[] sections) => new()
+        {
+            RecordTypes = [RecordType.Meeting], Title = title, Summary = summary, Sections = sections, Warnings = ["警告"], Dropped = [],
+        };
+        var part1 = Rec("前半", [St("前半の要点")], new Section { SectionKind = SectionKind.Topic, Heading = "進捗", Statements = [St("画面は 38 画面完了")] });
+        var part2 = Rec("後半", [St("後半の要点")], new Section { SectionKind = SectionKind.Topic, Heading = "進捗", Statements = [St("API は 51 本完了")] });
+        var top = Rec("全体", [St("全体の要約")], new Section { SectionKind = SectionKind.Decision, Heading = "決定事項", Statements = [St("リリースは 12 月 1 日に決定")] });
+
+        var combined = IntegrationConverter.CombineAbove(top, [part1, part2]);
+
+        Assert.Equal("全体", combined.Title);
+        Assert.Equal(["進捗", "決定事項"], combined.Sections.Select(x => x.Heading));
+        Assert.Equal(2, combined.Sections[0].Statements.Count); // same heading merged
+        Assert.Equal("リリースは 12 月 1 日に決定", Assert.Single(combined.Sections[1].Statements).Text);
+        Assert.Single(combined.Warnings); // the same warning once
+    }
+
+    [Fact]
     public void Group_SplitsItemsForHierarchicalIntegration()
     {
         var (_, piece) = Piece();

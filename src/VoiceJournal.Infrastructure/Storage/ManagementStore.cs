@@ -566,7 +566,7 @@ public sealed class ManagementStore
             cmd.CommandText = """
                 SELECT id, committed_at FROM apply_batches
                 WHERE state = 'committed' AND committed_at IS NOT NULL
-                  AND id NOT IN (SELECT id FROM apply_batches ORDER BY created_at DESC LIMIT $keep)
+                  AND id NOT IN (SELECT id FROM apply_batches WHERE state = 'committed' ORDER BY created_at DESC LIMIT $keep)
                 """;
             cmd.Parameters.AddWithValue("$keep", keepLatest);
             using var r = cmd.ExecuteReader();

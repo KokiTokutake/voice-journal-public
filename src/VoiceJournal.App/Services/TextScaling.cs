@@ -27,7 +27,9 @@ public static class TextScaling
     /// <summary>The percent applied last (columns of lists follow it when they are shown).</summary>
     public static int CurrentPercent { get; private set; } = MinPercent;
 
-    private static readonly ConditionalWeakTable<DataGridColumn, StrongBox<DataGridLength>> ColumnWidths = [];
+    private sealed record OriginalColumn(DataGridLength Width, double MinWidth);
+
+    private static readonly ConditionalWeakTable<DataGridColumn, OriginalColumn> ColumnWidths = [];
 
     /// <summary>Prefixes of the app's own resources that grow with the text (App.xaml): font sizes and minimum page heights.</summary>
     public static readonly IReadOnlyList<string> AppKeyPrefixes = ["VjFont", "VjSize"];
@@ -104,13 +106,16 @@ public static class TextScaling
         if (sender is not DataGrid grid) return;
         foreach (var column in grid.Columns)
         {
-            var original = ColumnWidths.GetValue(column, c => new StrongBox<DataGridLength>(c.Width)).Value;
+            var saved = ColumnWidths.GetValue(column, c => new OriginalColumn(c.Width, c.MinWidth));
+            var original = saved.Width;
             if (!original.IsAbsolute && !original.IsStar) continue;
             var target = ScaledWidth(original, CurrentPercent);
             if (!column.Width.Equals(target)) column.Width = target; // setting even the same width makes the list share out its columns again
             // A list with a star column squeezes the other columns down to their minimum when it is narrow; keep them at
             // their width and let the list scroll sideways instead.
-            if (target.IsAbsolute && original.IsAbsolute && column.MinWidth < target.Value) column.MinWidth = target.Value;
+            // back to the original minimum when the text size goes down again (review 2026-11-08)
+            var minimum = target.IsAbsolute && original.IsAbsolute ? Math.Max(saved.MinWidth, target.Value) : saved.MinWidth;
+            if (column.MinWidth != minimum) column.MinWidth = minimum;
         }
     }
 

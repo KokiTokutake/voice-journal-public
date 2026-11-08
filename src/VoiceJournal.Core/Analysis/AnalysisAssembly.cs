@@ -607,15 +607,17 @@ public static partial class IntegrationConverter
 
     /// <summary>
     /// The record of an upper level: title, types and summary from <paramref name="top"/> (integrated from the parts'
-    /// summaries), the sections of the parts in order (same heading merged, at most 30), and summary points the top
-    /// level put back under <see cref="RestoredHeading"/>.
+    /// summaries), the sections of the parts in order, then the top's own sections (including summary points put back
+    /// under <see cref="RestoredHeading"/>); same headings merge, at most 30.
     /// </summary>
     public static IntegratedRecord CombineAbove(IntegratedRecord top, IReadOnlyList<IntegratedRecord> parts)
     {
         ArgumentNullException.ThrowIfNull(top);
         ArgumentNullException.ThrowIfNull(parts);
         var sections = new List<Section>();
-        foreach (var section in parts.SelectMany(p => p.Sections).Concat(top.Sections.Where(s => s.Heading == RestoredHeading)))
+        // The top's own sections too: a summary point the model put only in a section (e.g. 決定事項) counts as used and
+        // is not restored, so dropping those sections would lose it (review 2026-11-08). Same headings merge.
+        foreach (var section in parts.SelectMany(p => p.Sections).Concat(top.Sections))
             foreach (var statement in section.Statements) Append(sections, section.Heading, section.SectionKind, statement);
         return top with
         {

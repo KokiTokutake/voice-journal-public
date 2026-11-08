@@ -48,8 +48,12 @@ internal sealed class FakeSttEngine : ISttEngine
 
     public List<SttRunRequest> Runs { get; } = [];
 
+    /// <summary>Thrown by <see cref="VerifyAsync"/> (e.g. the tool cannot even be started).</summary>
+    public Exception? VerifyError { get; set; }
+
     public Task<SttEngineInfo> VerifyAsync(SttConfiguration configuration, CancellationToken cancellationToken) =>
-        Task.FromResult(new SttEngineInfo("whisper.cpp", "1.9.5", new string('b', 64), configuration.ModelName, new string('c', 64)));
+        VerifyError is { } error ? Task.FromException<SttEngineInfo>(error)
+        : Task.FromResult(new SttEngineInfo("whisper.cpp", "1.9.5", new string('b', 64), configuration.ModelName, new string('c', 64)));
 
     public Task<SttRunResult> RunAsync(SttRunRequest request, IProgress<double>? progress, CancellationToken cancellationToken)
     {

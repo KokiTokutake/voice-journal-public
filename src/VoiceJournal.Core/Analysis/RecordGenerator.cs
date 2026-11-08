@@ -530,7 +530,9 @@ public sealed class RecordGenerator
         Func<IntegratedRecord, IntegratedRecord>? finish = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var path = Path.Combine(work, $"integrate-{level}-{group + 1:000}.json");
+        // Upper levels integrate summaries only (since 2026-11-08); a file of the older all-statements algorithm must not be
+        // taken as one of these when a job interrupted before the update is resumed.
+        var path = Path.Combine(work, level == 1 ? $"integrate-1-{group + 1:000}.json" : $"integrate-summary-{level}-{group + 1:000}.json");
         if (AnalysisFiles.TryRead<IntegratedRecord>(path) is { } saved) return saved;
         var input = JsonSerializer.Serialize(IntegrationConverter.BuildInput(items, session), AnalysisJson.Compact);
         var messages = new List<LlmMessage> { new(LlmRole.System, AnalysisPrompts.Integration), new(LlmRole.User, input) };
