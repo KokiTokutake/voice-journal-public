@@ -113,6 +113,7 @@ public partial class App : Application
         processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);
         processing.ShowFolder = _services.GetRequiredService<IShellService>().OpenFolder;
         processing.Confirm = _services.GetRequiredService<IDialogService>().Confirm;
+        _ = Task.Run(AnalysisSchemaValidator.Warm); // the first record of this run does not wait for the schema
         _services.GetRequiredService<SettingsViewModel>().StartedWithWorkspaceOption = options.WorkspaceRoot is not null;
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {

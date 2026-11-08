@@ -11,6 +11,12 @@ public sealed class AnalysisSchemaValidator : IAnalysisSchemaValidator
     // Compiling the schema takes a moment; once per process.
     private static readonly Lazy<JsonSchema> Schema = new(() => JsonSchema.FromText(AnalysisSchema.Json, "https://voicejournal.invalid/schemas/analysis-1.0.json"));
 
+    /// <summary>
+    /// Compiles the schema ahead (about 4 s on the reference PC), so the first record of a run does not wait for it.
+    /// Called in the background at start-up.
+    /// </summary>
+    public static void Warm() => _ = Schema.Value;
+
     public IReadOnlyList<string> Validate(string json)
     {
         ArgumentNullException.ThrowIfNull(json);
