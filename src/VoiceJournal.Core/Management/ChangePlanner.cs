@@ -475,6 +475,98 @@ public static class ChangePlanner
     }
 }
 
+/// <summary>One change of an applied batch, as needed to undo it.</summary>
+public sealed record AppliedChange(ManagementItem? Before, ManagementItem After);
+
+/// <summary>
+/// 「反映を取り消す」 (detail spec 14.4): not a deletion of history but a new batch that sets the items back. It is made of
+/// ordinary reviews, so it goes through the same plan, diff and apply as any other change. An item changed again after
+/// the batch is not set back (the later change is kept; the user resolves it). v1 deletes nothing: an item the batch
+/// created is cancelled (task) or closed (issue).
+/// </summary>
+public static class RevertBuilder
+{
+    public static IReadOnlyList<CandidateReview> Reviews(Guid batchId, IReadOnlyList<AppliedChange> changes, IReadOnlyDictionary<Guid, ManagementItem> current,
+        List<string> conflicts)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(conflicts);
+        var reviews = new List<CandidateReview>();
+        var n = 0;
+        // The last change of each item is the state the batch left it in.
+        foreach (var group in changes.GroupBy(c => c.After.Id))
+        {
+            var first = group.First();
+            var last = group.Last();
+            if (!current.TryGetValue(last.After.Id, out var now))
+            {
+                conflicts.Add($"{last.After.DisplayId} が見つかりません。");
+                continue;
+            }
+            if (now.Revision != last.After.Revision)
+            {
+                conflicts.Add($"{now.DisplayId} は反映の後に変更されています（Revision {last.After.Revision} → {now.Revision}）。後の変更を残すため、戻しません。");
+                continue;
+            }
+            var target = first.Before;
+            var fields = target is null
+                ? new CandidateFields
+                {
+                    Title = now.Title, Description = now.Description,
+                    Status = now.Kind == CandidateKind.Issue ? ItemStatus.Closed : ItemStatus.Cancelled,
+                    Priority = now.Priority, Assignee = now.Assignee, DueDate = now.DueDate,
+                }
+                : new CandidateFields
+                {
+                    Title = target.Title, Description = target.Description, Status = target.Status,
+                    Priority = target.Priority, Assignee = target.Assignee, DueDate = target.DueDate,
+                };
+            IReadOnlyList<ItemField> changed = target is null ? [ItemField.Status]
+                : [.. new[] { ItemField.Title, ItemField.Description, ItemField.Status, ItemField.Priority, ItemField.Assignee, ItemField.DueDate }
+                    .Where(f => Differs(f, target, now))];
+            if (changed.Count == 0 && target is not null) continue; // a mention only added evidence: the evidence stays
+            var candidate = new Candidate
+            {
+                CandidateId = $"U{++n:0000}",
+                Kind = now.Kind,
+                Action = CandidateAction.Update,
+                SuggestedTargetId = now.Id,
+                ParentIssueCandidateId = null,
+                ParentIssueItemId = null,
+                Fields = fields,
+                ChangedFields = changed,
+                Certainty = Certainty.Stated,
+                DueExpression = null,
+                Evidence = [.. now.Evidence.Select(e => new Evidence { SegmentId = e.SegmentId, Quote = e.Quote })],
+                Rationale = "反映の取消",
+            };
+            reviews.Add(new CandidateReview
+            {
+                Key = new CandidateKey(batchId, 0, candidate.CandidateId),
+                Candidate = candidate,
+                TranscriptRevision = (now.Evidence.Count > 0 ? now.Evidence[0].TranscriptRevision : 1),
+                Project = now.Project,
+                Choice = ReviewChoice.Update,
+                TargetItemId = now.Id,
+                TargetRevision = now.Revision,
+                ConfirmedIndividually = true, // the user asked for this undo item by item in the final check
+            });
+        }
+        return reviews;
+    }
+
+    private static bool Differs(ItemField field, ManagementItem a, ManagementItem b) => field switch
+    {
+        ItemField.Title => a.Title != b.Title,
+        ItemField.Description => a.Description != b.Description,
+        ItemField.Status => a.Status != b.Status,
+        ItemField.Priority => a.Priority != b.Priority,
+        ItemField.Assignee => a.Assignee != b.Assignee,
+        _ => a.DueDate != b.DueDate,
+    };
+}
+
 /// <summary>The canonical JSON of an item snapshot (fields and evidence).</summary>
 public static class ItemJson
 {

@@ -389,6 +389,19 @@ public sealed class ManagementStore
         return list;
     });
 
+    /// <summary>The items a committed batch changed, before and after (from <c>item_versions</c>), for 「反映を取り消す」.</summary>
+    public IReadOnlyList<AppliedChange> AppliedChanges(Guid batchId) => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT before_json, after_json FROM item_versions WHERE batch_id = $batch ORDER BY rowid";
+        cmd.Parameters.AddWithValue("$batch", DbText.Id(batchId));
+        using var r = cmd.ExecuteReader();
+        var list = new List<AppliedChange>();
+        while (r.Read())
+            list.Add(new AppliedChange(r.IsDBNull(0) ? null : ItemJson.FromNode(JsonNode.Parse(r.GetString(0))!), ItemJson.FromNode(JsonNode.Parse(r.GetString(1))!)));
+        return (IReadOnlyList<AppliedChange>)list;
+    });
+
     /// <summary>Marks a planned batch as abandoned (the user re-plans). Its reserved display numbers stay used.</summary>
     public void Abandon(Guid batchId) => _db.Write((c, tx) =>
     {

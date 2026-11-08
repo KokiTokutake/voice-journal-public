@@ -288,6 +288,8 @@ public sealed record BatchRow(BatchSummary Batch)
 
     public bool CanApply => Batch.State == "planned";
 
+    public bool CanRevert => Batch.State == "committed";
+
     public string Folder => Batch.PlanPath;
 }
 
@@ -563,6 +565,47 @@ public sealed partial class ManagementViewModel : ObservableObject
     {
         if (row is null || !row.CanApply || _engine is null) return;
         Apply(row.Batch.BatchId);
+    }
+
+    /// <summary>
+    /// 「反映を取り消す」 (14.4): a new plan that sets the items of an applied batch back, shown for the final check like any
+    /// other plan. Items changed after the batch are left as they are and listed.
+    /// </summary>
+    [RelayCommand]
+    private void RevertBatch(BatchRow? row)
+    {
+        if (row is null || !row.CanRevert) return;
+        ClearPlan();
+        var conflicts = new List<string>();
+        var current = _store.Items().ToDictionary(i => i.Id);
+        var reviews = RevertBuilder.Reviews(row.Batch.BatchId, _store.AppliedChanges(row.Batch.BatchId), current, conflicts);
+        var (issue, task) = _store.NextNumbers();
+        var (keys, prints) = _store.Applied();
+        var (pending, pendingPrints) = _store.Pending();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _store.WorkspaceGuid,
+            Items = [.. current.Values],
+            Reviews = reviews,
+            Applied = keys,
+            Pending = pending,
+            AppliedFingerprints = prints,
+            PendingFingerprints = pendingPrints,
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = _time.GetUtcNow(),
+        }, Guid.CreateVersion7);
+        foreach (var f in plan.Files) PlannedFiles.Add(new PlannedFileRow(f.RelativePath, f.Operation, TextDiff.Unified(f.BeforeText, f.AfterText, f.RelativePath)));
+        var notes = conflicts.Concat(plan.Skipped.Select(s => $"戻さない: {s.Title} — {s.Reason}")).Concat(plan.Proposals.Select(p => $"提案として保存: {p.Target.DisplayId} — {p.Reason}")).ToList();
+        PlanNotes = notes.Count > 0 ? string.Join("\n", notes) : null;
+        if (plan.IsEmpty)
+        {
+            Message = "取り消せる変更がありません。" + (notes.Count > 0 ? "理由は右に表示しています。" : string.Empty);
+            return;
+        }
+        _plan = plan;
+        PlanSummary = $"取消の計画: {plan.Changes.Count} 件の項目を反映の前の値に戻します（新規作成した項目は削除せず、取消・クローズにします）。差分を確かめてから反映してください。";
     }
 
     /// <summary>Discards a saved plan that was not applied (its display numbers stay used).</summary>

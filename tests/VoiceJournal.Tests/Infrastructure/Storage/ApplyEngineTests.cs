@@ -135,6 +135,70 @@ public sealed class ApplyEngineTests : IDisposable
         Assert.Equal(1, _store.Items().Single().Revision);
     }
 
+    private SavedPlan Revert(Guid batchId, List<string> conflicts)
+    {
+        var current = _store.Items().ToDictionary(i => i.Id);
+        var reviews = RevertBuilder.Reviews(batchId, _store.AppliedChanges(batchId), current, conflicts);
+        var (issue, task) = _store.NextNumbers();
+        var (keys, prints) = _store.Applied();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _workspace.Info.WorkspaceId,
+            Items = [.. current.Values],
+            Reviews = reviews,
+            Applied = keys,
+            AppliedFingerprints = prints,
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = M.Now,
+        }, Guid.CreateVersion7);
+        return plan.Changes.Count == 0 ? null! : _store.SavePlan(plan);
+    }
+
+    [Fact]
+    public void AnAppliedUpdate_CanBeUndone_AsANewBatch_Once() // AT-20
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成", assignee: "田村"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var item = _store.Items().Single();
+        var update = Plan(M.R(M.C("C0002", "x", action: CandidateAction.Update, target: item.Id, assignee: "鈴木", description: "金額を直す",
+            changed: [ItemField.Assignee, ItemField.Description]), ReviewChoice.Update, item.Id, 1, confirmed: true));
+        Engine().Apply(update.BatchId);
+        Assert.Equal("鈴木", _store.Items().Single().Assignee);
+
+        var conflicts = new List<string>();
+        var undo = Revert(update.BatchId, conflicts);
+        Assert.Empty(conflicts);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(undo.BatchId).Outcome);
+
+        var back = _store.Items().Single();
+        Assert.Equal(("田村", "", 3), (back.Assignee, back.Description, back.Revision)); // the old values, as a new revision
+        Assert.Contains("- 担当: 田村", File.ReadAllText(Tasks), StringComparison.Ordinal);
+        Assert.Equal(3, _store.Batches().Count); // history is kept, not erased
+        Assert.Null(Revert(update.BatchId, [])); // undone once only
+    }
+
+    [Fact]
+    public void UndoingABatch_KeepsLaterChanges_AndCancelsCreatedItemsInsteadOfDeleting() // AT-20
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create), M.R(M.C("C0002", "請求書の送付"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var later = _store.Items().Single(i => i.DisplayId == "TSK-000001");
+        var update = Plan(M.R(M.C("C0003", "x", action: CandidateAction.Update, target: later.Id, description: "後の変更", changed: [ItemField.Description]), ReviewChoice.Update, later.Id, 1));
+        Engine().Apply(update.BatchId);
+
+        var conflicts = new List<string>();
+        var undo = Revert(first.BatchId, conflicts);
+        Assert.Contains("TSK-000001", Assert.Single(conflicts), StringComparison.Ordinal);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(undo.BatchId).Outcome);
+
+        var items = _store.Items().ToDictionary(i => i.DisplayId);
+        Assert.Equal(("後の変更", ItemStatus.Todo), (items["TSK-000001"].Description, items["TSK-000001"].Status)); // the later change stays
+        Assert.Equal(ItemStatus.Cancelled, items["TSK-000002"].Status); // created by the batch: cancelled, not deleted
+        Assert.Contains("TSK-000002 請求書の送付", File.ReadAllText(Tasks), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ABlockEditedByHand_IsNeverWrittenOver() // 11.5
     {

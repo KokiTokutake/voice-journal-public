@@ -109,6 +109,10 @@
                                 <Button Content="破棄" Padding="8,1" Command="{Binding DataContext.AbandonBatchCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                         CommandParameter="{Binding}" AutomationProperties.Name="この計画を破棄" />
                             </StackPanel>
+                            <Button DockPanel.Dock="Right" Content="取り消す" Padding="8,1" Margin="4,0"
+                                    Visibility="{Binding CanRevert, Converter={StaticResource BoolToVisibility}}"
+                                    Command="{Binding DataContext.RevertBatchCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                    CommandParameter="{Binding}" AutomationProperties.Name="この反映を取り消す" />
                             <TextBlock TextWrapping="Wrap" ToolTip="{Binding Folder}">
                                 <Run Text="{Binding Created, Mode=OneWay}" /><Run Text="　" /><Run Text="{Binding StateText, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="　" /><Run Text="{Binding Counts, Mode=OneWay}" />
                             </TextBlock>
