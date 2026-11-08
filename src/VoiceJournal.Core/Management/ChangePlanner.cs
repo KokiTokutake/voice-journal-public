@@ -285,6 +285,14 @@ public static class ChangePlanner
                 }
                 case ReviewChoice.Update or ReviewChoice.Mention:
                 {
+                    if (file.File.Mode == ManagedFileMode.ManagedBlocks && file.Text is { } current && file.Layout is { } layout
+                        && layout.Blocks.FirstOrDefault(b => b.ItemId == target!.Id) is { } block
+                        && !SameBlock(current.Text.Substring(block.Start, block.Length), ManagementMarkdown.Block(original[target!.Id], original, current.LineEnd)))
+                    {
+                        // 11.5: an edit by hand inside a block is taken in first; the app never writes over it.
+                        Skip($"{target!.DisplayId} の管理ブロックが手で編集されています。先にその編集を取り込むか元に戻してください（上書きはしません）");
+                        continue;
+                    }
                     var before = working[target!.Id];
                     var after = review.Choice == ReviewChoice.Update ? Apply(before, review) : before;
                     after = after with
@@ -411,6 +419,10 @@ public static class ChangePlanner
             NextTaskNumber = nextTask,
         };
     }
+
+    /// <summary>Whether a block in the file is what the app wrote for the item (line ends aside).</summary>
+    public static bool SameBlock(string inFile, string rendered) =>
+        string.Equals(inFile.Replace("\r\n", "\n", StringComparison.Ordinal), rendered.Replace("\r\n", "\n", StringComparison.Ordinal), StringComparison.Ordinal);
 
     /// <summary>The applied-ledger fingerprint of a creation: kind, evidence and normalized title (AT-12).</summary>
     public static string Fingerprint(CandidateKind kind, string evidenceHash, string title) =>

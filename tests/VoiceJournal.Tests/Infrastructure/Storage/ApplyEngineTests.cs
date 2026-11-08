@@ -136,6 +136,31 @@ public sealed class ApplyEngineTests : IDisposable
     }
 
     [Fact]
+    public void ABlockEditedByHand_IsNeverWrittenOver() // 11.5
+    {
+        var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));
+        Engine().Apply(first.BatchId);
+        var target = _store.Items().Single();
+        File.WriteAllText(Tasks, File.ReadAllText(Tasks).Replace("- 担当: 未設定", "- 担当: 佐藤（手で書いた）", StringComparison.Ordinal));
+        var edited = File.ReadAllBytes(Tasks);
+        var (issue, task) = _store.NextNumbers();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _workspace.Info.WorkspaceId,
+            Items = _store.Items(),
+            Reviews = [M.R(M.C("C0002", "x", action: CandidateAction.Update, target: target.Id, description: "金額を直す", changed: [ItemField.Description]), ReviewChoice.Update, target.Id, 1)],
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = M.Now,
+        }, Guid.CreateVersion7);
+
+        Assert.Empty(plan.Changes);
+        Assert.Contains("手で編集", Assert.Single(plan.Skipped).Reason, StringComparison.Ordinal);
+        Assert.Equal(edited, File.ReadAllBytes(Tasks));
+    }
+
+    [Fact]
     public void AFileHeldOpenByAnotherProgram_IsNotWritten() // AT-16
     {
         var first = Plan(M.R(M.C("C0001", "見積書の作成"), ReviewChoice.Create));

@@ -386,6 +386,11 @@ internal static class Migrator
                 throw new DatabaseSchemaException($"Migration {version} in the database does not match this app (hash differs).");
         }
 
+        // AT-24 / 14.4: a database that already has a schema is backed up (Online Backup API, consistent under WAL)
+        // before it is migrated, so a failed or unwanted migration leaves the old version.
+        var pending = migrations.Where(m => !applied.ContainsKey(m.Version)).ToList();
+        if (pending.Count > 0 && applied.Count > 0) Backup(db, time, applied.Keys.Max());
+
         var count = 0;
         foreach (var migration in migrations.OrderBy(m => m.Version).Where(m => !applied.ContainsKey(m.Version)))
         {
@@ -414,6 +419,21 @@ internal static class Migrator
             if (ran) count++;
         }
         return count;
+    }
+
+    /// <summary>The folder next to the database where backups before migrations are kept.</summary>
+    public static string BackupFolder(VoiceJournalDatabase db) => Path.Combine(Path.GetDirectoryName(db.FilePath)!, "backups");
+
+    private static void Backup(VoiceJournalDatabase db, TimeProvider time, int version)
+    {
+        var folder = BackupFolder(db);
+        Directory.CreateDirectory(folder);
+        var stamp = time.GetUtcNow().UtcDateTime.ToString("yyyyMMdd'T'HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        var path = Path.Combine(folder, $"voicejournal-v{version}-{stamp}.db");
+        using var source = db.OpenConnection();
+        using var target = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        target.Open();
+        source.BackupDatabase(target);
     }
 
     private static Dictionary<int, string> ReadApplied(SqliteConnection c)

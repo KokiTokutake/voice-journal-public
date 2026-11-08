@@ -81,6 +81,34 @@ public sealed class VoiceJournalDatabaseTests : IDisposable
     }
 
     [Fact]
+    public void AnExistingDatabase_IsBackedUpBeforeAMigration_AndAFailedMigrationLeavesTheOldVersion() // AT-24
+    {
+        var db = VoiceJournalDatabase.Open(DbPath);
+        Execute(db, "INSERT INTO workspaces VALUES ('" + new string('1', 36) + "', 'w', 1, 'C:\\w', '2026-11-08T00:00:00.0000000Z')");
+        var broken = Migrations.All.Append(new Migration(5, "broken", "CREATE TABLE notes (id TEXT PRIMARY KEY) STRICT; INSERT INTO no_such_table VALUES (1);")).ToList();
+
+        Assert.ThrowsAny<SqliteException>(() => Migrator.Apply(db, TimeProvider.System, broken));
+
+        using (var c = db.OpenConnection())
+        {
+            Assert.Equal([1L, 2L, 3L, 4L], Longs(c, "SELECT version FROM schema_migrations ORDER BY version"));
+            Assert.Empty(Strings(c, "SELECT name FROM sqlite_schema WHERE name = 'notes'")); // the failed step left nothing
+        }
+        var backup = Assert.Single(Directory.GetFiles(Migrator.BackupFolder(db), "voicejournal-v4-*.db"));
+        using var b = new SqliteConnection($"Data Source={backup};Pooling=False");
+        b.Open();
+        Assert.Equal([1L, 2L, 3L, 4L], Longs(b, "SELECT version FROM schema_migrations ORDER BY version"));
+        Assert.Equal(["w"], Strings(b, "SELECT name FROM workspaces"));
+    }
+
+    [Fact]
+    public void ANewDatabase_IsNotBackedUp()
+    {
+        var db = VoiceJournalDatabase.Open(DbPath);
+        Assert.False(Directory.Exists(Migrator.BackupFolder(db)));
+    }
+
+    [Fact]
     public void DatabaseFromANewerApp_IsRefused()
     {
         var db = VoiceJournalDatabase.Open(DbPath);
