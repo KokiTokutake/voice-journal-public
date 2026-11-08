@@ -6,6 +6,8 @@
     <UseWPF>true</UseWPF>
     <!-- Regenerate with scripts/New-AppIcon.ps1 -->
     <ApplicationIcon>Assets\VoiceJournal.ico</ApplicationIcon>
+    <!-- Per-monitor DPI (PerMonitorV2), detail spec 18.1 -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF0001: Application.ThemeMode (Fluent, follows the Windows light/dark setting) is marked experimental. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
       <!-- Corvus.Json.Validator compiles the analysis schema at run time and finds reference assemblies through the deps.json compile context (Phase D2). -->
