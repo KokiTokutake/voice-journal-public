@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using VoiceJournal.App.Services;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Playback;
+using VoiceJournal.Core.Records;
 using VoiceJournal.Core.Sessions;
 using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Storage;
@@ -159,6 +160,53 @@ public sealed partial class LibraryViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 21.3: what a deletion takes away and where copies stay — audio, transcripts, records, candidates, the search index,
+    /// workspace snapshots that hold the session, and management items that use it as evidence.
+    /// </summary>
+    internal IReadOnlyList<string> DeletionFootprint(string sessionDirectory, int itemReferences)
+    {
+        static (int Files, long Bytes) Files(string folder, string pattern)
+        {
+            if (!Directory.Exists(folder)) return (0, 0);
+            var files = Directory.EnumerateFiles(folder, pattern, SearchOption.AllDirectories).Select(f => new FileInfo(f)).ToList();
+            return (files.Count, files.Sum(f => f.Length));
+        }
+        static int Revisions(string folder) => Directory.Exists(folder) ? Directory.GetDirectories(folder, "rev-*").Length : 0;
+
+        var lines = new List<string> { "削除するもの:" };
+        var audio = Files(Path.Combine(sessionDirectory, "audio"), "*.wav");
+        lines.Add($"・原音 {audio.Files} ファイル（{UserMessages.Bytes(audio.Bytes)}）");
+        var derived = Files(Path.Combine(sessionDirectory, "derived"), "*");
+        if (derived.Files > 0) lines.Add($"・文字起こし用に変換した音声 {derived.Files} ファイル（{UserMessages.Bytes(derived.Bytes)}）");
+        if (Revisions(Path.Combine(sessionDirectory, "transcripts")) is > 0 and var t) lines.Add($"・文字起こし {t} 版");
+        if (Revisions(Path.Combine(sessionDirectory, RecordStore.FolderName)) is > 0 and var r)
+        {
+            int candidates;
+            try { candidates = new RecordStore(sessionDirectory).LoadLatest()?.Candidates.Count ?? 0; }
+            catch (Exception ex) when (ex is IOException or InvalidDataException) { candidates = 0; }
+            lines.Add($"・記録 {r} 版" + (candidates > 0 ? $"（課題・タスクの候補 {candidates} 件を含む）" : string.Empty));
+        }
+        lines.Add("・検索の索引（ライブラリと全文検索から外れます）");
+
+        var kept = new List<string>();
+        if (itemReferences > 0)
+            kept.Add($"・管理ファイルの課題・タスク {itemReferences} 件（このセッションを根拠にしています。項目は残り、根拠の区間は開けなくなります）");
+        var relative = Path.GetRelativePath(_environment.WorkspaceRoot, sessionDirectory);
+        var backups = Path.Combine(_environment.WorkspaceRoot, "backups");
+        var snapshots = Directory.Exists(backups) && !relative.StartsWith("..", StringComparison.Ordinal)
+            ? Directory.GetDirectories(backups, "snapshot-*").Count(s => Directory.Exists(Path.Combine(s, relative)))
+            : 0;
+        if (snapshots > 0) kept.Add($"・ワークスペースのバックアップ {snapshots} 個に写しが残ります（バックアップは変えません）");
+        if (kept.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add("残るもの:");
+            lines.AddRange(kept);
+        }
+        return lines;
+    }
+
+    /// <summary>
     /// UI-04 「削除」 with confirmation. Nothing is erased (14.4): the session folder moves to <c>trash\</c> in the workspace
     /// and leaves the index; moving it back restores it. A session being recorded cannot be deleted.
     /// </summary>
@@ -172,8 +220,9 @@ public sealed partial class LibraryViewModel : ObservableObject
             return;
         }
         var references = ItemReferences?.Invoke(row.Summary.SessionId) ?? 0;
-        var question = $"「{row.TitleText}」（{row.StartedText}）を削除しますか？\n\n原音・文字起こし・記録はすぐには消さず、ワークスペースの trash フォルダーへ移します（戻せば元に戻ります）。"
-            + (references > 0 ? $"\n\nこのセッションは課題・タスク {references} 件の根拠になっています。項目は残りますが、根拠の区間は開けなくなります。" : string.Empty);
+        var question = $"「{row.TitleText}」（{row.StartedText}）を削除しますか？\n\n"
+            + string.Join("\n", DeletionFootprint(row.Directory, references))
+            + "\n\nすぐには消さず、ワークスペースの trash フォルダーへ移します（フォルダーを戻せば元に戻ります）。ディスクからの完全な消去は保証しません。";
         if (!Dialogs.Confirm("セッションの削除", question)) return;
         try
         {

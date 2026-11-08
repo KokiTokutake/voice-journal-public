@@ -95,10 +95,18 @@ public sealed class LibraryAndStartupTests : IDisposable
         _library.ItemReferences = _ => 2;
         _library.Selected = _library.Sessions.Single();
 
+        var relative = Path.GetRelativePath(_workspace.Root, dir);
+        Directory.CreateDirectory(Path.Combine(_workspace.Root, "backups", "snapshot-20261108T000000-x", relative)); // a snapshot holding it
+
         _dialogs.ConfirmAnswer = false;
         await _library.DeleteCommand.ExecuteAsync(null);
         Assert.True(Directory.Exists(dir)); // declined: nothing moves
-        Assert.Contains("課題・タスク 2 件の根拠", Assert.Single(_dialogs.Confirmations), StringComparison.Ordinal);
+        var question = Assert.Single(_dialogs.Confirmations); // 21.3: what goes and which copies stay
+        Assert.Contains("・原音 1 ファイル", question, StringComparison.Ordinal);
+        Assert.Contains("・検索の索引", question, StringComparison.Ordinal);
+        Assert.Contains("・管理ファイルの課題・タスク 2 件", question, StringComparison.Ordinal);
+        Assert.Contains("・ワークスペースのバックアップ 1 個に写しが残ります", question, StringComparison.Ordinal);
+        Assert.DoesNotContain("完全に消去しました", question, StringComparison.Ordinal);
 
         _dialogs.ConfirmAnswer = true;
         await _library.DeleteCommand.ExecuteAsync(null);
