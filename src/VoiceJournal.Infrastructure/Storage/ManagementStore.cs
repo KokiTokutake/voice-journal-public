@@ -217,6 +217,18 @@ public sealed class ManagementStore
         return ((IReadOnlySet<CandidateKey>)keys, (IReadOnlySet<string>)prints);
     });
 
+    /// <summary>For each applied candidate, the item it became (or changed).</summary>
+    public IReadOnlyDictionary<CandidateKey, Guid> AppliedItems() => _db.Read(c =>
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT candidate_key, item_id FROM candidate_applications";
+        using var r = cmd.ExecuteReader();
+        var map = new Dictionary<CandidateKey, Guid>();
+        while (r.Read())
+            if (ParseKey(r.GetString(0)) is { } key) map[key] = Guid.Parse(r.GetString(1));
+        return (IReadOnlyDictionary<CandidateKey, Guid>)map;
+    });
+
     public IReadOnlyDictionary<CandidateKey, StoredReview> Reviews(Guid sessionId) => _db.Read(c =>
     {
         using var cmd = c.CreateCommand();

@@ -35,8 +35,8 @@ public static class TextDiff
         while (x < a.Length || y < b.Length)
         {
             if (x < a.Length && y < b.Length && a[x] == b[y]) { script.Add((' ', a[x], x, y)); x++; y++; }
-            else if (y < b.Length && (x == a.Length || lcs[x, y + 1] >= lcs[x + 1, y])) { script.Add(('+', b[y], x, y)); y++; }
-            else { script.Add(('-', a[x], x, y)); x++; }
+            else if (x < a.Length && (y == b.Length || lcs[x + 1, y] >= lcs[x, y + 1])) { script.Add(('-', a[x], x, y)); x++; }
+            else { script.Add(('+', b[y], x, y)); y++; }
         }
 
         // Hunks: changed lines with up to `context` unchanged lines around them.

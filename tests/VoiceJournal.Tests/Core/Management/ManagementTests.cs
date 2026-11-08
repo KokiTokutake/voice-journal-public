@@ -416,6 +416,23 @@ public sealed class ChangePlannerTests
     }
 }
 
+public sealed class TextDiffTests
+{
+    [Fact]
+    public void AChangedLine_IsShownAsRemovedThenAdded_WithContext()
+    {
+        var diff = TextDiff.Unified("a\r\nb\r\nc\r\n", "a\nB\nc\n", "tasks.md");
+        Assert.Equal("--- a/tasks.md\n+++ b/tasks.md\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n", diff);
+    }
+
+    [Fact]
+    public void ANewFile_IsAllAdded()
+    {
+        Assert.Equal("--- /dev/null\n+++ b/x.md\n@@ -0,0 +1,2 @@\n+a\n+b\n", TextDiff.Unified("", "a\nb\n", "x.md"));
+        Assert.Equal("--- a/x.md\n+++ b/x.md\n", TextDiff.Unified("a\n", "a\n", "x.md")); // no change: no hunk
+    }
+}
+
 public sealed class CanonicalJsonTests
 {
     [Fact]

@@ -68,9 +68,11 @@ public sealed partial class CandidateCardViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, ManagementItem> _items;
 
     internal CandidateCardViewModel(CandidateReview review, DuplicateReport duplicates, IReadOnlyList<ManagementItem> items,
-        IReadOnlyList<string> evidence, Action<CandidateCardViewModel> changed)
+        IReadOnlyList<string> evidence, Action<CandidateCardViewModel> changed, ManagementItem? applied = null, bool pending = false)
     {
         Review = review;
+        Applied = applied;
+        IsPending = pending;
         Duplicates = duplicates;
         Evidence = evidence;
         _changed = changed;
@@ -86,15 +88,24 @@ public sealed partial class CandidateCardViewModel : ObservableObject
         var hasTargets = Targets.Count > 0;
         Choices =
         [
-            new(ReviewChoice.Create, "新規", review.Choice == ReviewChoice.Create, true, Pick),
-            new(ReviewChoice.Update, "既存を更新", review.Choice == ReviewChoice.Update, hasTargets, Pick),
-            new(ReviewChoice.Mention, "関連だけ", review.Choice == ReviewChoice.Mention, hasTargets, Pick),
-            new(ReviewChoice.Reject, "却下", review.Choice == ReviewChoice.Reject, true, Pick),
-            new(ReviewChoice.Defer, "保留", review.Choice == ReviewChoice.Defer, true, Pick),
+            new(ReviewChoice.Create, "新規", review.Choice == ReviewChoice.Create, IsOpen, Pick),
+            new(ReviewChoice.Update, "既存を更新", review.Choice == ReviewChoice.Update, IsOpen && hasTargets, Pick),
+            new(ReviewChoice.Mention, "関連だけ", review.Choice == ReviewChoice.Mention, IsOpen && hasTargets, Pick),
+            new(ReviewChoice.Reject, "却下", review.Choice == ReviewChoice.Reject, IsOpen, Pick),
+            new(ReviewChoice.Defer, "保留", review.Choice == ReviewChoice.Defer, IsOpen, Pick),
         ];
     }
 
     public CandidateReview Review { get; private set; }
+
+    /// <summary>The item this candidate became when it was applied.</summary>
+    public ManagementItem? Applied { get; }
+
+    /// <summary>The candidate is in a saved plan that is not applied yet.</summary>
+    public bool IsPending { get; }
+
+    /// <summary>The choice can still be changed (not applied, not waiting in a saved plan).</summary>
+    public bool IsOpen => Applied is null && !IsPending;
 
     public DuplicateReport Duplicates { get; }
 
@@ -204,19 +215,21 @@ public sealed partial class CandidateCardViewModel : ObservableObject
     }
 
     /// <summary>Why the card will not enter the plan (null when it will).</summary>
-    public string? StateText => Review.Choice is null ? "未確認"
+    public string? StateText => Applied is { } item ? $"反映済み（{item.DisplayId}）"
+        : IsPending ? "保存済みの計画で反映待ち"
+        : Review.Choice is null ? "未確認"
         : Review.Choice is ReviewChoice.Reject ? "却下（計画に入れません）"
         : Review.Choice is ReviewChoice.Defer ? "保留（計画に入れません）"
         : CandidateRules.IsReadyForPlan(Review, Target, out var reason) ? "承認（計画に入れます）" : reason;
 
-    public bool IsReady => CandidateRules.IsReadyForPlan(Review, Target, out _);
+    public bool IsReady => IsOpen && CandidateRules.IsReadyForPlan(Review, Target, out _);
 
     private ManagementItem? Target => Review.TargetItemId is { } id ? _items.GetValueOrDefault(id) : null;
 
     /// <summary>「すべて選択」: plain new candidates only (13.2).</summary>
     internal bool SelectIfPlain()
     {
-        if (!CandidateRules.IsSelectableByAll(Review)) return false;
+        if (!IsOpen || !CandidateRules.IsSelectableByAll(Review)) return false;
         Choices[0].IsChecked = true;
         return true;
     }
@@ -300,7 +313,7 @@ public sealed record ItemRow(ManagementItem Item)
 
     public string Title => Item.Title;
 
-    public string Status => ItemStatuses.Label(Item.Status);
+    public string Status => UserMessages.ItemStatusName(Item.Status);
 
     public string Assignee => Item.Assignee ?? "未設定";
 
@@ -435,6 +448,9 @@ public sealed partial class ManagementViewModel : ObservableObject
         }
         var record = records.Load(revision.Value);
         var items = _store.Items();
+        var byId = items.ToDictionary(i => i.Id);
+        var appliedItems = _store.AppliedItems();
+        var (pendingKeys, _) = _store.Pending();
         var stored = _store.Reviews(choice.Session.SessionId);
         var transcripts = new Core.Transcription.TranscriptStore(choice.Session.Directory);
         var segments = transcripts.Revisions().Contains(record.TranscriptRevision) ? transcripts.Load(record.TranscriptRevision) : null;
@@ -450,7 +466,9 @@ public sealed partial class ManagementViewModel : ObservableObject
                 var seg = segments?.Find(e.SegmentId);
                 return seg is null ? $"「{e.Quote}」" : $"{TimeSpan.FromMilliseconds(seg.StartMs):hh\\:mm\\:ss} 「{e.Quote}」";
             }).ToList();
-            Cards.Add(new CandidateCardViewModel(r, DuplicateFinder.Find(r.Candidate, r.Project, items), items, evidence, OnCardChanged));
+            var applied = appliedItems.TryGetValue(review.Key, out var itemId) ? byId.GetValueOrDefault(itemId) : null;
+            var others = applied is null ? items : [.. items.Where(i => i.Id != applied.Id)];
+            Cards.Add(new CandidateCardViewModel(r, DuplicateFinder.Find(r.Candidate, r.Project, others), others, evidence, OnCardChanged, applied, pendingKeys.Contains(review.Key)));
         }
         if (revision != status.LatestRevision) Message = $"承認済みの記録（Revision {revision}）の候補を表示しています。";
         else if (status.ApprovedRevision is null) Message = "記録はまだ承認されていません。候補の承認は記録の承認と別に行えます（AT-11）。";
@@ -479,7 +497,7 @@ public sealed partial class ManagementViewModel : ObservableObject
     private void BuildPlan()
     {
         ClearPlan();
-        var approved = Cards.Where(c => c.Review.Choice is ReviewChoice.Create or ReviewChoice.Update or ReviewChoice.Mention).Select(c => c.Review).ToList();
+        var approved = Cards.Where(c => c.IsOpen && c.Review.Choice is ReviewChoice.Create or ReviewChoice.Update or ReviewChoice.Mention).Select(c => c.Review).ToList();
         if (approved.Count == 0)
         {
             Message = "新規・更新・関連を選んだ候補がありません。";

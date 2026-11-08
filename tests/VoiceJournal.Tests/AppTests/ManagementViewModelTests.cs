@@ -139,7 +139,8 @@ public sealed class ManagementViewModelTests : IDisposable
 
         vm.BuildPlanCommand.Execute(null); // the same choices again: already in the saved plan
         Assert.False(vm.HasPlan);
-        Assert.Contains("反映待ち", vm.PlanNotes, StringComparison.Ordinal);
+        Assert.Equal("保存済みの計画で反映待ち", vm.Cards[0].StateText);
+        Assert.False(vm.Cards[0].Choices[0].IsEnabled); // the choice cannot change while the plan waits
         Assert.Single(_store.Batches());
         Assert.Empty(_dialogs.Errors);
     }
@@ -175,7 +176,8 @@ public sealed class ManagementViewModelTests : IDisposable
 
         vm.BuildPlanCommand.Execute(null);
         Assert.False(vm.HasPlan);
-        Assert.Contains("反映済み", vm.PlanNotes, StringComparison.Ordinal);
+        Assert.Equal("反映済み（TSK-000001）", vm.Cards[0].StateText);
+        Assert.Empty(vm.Cards[0].Targets); // the item it became is not offered as its own duplicate
     }
 
     [Fact]
