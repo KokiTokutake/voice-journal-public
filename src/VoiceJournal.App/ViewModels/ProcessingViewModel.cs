@@ -141,6 +141,29 @@ public sealed partial class ProcessingViewModel : ObservableObject
     [ObservableProperty]
     public partial string? Message { get; set; }
 
+    /// <summary>Set by the app: writes the diagnostics report (no transcript or item text) and returns its path.</summary>
+    public Func<string>? WriteDiagnostics { get; set; }
+
+    /// <summary>Set by the app: shows a folder in Explorer.</summary>
+    public Action<string>? ShowFolder { get; set; }
+
+    /// <summary>UI-03 「診断情報を書き出す」: versions, hashes, settings, counts and error codes for a problem report.</summary>
+    [RelayCommand]
+    private async Task ExportDiagnosticsAsync()
+    {
+        if (WriteDiagnostics is not { } write) return;
+        try
+        {
+            var path = await Task.Run(write);
+            Message = $"診断情報を書き出しました（文字起こしや課題・タスクの本文は含みません）: {path}";
+            ShowFolder?.Invoke(Path.GetDirectoryName(path)!);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Message = $"診断情報を書き出せませんでした（{ex.Message}）。";
+        }
+    }
+
     private void OnProgress(SttJobProgress p)
     {
         IsRunning = true;

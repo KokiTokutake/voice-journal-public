@@ -80,6 +80,10 @@ public partial class App : Application
         {
             if (e.PropertyName == nameof(RecordingViewModel.Status) && TranscriptionCoordinator.IsActive(recording.Status)) engine.StopWhenIdle();
         };
+        var processing = _services.GetRequiredService<ProcessingViewModel>();
+        var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+        processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);
+        processing.ShowFolder = _services.GetRequiredService<IShellService>().OpenFolder;
         await _services.GetRequiredService<MainViewModel>().InitializeAsync(() =>
         {
             var report = WorkspaceStartup.Run(workspace, index);
