@@ -123,6 +123,30 @@ public sealed class SessionIndex : ISessionIndex
         return 0;
     });
 
+    public IReadOnlySet<Guid> SessionsWithText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return new HashSet<Guid>();
+        var escaped = text.Trim().Replace(@"\", @"\\", StringComparison.Ordinal).Replace("%", @"\%", StringComparison.Ordinal).Replace("_", @"\_", StringComparison.Ordinal);
+        return _db.Read(c =>
+        {
+            using var cmd = c.CreateCommand();
+            // The transcript in use: the adopted revision, or the newest when none was adopted.
+            cmd.CommandText = """
+                SELECT DISTINCT r.session_id FROM segments g
+                JOIN transcript_revisions r ON r.id = g.transcript_revision_id
+                JOIN sessions s ON s.id = r.session_id
+                WHERE s.workspace_id = $ws AND g.text LIKE $q ESCAPE '\'
+                  AND r.revision = COALESCE(s.transcript_current_revision, (SELECT MAX(revision) FROM transcript_revisions WHERE session_id = s.id))
+                """;
+            cmd.Parameters.AddWithValue("$ws", _workspaceId);
+            cmd.Parameters.AddWithValue("$q", "%" + escaped + "%");
+            using var r = cmd.ExecuteReader();
+            var ids = new HashSet<Guid>();
+            while (r.Read()) ids.Add(Guid.Parse(r.GetString(0)));
+            return (IReadOnlySet<Guid>)ids;
+        });
+    }
+
     public IReadOnlyList<SessionSummary> ListSessions() => _db.Read(c =>
     {
         using var cmd = c.CreateCommand();

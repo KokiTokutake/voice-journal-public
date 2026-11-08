@@ -31,6 +31,9 @@ public interface IDialogService
     void ShowError(string title, string message);
 
     void ShowInfo(string title, string message);
+
+    /// <summary>Asks for an existing file to open (null when cancelled).</summary>
+    string? PickFile(string title, string filter) => null;
 }
 
 /// <summary>Sleep prevention and suspend / resume notifications.</summary>

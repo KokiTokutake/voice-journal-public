@@ -800,6 +800,76 @@ public sealed partial class ManagementViewModel : ObservableObject
         PlanSummary = $"取消の計画: {plan.Changes.Count} 件の項目を反映の前の値に戻します（新規作成した項目は削除せず、取消・クローズにします）。差分を確かめてから反映してください。";
     }
 
+    /// <summary>
+    /// FR-09 / 11.3: imports an existing Markdown management file. It is only read (check lists and tables), its bytes are
+    /// kept under <c>imports\</c>, and the items it lists become a plan shown for the final check like any other: nothing is
+    /// registered until the user applies it, and the original file is never changed.
+    /// </summary>
+    [RelayCommand]
+    private void ImportFile()
+    {
+        if (_dialogs.PickFile("取り込む管理ファイル（Markdown）を選ぶ", "Markdown (*.md;*.markdown;*.txt)|*.md;*.markdown;*.txt|すべてのファイル (*.*)|*.*") is not { } path) return;
+        ClearPlan();
+        byte[] bytes;
+        try
+        {
+            bytes = Core.IO.AtomicFile.ReadAllBytes(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Message = $"ファイルを読めませんでした（{ex.Message}）。";
+            return;
+        }
+        if (ManagedText.Decode(bytes) is not { } text)
+        {
+            Message = "このファイルは UTF-8 か UTF-16LE（BOM 付き）ではないため、取り込めません（Shift_JIS などは、エディターで UTF-8 にして保存した写しを選んでください。元のファイルは変えません）。";
+            return;
+        }
+        var scan = MarkdownImport.Scan(text.Text);
+        if (scan.Problems.Count > 0)
+        {
+            Message = "取込みを止めました。ファイルを直してから、もう一度選んでください: " + string.Join("、", scan.Problems);
+            return;
+        }
+        if (scan.Items.Count == 0)
+        {
+            Message = "課題・タスクとして読める行（チェックリストか、タイトルの列のある表）がありませんでした。" + (scan.Skipped.Count > 0 ? string.Join(" ", scan.Skipped) : string.Empty);
+            return;
+        }
+        var importId = Guid.CreateVersion7();
+        _store.SaveImportSource(importId, path, bytes);
+        var reviews = MarkdownImport.Reviews(scan, importId, Path.GetFileName(path), SelectedSession?.Session.Project);
+        var (issue, task) = _store.NextNumbers();
+        var (keys, prints) = _store.Applied();
+        var (pending, pendingPrints) = _store.Pending();
+        var plan = ChangePlanner.Plan(new PlanningInput
+        {
+            WorkspaceId = _store.WorkspaceGuid,
+            Items = _store.Items(),
+            Reviews = reviews,
+            Applied = keys,
+            Pending = pending,
+            AppliedFingerprints = prints,
+            PendingFingerprints = pendingPrints,
+            Files = _store.Files(),
+            NextIssueNumber = issue,
+            NextTaskNumber = task,
+            NowUtc = _time.GetUtcNow(),
+        }, Guid.CreateVersion7);
+        foreach (var f in plan.Files) PlannedFiles.Add(new PlannedFileRow(f.RelativePath, f.Operation, TextDiff.Unified(f.BeforeText, f.AfterText, f.RelativePath)));
+        var notes = scan.Skipped.Concat(plan.Skipped.Select(s => $"取り込まない: {s.Title} — {s.Reason}")).ToList();
+        PlanNotes = notes.Count > 0 ? string.Join("\n", notes) : null;
+        if (plan.IsEmpty)
+        {
+            Message = "取り込める項目がありませんでした（すでに取り込んだ項目など）。";
+            return;
+        }
+        _plan = plan;
+        PlanSummary = $"取込みの計画: {Path.GetFileName(path)} から 課題 {plan.Changes.Count(c => c.After.Kind == CandidateKind.Issue)} 件・タスク {plan.Changes.Count(c => c.After.Kind == CandidateKind.Task)} 件を登録します。" +
+            "元のファイルは変えず、写しを imports フォルダーに残しました。差分を確かめてから反映してください。";
+        Message = null;
+    }
+
     /// <summary>11.2: takes a hand edit in (the item gets the block's fields; the block is rewritten in the app's form).</summary>
     [RelayCommand]
     private void TakeInEdit(EditedBlockRow? row) => PlanEdit(row, takeIn: true);

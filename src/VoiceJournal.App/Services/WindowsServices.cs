@@ -35,6 +35,12 @@ public sealed class WpfDialogService : IDialogService
     public void ShowInfo(string title, string message) =>
         MessageBox.Show(Owner(), message, title, MessageBoxButton.OK, MessageBoxImage.Information);
 
+    public string? PickFile(string title, string filter)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = title, Filter = filter, CheckFileExists = true, Multiselect = false };
+        return dialog.ShowDialog(Owner()) == true ? dialog.FileName : null;
+    }
+
     private static Window Owner() => Application.Current.MainWindow;
 }
 

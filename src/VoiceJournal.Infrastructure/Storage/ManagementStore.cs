@@ -448,6 +448,27 @@ public sealed class ManagementStore
         return list;
     });
 
+    /// <summary>
+    /// Keeps the bytes of a file being imported, unchanged, under <c>imports/&lt;import-id&gt;/</c> before anything is
+    /// registered (11.3-5: the original bytes are backed up first; the file itself is never converted).
+    /// </summary>
+    public string SaveImportSource(Guid importId, string sourcePath, byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePath);
+        ArgumentNullException.ThrowIfNull(bytes);
+        var folder = FullPath($"imports/{importId:D}");
+        Directory.CreateDirectory(folder);
+        AtomicFile.WriteAllBytes(Path.Combine(folder, "original" + Path.GetExtension(sourcePath)), bytes);
+        AtomicFile.WriteAllBytes(Path.Combine(folder, "source.json"), JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            path = sourcePath,
+            sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)),
+            size = bytes.LongLength,
+            imported_at = DbText.Utc(_time.GetUtcNow()),
+        }));
+        return folder;
+    }
+
     /// <summary>Sessions that have a record (newest first), with the number of candidates of their latest analysis.</summary>
     public IReadOnlyList<ReviewableSession> SessionsWithRecords() => _db.Read(c =>
     {

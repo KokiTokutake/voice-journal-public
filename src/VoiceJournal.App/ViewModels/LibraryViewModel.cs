@@ -296,8 +296,18 @@ public sealed partial class LibraryViewModel : ObservableObject
     private void ApplyFilter()
     {
         var query = SearchText.Trim();
+        // FR-11: the title, project and date, or the text of the transcript in use.
+        IReadOnlySet<Guid> inText;
+        try
+        {
+            inText = query.Length == 0 ? new HashSet<Guid>() : _index.SessionsWithText(query);
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or VoiceJournal.Infrastructure.Storage.DatabaseBusyException)
+        {
+            inText = new HashSet<Guid>();
+        }
         Sessions.Clear();
-        foreach (var row in _all.Where(r => query.Length == 0 || r.Matches(query))) Sessions.Add(row);
+        foreach (var row in _all.Where(r => query.Length == 0 || r.Matches(query) || inText.Contains(r.Summary.SessionId))) Sessions.Add(row);
         OnPropertyChanged(nameof(CountText));
     }
 }

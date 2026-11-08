@@ -73,6 +73,8 @@
                 <ComboBox x:Name="SessionBox" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession}" DisplayMemberPath="Label" AutomationProperties.Name="セッション"
                           MinWidth="420" Margin="0,0,10,0" />
                 <Button Content="再読み込み" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" Margin="0,0,16,0" />
+                <Button Content="既存の管理ファイルを取り込む…" Command="{Binding ImportFileCommand}" Style="{StaticResource ActionButton}" Margin="0,0,16,0"
+                        ToolTip="今使っている Markdown の管理ファイル（チェックリストや表）から課題・タスクを読み取り、確かめてから登録します。元のファイルは変えません" />
                 <CheckBox Content="課題のファイルは追記だけ" IsChecked="{Binding IssuesAppendOnly}" VerticalAlignment="Center" Margin="0,0,12,0"
                           ToolTip="既存の課題は書き換えず、更新は提案として保存します（11.4 追記専用）" />
                 <CheckBox Content="タスクのファイルは追記だけ" IsChecked="{Binding TasksAppendOnly}" VerticalAlignment="Center"

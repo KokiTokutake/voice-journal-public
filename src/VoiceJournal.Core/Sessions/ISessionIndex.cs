@@ -16,11 +16,17 @@ public interface ISessionIndex
     /// <summary>Same as <see cref="Upsert(string)"/> with manifest bytes the caller already has (e.g. a live session's snapshot).</summary>
     bool Upsert(string sessionDirectory, ReadOnlySpan<byte> manifestJson);
 
-    /// <summary>Indexes every session folder under the workspace. Rows of sessions missing on disk are reported, not deleted.</summary>
+    /// <summary>Indexes every session folder under the workspace. Sessions missing on disk are reported and leave the index.</summary>
     IndexRebuildReport Rebuild();
 
     /// <summary>Sessions for the library, newest first.</summary>
     IReadOnlyList<SessionSummary> ListSessions();
+
+    /// <summary>
+    /// Full-text search (FR-11, AT-21): sessions whose transcript in use contains <paramref name="text"/> (part of a word,
+    /// short words too). An index without transcripts returns none.
+    /// </summary>
+    IReadOnlySet<Guid> SessionsWithText(string text) => new HashSet<Guid>();
 }
 
 public sealed record SessionSummary(

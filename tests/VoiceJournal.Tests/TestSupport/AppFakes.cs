@@ -94,6 +94,11 @@ public sealed class FakeDialogs : IDialogService
     public void ShowError(string title, string message) => Errors.Add($"{title}: {message}");
 
     public void ShowInfo(string title, string message) => Infos.Add($"{title}: {message}");
+
+    /// <summary>The file a picker returns (null: cancelled).</summary>
+    public string? PickedFile { get; set; }
+
+    public string? PickFile(string title, string filter) => PickedFile;
 }
 
 public sealed class FakePower : IPowerService

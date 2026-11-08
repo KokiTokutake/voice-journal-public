@@ -88,6 +88,12 @@ public sealed record CandidateReview
     /// </summary>
     public IReadOnlyList<ItemEvidence>? ItemEvidence { get; init; }
 
+    /// <summary>
+    /// The item comes from an existing management file (11.3), not from a recording: it has no audio evidence, and that
+    /// is its provenance (11.1 「import」) rather than a missing check.
+    /// </summary>
+    public bool FromImport { get; init; }
+
     /// <summary>The user confirmed this one individually (required when <see cref="CandidateRules.Checks"/> is not empty).</summary>
     public bool ConfirmedIndividually { get; init; }
 
@@ -160,7 +166,7 @@ public static class CandidateRules
             reason = "新規・更新・関連のどれも選ばれていません";
             return false;
         }
-        if (review.Candidate.Evidence.Count == 0)
+        if (review.Candidate.Evidence.Count == 0 && !review.FromImport)
         {
             reason = "根拠がないので承認できません（根拠確認が必要）";
             return false;

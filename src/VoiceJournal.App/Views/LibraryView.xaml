@@ -12,7 +12,7 @@
             <Button DockPanel.Dock="Right" Content="一覧を更新(_U)" Tag="&#xE72C;" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButton}" Margin="12,0,0,0" />
             <Grid MaxWidth="440" HorizontalAlignment="Left" MinWidth="280">
                 <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Padding="34,6,8,6"
-                         AutomationProperties.Name="タイトル・project・日付で検索" />
+                         AutomationProperties.Name="タイトル・project・日付・文字起こしの本文で検索" ToolTip="タイトル・project・日付、または文字起こしの本文の一部で検索します" />
                 <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="12,0,0,0" HorizontalAlignment="Left" IsHitTestVisible="False"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
             </Grid>

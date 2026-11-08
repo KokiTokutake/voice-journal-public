@@ -198,6 +198,49 @@ public sealed class ManagementViewModelTests : IDisposable
     }
 
     [Fact]
+    public void AnExistingFile_IsImported_ThroughThePlan_WithoutChangingIt() // FR-09, 11.3
+    {
+        var file = _dir.File("my-tasks.md");
+        var original = "## タスク\r\n- [ ] 見積書の作成（担当: 田村）\r\n- [x] 古い作業\r\n\r\n## 課題\r\n- [ ] AB-3 ログイン不具合\r\n"u8.ToArray();
+        File.WriteAllBytes(file, original);
+        _dialogs.PickedFile = file;
+        var vm = Vm();
+
+        vm.ImportFileCommand.Execute(null);
+        Assert.True(vm.HasPlan);
+        Assert.Contains("課題 1 件・タスク 2 件", vm.PlanSummary, StringComparison.Ordinal);
+        vm.SaveAndApplyCommand.Execute(null);
+
+        Assert.Equal(["ISS-000001", "TSK-000001", "TSK-000002"], vm.Items.Select(i => i.DisplayId).Order());
+        Assert.Equal(original, File.ReadAllBytes(file)); // the imported file is never changed
+        var kept = Assert.Single(Directory.GetDirectories(_store.FullPath("imports")));
+        Assert.Equal(original, File.ReadAllBytes(Path.Combine(kept, "original.md")));
+
+        vm.ImportFileCommand.Execute(null); // the same file again: nothing new
+        Assert.False(vm.HasPlan);
+    }
+
+    [Fact]
+    public void AFileWithDuplicateIdsOrAnUnknownEncoding_IsNotImported()
+    {
+        var dup = _dir.File("dup.md");
+        File.WriteAllText(dup, "- [ ] AB-1 一つ目\n- [ ] AB-1 二つ目\n");
+        var sjis = _dir.File("sjis.md");
+        File.WriteAllBytes(sjis, [0x2D, 0x20, 0x5B, 0x20, 0x5D, 0x20, 0x83, 0x65, 0x83, 0x58]); // 「- [ ] テス」 in Shift_JIS
+        var vm = Vm();
+
+        _dialogs.PickedFile = dup;
+        vm.ImportFileCommand.Execute(null);
+        Assert.False(vm.HasPlan);
+        Assert.Contains("AB-1", vm.Message, StringComparison.Ordinal);
+
+        _dialogs.PickedFile = sjis;
+        vm.ImportFileCommand.Execute(null);
+        Assert.False(vm.HasPlan);
+        Assert.Contains("UTF-8", vm.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NothingApproved_GivesNoPlan()
     {
         var vm = Vm();
