@@ -380,9 +380,12 @@ public sealed partial class ManagementViewModel : ObservableObject
 
     private StatusFilter? _statusFilter;
 
+    // 「すべて」 until the user picks a status.
+    private StatusFilter DefaultFilter => StatusFilters[0];
+
     public StatusFilter? SelectedStatusFilter
     {
-        get => _statusFilter;
+        get => _statusFilter ?? DefaultFilter;
         set
         {
             if (SetProperty(ref _statusFilter, value)) LoadItems();
@@ -402,6 +405,44 @@ public sealed partial class ManagementViewModel : ObservableObject
     /// <summary>The workspace and database the snapshot is taken of (null in tests that do not need it).</summary>
     public (Workspace Workspace, VoiceJournalDatabase Db)? BackupSource { get; set; }
 
+    public ObservableCollection<string> Snapshots { get; } = [];
+
+    [ObservableProperty]
+    public partial string? SelectedSnapshot { get; set; }
+
+    private void LoadSnapshots()
+    {
+        Snapshots.Clear();
+        if (BackupSource is { } source)
+            foreach (var s in WorkspaceBackup.List(source.Workspace)) Snapshots.Add(Path.GetFileName(s));
+        SelectedSnapshot ??= Snapshots.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The restore drill (14.4, AT-20): the chosen snapshot goes into a new folder next to the workspace and is checked
+    /// (every hash, the database integrity and the last applied hashes). The workspace in use is never written; the user
+    /// opens the restored one with <c>--workspace</c>.
+    /// </summary>
+    [RelayCommand]
+    private async Task RestoreSnapshotAsync()
+    {
+        if (BackupSource is not { } source || SelectedSnapshot is not { } name) return;
+        var snapshot = Path.Combine(source.Workspace.Root, WorkspaceBackup.BackupsFolder, name);
+        var target = WorkspaceBackup.RestoreTarget(source.Workspace, _time);
+        Message = $"バックアップ {name} を {target} に復元しています…";
+        try
+        {
+            var problems = await Task.Run(() => WorkspaceBackup.Restore(snapshot, target));
+            Message = problems.Count == 0
+                ? $"復元して確かめました（ハッシュと DB の整合に問題なし）: {target}。開くときは VoiceJournal.App.exe --workspace \"{target}\" で起動します。今のワークスペースは変えていません。"
+                : "復元した内容に問題がありました: " + string.Join("、", problems);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            Message = $"復元できませんでした（{ex.Message}）。";
+        }
+    }
+
     /// <summary>
     /// 14.4: a snapshot of the whole workspace (audio, transcripts, records, management files, plans) with hashes, and the
     /// database through the Online Backup API. Restoring makes a new workspace and checks it (WorkspaceBackup.Restore).
@@ -420,6 +461,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         {
             var report = await Task.Run(() => WorkspaceBackup.Create(source.Workspace, source.Db, _time));
             var problems = await Task.Run(() => WorkspaceBackup.Verify(report.Directory));
+            LoadSnapshots();
             Message = problems.Count == 0
                 ? $"バックアップを作りました（{report.Files} ファイル、{report.Bytes / 1024.0 / 1024.0:0.0} MB、ハッシュを確認済み）: {report.Directory}"
                 : "バックアップを作りましたが、確認で問題がありました: " + string.Join("、", problems);
@@ -528,6 +570,7 @@ public sealed partial class ManagementViewModel : ObservableObject
         foreach (var b in _store.Batches().Take(30)) Batches.Add(new BatchRow(b));
         OnPropertyChanged(nameof(IssuesAppendOnly));
         OnPropertyChanged(nameof(TasksAppendOnly));
+        LoadSnapshots();
         EditedBlocks.Clear();
         var byId = _store.Items().ToDictionary(i => i.Id);
         foreach (var file in _store.Files().Where(f => f.Mode == ManagedFileMode.ManagedBlocks && f.CurrentBytes is not null))

@@ -101,6 +101,25 @@ public static class WorkspaceBackup
         return problems;
     }
 
+    /// <summary>The snapshots of a workspace, newest first.</summary>
+    public static IReadOnlyList<string> List(Workspace workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        var folder = Path.Combine(workspace.Root, BackupsFolder);
+        return Directory.Exists(folder)
+            ? [.. Directory.GetDirectories(folder, "snapshot-*").Where(d => File.Exists(Path.Combine(d, HashesFile))).OrderByDescending(d => d, StringComparer.Ordinal)]
+            : [];
+    }
+
+    /// <summary>A new folder next to the workspace for a restore (never the workspace itself).</summary>
+    public static string RestoreTarget(Workspace workspace, TimeProvider? time = null)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+        var stamp = (time ?? TimeProvider.System).GetLocalNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspace.Root));
+        return $"{root}-restored-{stamp}";
+    }
+
     /// <summary>Restores a snapshot into a new, empty folder and checks it (AT-20). The current workspace is never written.</summary>
     public static IReadOnlyList<string> Restore(string snapshot, string newRoot)
     {
