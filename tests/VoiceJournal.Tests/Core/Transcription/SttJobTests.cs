@@ -60,9 +60,10 @@ internal sealed class FakeSttEngine : ISttEngine
         lock (_gate) Runs.Add(request);
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(0.5);
-        return Task.FromResult(OnRun?.Invoke(request) ?? Utterance(request, 1_000, 3_000, request.OutputName + " の発話"));
+        return Task.FromResult(OnRun?.Invoke(request) ?? Utterance(request, 1_000, 3_000, (request.OutputName[0] == 'm' ? "こちらの話 " : "相手側の声 ") + request.OutputName));
     }
 
+    // The two sources say different things: the same words at the same time on both would be echo (QualityFlagger).
     public static SttRunResult Utterance(SttRunRequest request, long from, long to, string text) =>
         new() { Segments = [new SttRawSegment(from, to, text, 0)], NativeFile = request.OutputName + ".json", Elapsed = TimeSpan.FromSeconds(1) };
 

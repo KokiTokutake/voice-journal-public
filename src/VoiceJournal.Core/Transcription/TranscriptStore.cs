@@ -243,6 +243,7 @@ public static class TranscriptRendering
         SegmentQuality.Boundary => "境界",
         SegmentQuality.AudioGap => "欠損",
         SegmentQuality.UserEdited => "修正",
+        SegmentQuality.Echo => "回り込み",
         _ => flag.ToString(),
     };
 

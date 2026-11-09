@@ -51,7 +51,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ThreadOptions = [.. Enumerable.Range(1, Environment.ProcessorCount)];
         _loading = true;
         var c = store.Load();
-        ModelName = tools.Models.ContainsKey(c.ModelName) ? c.ModelName : JsonSttSettingsStore.Defaults.ModelName;
+        ModelName = JsonSttSettingsStore.WithRegisteredModel(c, tools.Models.Keys).ModelName;
         UseVad = c.UseVad;
         NormalizeGain = c.NormalizeGain;
         Threads = Math.Clamp(c.Threads, 1, Environment.ProcessorCount);

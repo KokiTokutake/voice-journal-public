@@ -316,7 +316,7 @@ public sealed class RecordGenerator
         // The span from the first to the last evidence keeps what was said between them; too long, the evidence alone.
         var from = evidenceSegments.Min(s => s.StartMs);
         var to = evidenceSegments.Max(s => s.EndMs);
-        var span = transcript.Segments.Where(s => s.StartMs >= from && s.EndMs <= to && !string.IsNullOrWhiteSpace(s.Text) && !s.Has(SegmentQuality.Silence)).ToList();
+        var span = transcript.Segments.Where(s => s.StartMs >= from && s.EndMs <= to && !string.IsNullOrWhiteSpace(s.Text) && !s.Has(SegmentQuality.Silence) && !s.Has(SegmentQuality.Echo)).ToList();
         static int Cost(IEnumerable<TranscriptSegment> segments, TokenEstimator e) => segments.Sum(s => e.Estimate(s.Text.Trim()) + AnalysisPlanner.SegmentOverheadTokens);
         var chosen = Cost(span, estimator) <= budget ? span : evidenceSegments;
         var piece = new AnalysisPiece

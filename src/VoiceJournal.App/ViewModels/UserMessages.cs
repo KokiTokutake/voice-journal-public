@@ -157,8 +157,8 @@ internal static class UserMessages
 
     public static string ModelLabel(string modelName) => modelName switch
     {
-        "ggml-small.bin" => "small（既定・速い）",
-        "ggml-medium.bin" => "medium（高精度・約 3 倍の時間）",
+        "ggml-small.bin" => "small（速い・固有名詞に弱い）",
+        "ggml-medium.bin" => "medium（既定・高精度）",
         _ => modelName,
     };
 

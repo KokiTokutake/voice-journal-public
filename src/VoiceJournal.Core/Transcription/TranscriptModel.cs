@@ -22,6 +22,12 @@ public enum SegmentQuality
 
     /// <summary>Changed by the user (text edit, re-recognition or revert).</summary>
     UserEdited,
+
+    /// <summary>
+    /// A microphone segment whose words are, at the same time, in the PC audio: the far side heard through the
+    /// speakers. Kept in the text, left out of the record (the PC audio already has it).
+    /// </summary>
+    Echo,
 }
 
 public enum TranscriptRevisionKind

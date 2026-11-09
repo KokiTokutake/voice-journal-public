@@ -153,6 +153,42 @@ public sealed class QualityFlaggerTests
     }
 
     [Fact]
+    public void Echo_MarksMicSegmentsWhosWordsAreInThePcAudioAtTheSameTime()
+    {
+        var far = T.Seg(10_000, 14_000, "先週月曜日は40度ぐらいまで熱が上がって", AudioSource.Loopback);
+        var echo = T.Seg(10_400, 13_800, "先週月曜日は40度くらいまで熱があがって"); // the same words, recognized a little differently
+        var own = T.Seg(14_500, 16_000, "大丈夫ですか、無理しないでください"); // the user: not in the PC audio
+        var reply = T.Seg(14_200, 15_000, "40度ですか"); // reuses the other side's words: kept (share below the threshold)
+        var later = T.Seg(30_000, 33_000, "先週月曜日は40度ぐらいまで熱が上がって"); // same words, far from them in time
+        var hallucination = T.Seg(40_000, 41_000, "ご視聴ありがとうございました", AudioSource.Loopback).WithFlag(SegmentQuality.Silence);
+        var underIt = T.Seg(40_000, 41_000, "ご視聴ありがとうございました");
+
+        var flagged = QualityFlagger.Apply([far, echo, own, reply, later, hallucination, underIt], new Dictionary<AudioSource, TrackQualityContext>());
+
+        Assert.Equal([echo.SegmentId], flagged.Where(s => s.Has(SegmentQuality.Echo)).Select(s => s.SegmentId));
+        Assert.Equal(echo.Text, flagged.Single(s => s.SegmentId == echo.SegmentId).Text); // the text stays
+    }
+
+    [Fact]
+    public void Echo_IsNotJudgedWithoutPcAudio_AndRangesAreJudgedAgainstTheRevision()
+    {
+        var mic = T.Seg(0, 2_000, "提案をぶつけてみて");
+        Assert.False(QualityFlagger.Apply([mic], new Dictionary<AudioSource, TrackQualityContext>()).Single().Has(SegmentQuality.Echo));
+
+        var revision = new[] { T.Seg(0, 2_100, "提案をぶつけてみてそれに対して", AudioSource.Loopback), T.Seg(0, 2_000, "古い認識") };
+        Assert.True(QualityFlagger.WithEcho([mic], revision).Single().Has(SegmentQuality.Echo));
+    }
+
+    [Theory]
+    [InlineData("あいう", "xxあいうxx", 1.0)]
+    [InlineData("あいう", "あいx", 0.5)]
+    [InlineData("あ", "xあx", 1.0)]
+    [InlineData("あいう", "", 0.0)]
+    [InlineData("", "あいう", 0.0)]
+    public void SharedPairShare_CountsTheTextsCharacterPairsFoundInTheOther(string text, string other, double expected) =>
+        Assert.Equal(expected, QualityFlagger.SharedPairShare(text, other), 3);
+
+    [Fact]
     public void Context_FromManifest_FindsUncoveredTimeAndCrashTail()
     {
         var track = new TrackManifest

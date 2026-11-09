@@ -229,6 +229,7 @@ public sealed class SttJobProcessor
         if (!SameInRange(parent, current, source, range))
             throw new SttException(SttErrorCode.Conflict, "The range was edited while it was being re-recognized.");
         var flagged = QualityFlagger.Apply(recognized, Contexts(sessionDirectory, input));
+        if (source == AudioSource.Mic) flagged = QualityFlagger.WithEcho(flagged, current.Segments);
         var next = TranscriptEditing.ReplaceRange(current, store.NextRevision(), source, range, flagged, Provenance(job), _time.GetUtcNow());
         try
         {

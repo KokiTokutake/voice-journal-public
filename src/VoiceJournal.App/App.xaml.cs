@@ -179,7 +179,9 @@ public partial class App : Application
         services.AddSingleton<InferenceGate>();
         services.AddSingleton(sp => new TranscriptionCoordinator(
             sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<SttJobProcessor>(), sp.GetRequiredService<TranscriptIndex>(),
-            sp.GetRequiredService<IUiSettingsStore>(), sp.GetRequiredService<ISttSettingsStore>().Load, sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IUiSettingsStore>(),
+            () => JsonSttSettingsStore.WithRegisteredModel(sp.GetRequiredService<ISttSettingsStore>().Load(), sp.GetRequiredService<SttToolSettings>().Models.Keys),
+            sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<InferenceGate>()));
         services.AddSingleton<ILlmSettingsStore>(new JsonLlmSettingsStore(JsonLlmSettingsStore.DefaultPath));
         // The bundled llama.cpp server (docs/phase-d-engine-plan.md), started for a job and stopped when idle.

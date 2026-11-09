@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 文書版 | 1.3 |
+| 文書版 | 1.4 |
 | 作成日 | 2026-10-31（Asia/Tokyo） |
-| 改訂 | 1.1（2026-11-06）: LLMの実行をLM Studioからアプリが起動する同梱の推論エンジン（llama.cppの`llama-server`）に変更し、モデルをGemma 4 E2Bにした。NFR-07の基準を改めた（`docs/phase-d-engine-plan.md`、`docs/phase-d-plan.md` 0章）。1.2（2026-11-06）: 移行期間用に残していたLM Studioの選択肢を外し、推論は同梱のエンジンだけにした（LM Studioはアンインストール済み）。1.3（2026-11-08）: NFR-07の基準を「30分を8分（480秒）以内」に改めた（利用者の判断。品質を保ったまま続けて作るとPCの発熱で生成が遅くなり、7分を超える回があったため） |
+| 改訂 | 1.1（2026-11-06）: LLMの実行をLM Studioからアプリが起動する同梱の推論エンジン（llama.cppの`llama-server`）に変更し、モデルをGemma 4 E2Bにした。NFR-07の基準を改めた（`docs/phase-d-engine-plan.md`、`docs/phase-d-plan.md` 0章）。1.2（2026-11-06）: 移行期間用に残していたLM Studioの選択肢を外し、推論は同梱のエンジンだけにした（LM Studioはアンインストール済み）。1.3（2026-11-08）: NFR-07の基準を「30分を8分（480秒）以内」に改めた（利用者の判断。品質を保ったまま続けて作るとPCの発熱で生成が遅くなり、7分を超える回があったため）。1.4（2026-11-09）: STTの初期値をsmallからmediumに変え、NFR-06をmediumの基準に改めた（利用者の判断。実際の1時間の会議で、smallは人名・用語を取り違え、同じ語を繰り返して発言を落とした。`docs/phase-c-report.md` 8章） |
 | 対象 | Windows 11 x64 / AMD Ryzen AI 9 HX 375 / Radeon 890M / RAM 32GB |
 | 技術 | C# / .NET 10 / WPF / NAudio・WASAPI / whisper.cpp / llama.cpp（同梱の`llama-server`）＋Gemma / SQLite / Markdown |
 | 運用 | 単一利用者・単一PC・完全ローカル、録音終了後にAI処理 |
@@ -57,7 +57,7 @@ v1には3種類の録音、原音保存、後処理、柔軟な記録、課題�
 |---|---|---|
 | アプリ | WPF・MVVM、`net10.0-windows`、`win-x64` | UI更新はDispatcher、処理は非同期 |
 | 録音 | NAudio、WASAPI共有モード | マイク: WasapiCapture、内部音声: WasapiLoopbackCapture |
-| STT | whisper.cppの固定したビルドを別プロセスで起動 | 日本語対応の多言語smallを初期値、mediumを比較。`.en`専用モデル不可 |
+| STT | whisper.cppの固定したビルドを別プロセスで起動 | 日本語対応の多言語mediumを初期値（1.4でsmallから変更）、smallは速さを優先するときの選択肢。`.en`専用モデル不可 |
 | LLM | 同梱のllama.cpp `llama-server`（Vulkan版）をアプリが子プロセスとして起動し、OpenAI互換のローカルAPIで使う。モデルはGemma 4 E2B Instruct Q4_0＋MTP | 版・GGUF・SHA-256・起動引数は`docs/environment-lock.md` 6章 |
 | 永続化 | Microsoft.Data.Sqlite、ローカルNTFS | DBとMarkdownの役割は11章参照 |
 | JSON | System.Text.Json＋JSON Schema検証器 | Draft 2020-12検証能力を確認して固定 |
@@ -849,7 +849,7 @@ Voice Journal        録音  ライブラリ  管理  処理状況  設定
 | NFR-03 | 録音開始 | 選択済みデバイスで3秒以内目標 |
 | NFR-04 | 長時間録音 | 両方8時間、クラッシュ0、未通知のドロップ0 |
 | NFR-05 | メモリ | 録音のみ本体working set 500MiB以内目標。総推論時は空き物理メモリ4GiB以上を目標 |
-| NFR-06 | STT速度 | small CPUで30分日本語音声を30分以内目標。mediumは品質優先比較として別計測 |
+| NFR-06 | STT速度 | 初期値のmedium CPUで30分の日本語音声（1音源）を30分以内目標（1.3まではsmallで判定）。両方の音源を録ったセッションは音源ごとに処理するため、およそ2倍かかる |
 | NFR-07 | 整理速度 | 30分音声の文字起こしをGemma 4 E2B（同梱のエンジン）で8分（480秒）以内目標。分割回数・要求回数・出力トークン数を併記（1.0の「Gemma 3 4Bで5分以内」、1.1の「7分（420秒）以内」から変更。記録の生成は録音後に裏で動くため、精度を削ってまで速さを追わない） |
 | NFR-08 | 検索 | 1000セッション・1万管理項目で通常検索p95 1秒以内目標 |
 | NFR-09 | 保存安全性 | 全障害注入点で原音確定チャンクと未知の外部編集を保全 |
@@ -982,7 +982,7 @@ Markdownプレビューは生HTML・JavaScriptを無効化し、外部画像/フ
 | 自動反映 | 全面不採用、承認した変更だけ | 将来も危険操作の承認・監査を維持 |
 | LLMモデル | Gemma 4 E2B Q4_0（1.0ではGemma 3 4Bを初期候補。Phase D5の比較で変更） | 評価セットのprecision/recall・NFR-07・メモリを満たす、より良いモデルがある時 |
 | 推論の実行 | 同梱のllama.cpp `llama-server`（1.2でLM Studioの選択肢を外した） | 配布形式の変更、Radeon 890M（Vulkan）での不具合 |
-| STTモデル | small CPUを初期値、medium比較 | CERや固有名詞品質が不足した時 |
+| STTモデル | medium CPUを初期値（1.4でsmallから変更）、smallは選択肢 | CERや固有名詞品質が不足した時（large-v3-turbo・kotoba-whisper v2.0は2026-11-09に比べ、発言の取りこぼしが多く採用しなかった） |
 | 加速器 | CPU必須、GPU任意、NPU将来 | 対応ビルドと実機試験が揃った時 |
 | ストレージ | ローカルNTFS | 外部競合/原子置換/回復の同等性を別途証明できた時 |
 

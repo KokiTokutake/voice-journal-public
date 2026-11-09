@@ -198,7 +198,8 @@ public sealed class AnalysisPlannerTests
     public void Plan_SplitsByBudget_AndCoversEverySegmentOnce()
     {
         var silent = T.Seg(60_000, 61_000, "ご視聴ありがとうございました").WithFlag(SegmentQuality.Silence);
-        var segments = Enumerable.Range(0, 10).Select(i => T.Seg(i * 5_000L, i * 5_000L + 4_000, new string('あ', 40))).Append(T.Seg(55_000, 56_000, "  ")).Append(silent).ToArray();
+        var echo = T.Seg(62_000, 63_000, "スピーカーから回り込んだ声").WithFlag(SegmentQuality.Echo);
+        var segments = Enumerable.Range(0, 10).Select(i => T.Seg(i * 5_000L, i * 5_000L + 4_000, new string('あ', 40))).Append(T.Seg(55_000, 56_000, "  ")).Append(silent).Append(echo).ToArray();
         var transcript = T.Raw(Guid.NewGuid(), 2, segments);
 
         var plan = AnalysisPlanner.Plan(transcript, 3 * (40 + AnalysisPlanner.SegmentOverheadTokens), new TokenEstimator());
@@ -209,6 +210,7 @@ public sealed class AnalysisPlannerTests
         Assert.Equal(transcript.Segments.Count, covered.Count);
         Assert.Equal(transcript.Segments.Select(s => s.SegmentId).Order(), covered.Order());
         Assert.Contains(plan.Skipped, s => s.Status == CoverageStatus.Silence && s.SegmentId == silent.SegmentId);
+        Assert.Contains(plan.Skipped, s => s.Status == CoverageStatus.Echo && s.SegmentId == echo.SegmentId);
         Assert.Contains(plan.Skipped, s => s.Status == CoverageStatus.Empty);
     }
 

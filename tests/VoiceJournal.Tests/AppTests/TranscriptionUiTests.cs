@@ -80,13 +80,30 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
     {
         var (dir, _) = Session(withAudioFiles: true);
         // A different short text per piece without digits: no review hints and no repetition flags unless a test adds them.
-        _engine.OnRun = r => FakeSttEngine.Utterance(r, 1_000, 3_000, "発話" + (char)('あ' + r.OutputName[^1] - '0') + (r.OutputName[0] == 'm' ? "か" : "さ"));
+        _engine.OnRun = r => FakeSttEngine.Utterance(r, 1_000, 3_000, (r.OutputName[0] == 'm' ? "こちらの話" : "相手側の声") + (char)('あ' + r.OutputName[^1] - '0'));
         _coordinator.Enqueue(dir);
         await WaitFor(() => new TranscriptStore(dir).Revisions().Count == 1 && _coordinator.Runner.CurrentJobId is null, "first transcript");
         return dir;
     }
 
     private TranscriptViewModel Transcript() => new(_coordinator, _player, _ui, _tools, _clock);
+
+    [Fact]
+    public async Task Transcript_ShowsEchoOnTheMic_ButNotAmongTheRowsToCheck()
+    {
+        var (dir, _) = Session(withAudioFiles: true);
+        // The far side through the speakers: the same words at the same time on both sources.
+        _engine.OnRun = r => FakeSttEngine.Utterance(r, 1_000, 3_000, "相手側の声" + (char)('あ' + r.OutputName[^1] - '0'));
+        _coordinator.Enqueue(dir);
+        await WaitFor(() => new TranscriptStore(dir).Revisions().Count == 1 && _coordinator.Runner.CurrentJobId is null, "first transcript");
+        var vm = Transcript();
+        vm.Open(dir, "テスト");
+
+        Assert.All(vm.Segments.Where(s => s.Source == AudioSource.Mic), s => Assert.Equal("回り込み", s.FlagsText));
+        Assert.All(vm.Segments, s => Assert.False(s.HasFlags));
+        vm.FlaggedOnly = true;
+        Assert.Empty(vm.Segments);
+    }
 
     [Fact]
     public async Task Library_ShowsTheProcessingState_QueuesTranscription_AndOpensTheTranscript()
@@ -131,7 +148,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal("修正", row.EditedText);
         Assert.Equal("数字・期日・人名", row.HintText);
         Assert.Equal(2, vm.SelectedRevision!.Revision);
-        Assert.Equal(["Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（既定・速い））"], vm.Revisions.Select(r => r.Label));
+        Assert.Equal(["Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（速い・固有名詞に弱い））"], vm.Revisions.Select(r => r.Label));
 
         vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 1);
         Assert.False(vm.IsCurrent);
@@ -200,7 +217,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal(2, vm.SelectedRevision!.Revision);
         Assert.True(vm.IsCurrent);
         Assert.Equal("利用者の修正", vm.Segments.Single(s => s.SegmentId == id).Text);
-        Assert.Equal(["Rev 3  原文（small（既定・速い））", "Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（既定・速い））"], vm.Revisions.Select(r => r.Label));
+        Assert.Equal(["Rev 3  原文（small（速い・固有名詞に弱い））", "Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（速い・固有名詞に弱い））"], vm.Revisions.Select(r => r.Label));
 
         vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 3);
         Assert.False(vm.IsCurrent);
@@ -210,7 +227,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.True(vm.IsCurrent);
         Assert.Contains("Rev 3 を使用中にしました", vm.Message, StringComparison.Ordinal);
         Assert.Equal(3, new TranscriptStore(dir).CurrentRevision());
-        Assert.Equal("Rev 3  原文（small（既定・速い））　［使用中］", vm.Revisions.Single(r => r.Revision == 3).Label);
+        Assert.Equal("Rev 3  原文（small（速い・固有名詞に弱い））　［使用中］", vm.Revisions.Single(r => r.Revision == 3).Label);
         vm.Segments[0].Text = "新しい原文への修正";
         Assert.Equal(3, new TranscriptStore(dir).Load(4).ParentRevision);
     }
@@ -339,8 +356,8 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         await settings.VerifyToolsCommand.ExecuteAsync(null);
 
         Assert.Equal("✓ whisper-cli（whisper.cpp 1.9.5）", settings.ToolStatus[0]);
-        Assert.Contains("✓ medium（高精度・約 3 倍の時間）", settings.ToolStatus);
-        Assert.Contains("✓ small（既定・速い）", settings.ToolStatus);
+        Assert.Contains("✓ medium（既定・高精度）", settings.ToolStatus);
+        Assert.Contains("✓ small（速い・固有名詞に弱い）", settings.ToolStatus);
     }
 
     [Fact]

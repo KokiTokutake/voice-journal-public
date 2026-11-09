@@ -15,11 +15,12 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - NuGet の版は `Directory.Packages.props` で一元管理する。版を変えたら `docs/environment-lock.md` も更新する
 - 警告はエラー扱い（`TreatWarningsAsErrors`）。テストのみ CA1707（メソッド名のアンダースコア）を許可
 - STT は CPU 経路が必須。GPU（Vulkan）・NPU は Phase H の任意最適化
+- STT の既定のモデルは medium（2026-11-09、利用者の判断。実際の会議で small は人名・用語を取り違えた。`docs/phase-c-report.md` 8 章）。large-v3-turbo・kotoba-whisper v2.0 は比べて採用しなかった。whisper-cli は Windows で引数を CP932 で読むので、日本語の `--prompt` は化ける（`docs/environment-lock.md` 13 章）
 - LLM はアプリが起動・終了する同梱の `llama-server`（ループバック・起動ごとの空きポートとランダムな API キー・使わなければ終了、`docs/phase-d-engine-plan.md`）。実行体・DLL・GGUF は `config\llm-tools.json` に SHA-256 で登録する。LM Studio は 2026-11-06 にアンインストールし、アプリの選択肢も外した
 - LLM の試験の前に、エミュレーター・Docker・WSL・Gradle が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く（メモリ不足と PC の発熱のため）
 - 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する（11.5 の管理ブロック。反映は `ApplyEngine`、変更計画と backup は `Workspace\transactions\<batch-id>\`）。管理項目の表（`items` ほか、マイグレーション 4）は索引ではなく正本で、作り直さない
 - 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
-- 版は `Directory.Build.props` の `VersionPrefix` / `VersionSuffix` だけで決める（2026-11-09 に `1.0.0-beta.1`）。配布は WiX 6.0.2 の自分のユーザーだけの MSI（`installer/`、入れ先は `%LOCALAPPDATA%\Programs\VoiceJournal`）。whisper・llama-server・モデル・データは MSI に入れず、アンインストールでも消さない。WiX 7 はビルドに OSMF の EULA への同意が要るので使わない（利用者の判断）。タスクトレーへの常駐はしない（2026-11-09、利用者の判断）
+- 版は `Directory.Build.props` の `VersionPrefix` / `VersionSuffix` だけで決める（2026-11-09 に `1.0.0-beta.1`、同日に既定 medium などで `beta.2`）。配布は WiX 6.0.2 の自分のユーザーだけの MSI（`installer/`、入れ先は `%LOCALAPPDATA%\Programs\VoiceJournal`）。whisper・llama-server・モデル・データは MSI に入れず、アンインストールでも消さない。WiX 7 はビルドに OSMF の EULA への同意が要るので使わない（利用者の判断）。タスクトレーへの常駐はしない（2026-11-09、利用者の判断）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
 ## コマンド

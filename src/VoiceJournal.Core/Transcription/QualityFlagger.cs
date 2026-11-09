@@ -101,7 +101,61 @@ public static class QualityFlagger
             }
             FlagRun(result, run);
         }
+        FlagEcho(result, result);
         return result;
+    }
+
+    /// <summary>
+    /// <see cref="SegmentQuality.Echo"/> for microphone segments recognized again on their own (a range), judged
+    /// against <paramref name="pcAudio"/>, the PC audio segments of the revision they go into.
+    /// </summary>
+    public static IReadOnlyList<TranscriptSegment> WithEcho(IReadOnlyList<TranscriptSegment> segments, IEnumerable<TranscriptSegment> pcAudio)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(pcAudio);
+        var result = segments.ToList();
+        FlagEcho(result, pcAudio);
+        return result;
+    }
+
+    /// <summary>How far around a microphone segment the PC audio is searched for the same words (clock skew and latency).</summary>
+    public const long EchoWindowMs = 1_500;
+
+    /// <summary>
+    /// Share of a microphone segment's character pairs found in the nearby PC audio that marks it as echo. On a
+    /// real one-hour meeting through speakers the shares split into ~0 (the user's own voice) and ≥ 0.6 (echo);
+    /// the few in between are mixed, and replies that reuse the other side's words land there, so they are kept.
+    /// </summary>
+    public const double EchoShare = 0.6;
+
+    private static void FlagEcho(List<TranscriptSegment> segments, IEnumerable<TranscriptSegment> pcAudio)
+    {
+        var loopback = pcAudio.Where(s => s.Source == AudioSource.Loopback && !s.Has(SegmentQuality.Silence))
+            .Select(s => (s.StartMs, s.EndMs, Text: CerNormalizer.Normalize(s.Text)))
+            .Where(s => s.Text.Length > 0).OrderBy(s => s.StartMs).ToList();
+        if (loopback.Count == 0) return;
+        for (var i = 0; i < segments.Count; i++)
+        {
+            var s = segments[i];
+            if (s.Source != AudioSource.Mic) continue;
+            var near = string.Concat(loopback.Where(l => l.EndMs >= s.StartMs - EchoWindowMs && l.StartMs <= s.EndMs + EchoWindowMs).Select(l => l.Text));
+            if (SharedPairShare(CerNormalizer.Normalize(s.Text), near) >= EchoShare) segments[i] = s.WithFlag(SegmentQuality.Echo);
+        }
+    }
+
+    /// <summary>The share of <paramref name="text"/>'s adjacent character pairs (the text itself when it is one character) that occur in <paramref name="other"/>.</summary>
+    public static double SharedPairShare(string text, string other)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(other);
+        if (text.Length == 0 || other.Length == 0) return 0;
+        if (text.Length == 1) return other.Contains(text[0], StringComparison.Ordinal) ? 1 : 0;
+        var pairs = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i + 1 < other.Length; i++) pairs.Add(other.Substring(i, 2));
+        var found = 0;
+        for (var i = 0; i + 1 < text.Length; i++)
+            if (pairs.Contains(text.Substring(i, 2))) found++;
+        return (double)found / (text.Length - 1);
     }
 
     private static void FlagRun(List<TranscriptSegment> segments, List<int> run)

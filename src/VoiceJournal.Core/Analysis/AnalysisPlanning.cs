@@ -63,6 +63,9 @@ public enum CoverageStatus
 
     /// <summary>Flagged as silence (a likely recognizer hallucination); not given to the model.</summary>
     Silence,
+
+    /// <summary>A microphone segment flagged as echo of the PC audio; the PC audio's segment is given instead.</summary>
+    Echo,
 }
 
 /// <summary>A segment that is not part of any piece, and why.</summary>
@@ -145,6 +148,11 @@ public static class AnalysisPlanner
             if (segment.Has(SegmentQuality.Silence))
             {
                 skipped.Add(new(segment.SegmentId, CoverageStatus.Silence));
+                continue;
+            }
+            if (segment.Has(SegmentQuality.Echo))
+            {
+                skipped.Add(new(segment.SegmentId, CoverageStatus.Echo));
                 continue;
             }
             var cost = estimator.Estimate(segment.Text.Trim()) + SegmentOverheadTokens;

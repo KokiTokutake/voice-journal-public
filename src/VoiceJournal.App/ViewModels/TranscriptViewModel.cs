@@ -51,7 +51,11 @@ public sealed partial class SegmentRowViewModel : ObservableObject
         }
     }
 
-    public bool HasFlags => Segment.QualityFlags.Any(f => f != SegmentQuality.UserEdited);
+    /// <summary>Flags that ask the user to check the text. Echo is only shown: the PC audio has the same words.</summary>
+    public bool HasFlags => Segment.QualityFlags.Any(f => f is not (SegmentQuality.UserEdited or SegmentQuality.Echo));
+
+    /// <summary>The far side heard through the speakers; the PC audio row is the one to check.</summary>
+    public bool IsEcho => Segment.Has(SegmentQuality.Echo);
 
     public string FlagsText => string.Join("・", Segment.QualityFlags.Where(f => f != SegmentQuality.UserEdited).Select(TranscriptRendering.FlagLabel));
 
@@ -270,7 +274,7 @@ public sealed partial class TranscriptViewModel : ObservableObject
         Segments.ReplaceAll(_rows.Where(row =>
             !(Filter == SourceFilter.Mic && row.Source != AudioSource.Mic)
             && !(Filter == SourceFilter.Loopback && row.Source != AudioSource.Loopback)
-            && !(FlaggedOnly && !row.HasFlags && row.HintText.Length == 0)));
+            && !(FlaggedOnly && (row.IsEcho || (!row.HasFlags && row.HintText.Length == 0)))));
         Selected = Segments.FirstOrDefault(r => r.SegmentId == selectedId);
         OnPropertyChanged(nameof(CountText));
     }

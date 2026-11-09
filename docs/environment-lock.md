@@ -80,7 +80,7 @@ JSON Schema 検証器の比較（2026-10-31）:
 | 配布元 | https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin |
 | サイズ | 487,601,967 bytes |
 | SHA-256 | `1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b` |
-| 比較候補 | `ggml-medium.bin`（Phase C で CER・所要時間を比較）。導入済み（12 章） |
+| 比較候補 | `ggml-medium.bin`（Phase C で CER・所要時間を比較）。導入済み（12 章）。**2026-11-09 から既定は medium**（13 章） |
 
 ## 6. LM Studio / LLM
 
@@ -290,3 +290,15 @@ LM Studio をやめ、llama.cpp の `llama-server.exe` をアプリが起動す�
 - 起動前の空きメモリ確認は small 1,024 MB、medium 2,560 MB とした（`RegisteredModel.RequiredMemoryMb`）
 - 録音中の一時停止（`NtSuspendProcess`）では、このメモリを持ったまま止まる
 - 30 分の音声の見込み: small 約 3.5 分、medium 約 10 分（NFR-06 の目標は small で 30 分以内）。実音声での計測は C5
+
+## 13. 文字起こしの既定を medium に（2026-11-09）
+
+実際の 1 時間の会議で small の結果が使えなかったため、モデルを比べ直し、利用者の判断で既定を medium にした（`docs/phase-c-report.md` 8 章、詳細仕様書 1.4）。small は選択肢として残す。
+
+| 候補 | ファイル・ハッシュ | 結果 |
+|---|---|---|
+| large-v3-turbo | `ggml-large-v3-turbo.bin`、1,624,555,275 bytes、SHA-256 `1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69`（配布元の LFS ハッシュと一致）。https://huggingface.co/ggerganov/whisper.cpp （リポジトリ版 `5359861c`）、MIT | 長い発言を落とし、同じ語を繰り返した。採用しない。`config\stt.json` には登録していない |
+| kotoba-whisper v2.0 | `ggml-kotoba-whisper-v2.0.bin`、1,519,521,155 bytes、SHA-256 `eff70a8a236e731abba774ba71e1f6d0fce53302137208c32207e694e0bf4546`（配布元と一致）。https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-ggml （リポジトリ版 `e3a0cf6a`）、Apache-2.0 | VAD あり・なしとも大半が抜けた。採用しない。登録していない |
+
+- 2 つのファイルは `models\whisper\` に置いたまま（使わない。消してよい）
+- **whisper-cli の引数の文字コード**: b5454 の whisper-cli は Windows で引数を CP932 で受け取り、UTF-8 として読む。日本語の `--prompt` は化ける（パスは相対パスにして避けている）。`mt.exe` で `activeCodePage` UTF-8 のマニフェストを埋め込んだ写しでは正しく届いた。語彙を渡す機能を作るなら、この写しを登録する（SHA-256 が変わる）か、別の渡し方が要る
