@@ -164,5 +164,16 @@
                 </ItemsControl>
             </StackPanel>
         </Border>
+
+        <!-- Version: what to quote when reporting a problem (also in the diagnostics report) -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+            <StackPanel>
+                <TextBlock Text="このアプリについて" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="{x:Static vm:SettingsViewModel.AppVersionText}" TextWrapping="Wrap" />
+                <TextBlock Text="{x:Static vm:SettingsViewModel.AppFolderText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                <TextBlock Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="アンインストールしても、保存先のデータ・文字起こしと記録の作成に使うツールとモデル（%LOCALAPPDATA%\VoiceJournal）は消しません。" />
+            </StackPanel>
+        </Border>
     </StackPanel>
 </UserControl>

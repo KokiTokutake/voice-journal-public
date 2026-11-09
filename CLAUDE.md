@@ -19,6 +19,7 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - LLM の試験の前に、エミュレーター・Docker・WSL・Gradle が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く（メモリ不足と PC の発熱のため）
 - 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する（11.5 の管理ブロック。反映は `ApplyEngine`、変更計画と backup は `Workspace\transactions\<batch-id>\`）。管理項目の表（`items` ほか、マイグレーション 4）は索引ではなく正本で、作り直さない
 - 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
+- 版は `Directory.Build.props` の `VersionPrefix` / `VersionSuffix` だけで決める（2026-11-09 に `1.0.0-beta.1`）。配布は WiX 6.0.2 の自分のユーザーだけの MSI（`installer/`、入れ先は `%LOCALAPPDATA%\Programs\VoiceJournal`）。whisper・llama-server・モデル・データは MSI に入れず、アンインストールでも消さない。WiX 7 はビルドに OSMF の EULA への同意が要るので使わない（利用者の判断）。タスクトレーへの常駐はしない（2026-11-09、利用者の判断）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
 ## コマンド
@@ -32,6 +33,8 @@ dotnet test VoiceJournal.slnx
 .\scripts\Test-AudioSource.ps1 -Source mic [-Raw]    # マイクの録音試験（原稿を読み上げる。利用者が自分の端末で実行）
 .\scripts\Test-Recording.ps1                        # 本番の録音パイプラインでの実機確認（マイク計測・両方モード・USB 抜き差し。利用者が実行）
 .\scripts\Test-PhaseC.ps1 -Test Record|Evaluate|Check  # 文字起こしの評価（原稿 3 本の読み上げ録音 → 5 設定の CER・速度・AT-06/26 → Revision の確認）
+.\scripts\New-Installer.ps1 [-Verify]               # インストーラー（自分のユーザーだけの MSI）を作る。-Verify はインストール → 自己診断 → アンインストールまで確かめる。出力は %LOCALAPPDATA%\VoiceJournal\dist\<版>\
+.\scripts\New-Manual.ps1                            # 使い方の説明書（docs\manual\manual.html）を Edge で PDF にする。出力は同じ dist\<版>\。画面を変えたら docs\manual\img を撮り直す
 ```
 
 ## 注意

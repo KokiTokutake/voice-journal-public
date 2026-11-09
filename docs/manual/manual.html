@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Voice Journal 使い方の説明書</title>
+<!-- 原稿。PDF は scripts\New-Manual.ps1 で作る（Edge のヘッドレス印刷）。画面の写真は試験用のワークスペースで撮ったもの -->
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm;
+    @bottom-center { content: counter(page) " / " counter(pages); font-family: "Yu Gothic", "Meiryo", sans-serif; font-size: 8.5pt; color: #6b7280; }
+  }
+  @page :first { @bottom-center { content: none; } }
+  :root { --ink: #1f2937; --sub: #4b5563; --line: #d1d5db; --accent: #0b6bcb; --soft: #eef5fd; --warn: #fff7e6; --warnline: #f0b44c; }
+  html { font-family: "Yu Gothic", "YuGothic", "Meiryo", sans-serif; font-weight: 500; color: var(--ink); font-size: 10.2pt; line-height: 1.75; }
+  body { margin: 0; background: #fff; }
+  h1, h2, h3, h4 { font-weight: 700; line-height: 1.4; }
+  h2 { font-size: 16pt; border-bottom: 2.5px solid var(--accent); padding-bottom: 4px; margin: 34px 0 12px; break-after: avoid; }
+  section#s1 h2 { margin-top: 0; }
+  section#s1 { break-before: page; }
+  h3 { font-size: 12.2pt; margin: 20px 0 6px; padding-left: 8px; border-left: 4px solid var(--accent); break-after: avoid; }
+  h4 { font-size: 10.6pt; margin: 14px 0 4px; break-after: avoid; }
+  p { margin: 4px 0 8px; }
+  ul, ol { margin: 4px 0 10px; padding-left: 1.5em; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 12px; font-size: 9.4pt; break-inside: auto; }
+  th, td { border: 1px solid var(--line); padding: 4px 7px; vertical-align: top; text-align: left; }
+  th { background: #f3f4f6; font-weight: 700; }
+  tr { break-inside: avoid; }
+  .btn { display: inline-block; border: 1px solid #9ca3af; border-radius: 4px; padding: 0 5px; background: #f9fafb; font-size: 9.2pt; line-height: 1.5; white-space: nowrap; }
+  .key { display: inline-block; border: 1px solid #9ca3af; border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; font-size: 8.8pt; line-height: 1.4; background: #fff; }
+  code { font-family: "Cascadia Mono", "Consolas", monospace; font-size: 8.8pt; background: #f3f4f6; padding: 0 3px; border-radius: 3px; word-break: break-all; }
+  figure { margin: 8px 0 14px; break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 4px; display: block; }
+  figcaption { font-size: 8.8pt; color: var(--sub); margin-top: 3px; }
+  .note { background: var(--soft); border-left: 4px solid var(--accent); padding: 7px 10px; margin: 8px 0 12px; break-inside: avoid; }
+  .warn { background: var(--warn); border-left: 4px solid var(--warnline); padding: 7px 10px; margin: 8px 0 12px; break-inside: avoid; }
+  .note p, .warn p { margin: 2px 0; }
+  .muted { color: var(--sub); }
+  .tag { display: inline-block; font-size: 8.2pt; font-weight: 700; border-radius: 3px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }
+  .auto { background: #dcfce7; color: #166534; }
+  .manual { background: #dbeafe; color: #1e40af; }
+
+  /* 表紙 */
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; }
+  .cover .brand { display: flex; align-items: center; gap: 14px; }
+  .cover .logo { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #0b6bcb, #0f9a8f); }
+  .cover h1 { font-size: 30pt; margin: 0; letter-spacing: .02em; }
+  .cover .title { font-size: 20pt; font-weight: 700; margin: 18px 0 6px; }
+  .cover .lead { color: var(--sub); font-size: 11pt; max-width: 150mm; }
+  .cover dl { margin-top: 40px; display: grid; grid-template-columns: 30mm 1fr; row-gap: 4px; font-size: 10pt; }
+  .cover dt { color: var(--sub); }
+  .cover dd { margin: 0; }
+
+  /* 目次 */
+  .toc { break-before: page; }
+  .toc h2 { break-before: avoid; }
+  .toc ol { list-style: none; padding: 0; columns: 1; }
+  .toc > ol > li { margin: 6px 0; font-weight: 700; }
+  .toc ol ol { padding-left: 1.6em; font-weight: 500; margin: 2px 0 4px; }
+  .toc ol ol li { margin: 0; }
+  .toc a { color: var(--ink); text-decoration: none; }
+
+  /* 流れ図 */
+  .flow { display: grid; grid-template-columns: 1fr; gap: 0; margin: 10px 0 14px; }
+  .step { break-inside: avoid; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .step .n { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 9.5pt; }
+  .step b { font-size: 10.4pt; }
+  .step .d { font-size: 9.3pt; color: var(--sub); }
+  .arrow { text-align: center; color: var(--accent); font-size: 10pt; line-height: 1.1; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+</style>
+</head>
+<body>
+
+<!-- 表紙 -->
+<section class="cover">
+  <div class="brand"><div class="logo"></div><h1>Voice Journal</h1></div>
+  <div class="title">使い方の説明書</div>
+  <p class="lead">録音した声を、この PC の中だけで文字起こしし、要約と課題・タスクの候補を作るアプリです。候補は、確かめて承認したものだけが管理ファイルに書き込まれます。</p>
+  <dl>
+    <dt>対象の版</dt><dd>1.0.0-beta.1</dd>
+    <dt>作成日</dt><dd>2026 年 11 月 9 日</dd>
+    <dt>動作環境</dt><dd>Windows 11（x64）</dd>
+  </dl>
+  <p class="muted" style="margin-top:28px;font-size:9pt">この説明書の画面の写真は、試験用のデータで撮ったものです。人名や内容は試験用の会議の読み上げ原稿のものです。</p>
+</section>
+
+<!-- 目次 -->
+<section class="toc">
+  <h2>目次</h2>
+  <ol>
+    <li><a href="#s1">1. はじめに</a>
+      <ol><li>できること・全体の流れ・データの置き場所</li></ol></li>
+    <li><a href="#s2">2. インストールとアンインストール</a></li>
+    <li><a href="#s3">3. 画面の構成</a></li>
+    <li><a href="#s4">4. 録音する（録音タブ）</a>
+      <ol><li>音源の選び方・録音テスト・ミニバー・録音中のお知らせ・閉じるとき</li></ol></li>
+    <li><a href="#s5">5. 録音を探す・聞く・書き出す（ライブラリタブ）</a></li>
+    <li><a href="#s6">6. 文字起こしを確かめて直す（文字起こしタブ）</a></li>
+    <li><a href="#s7">7. 記録を確かめて承認する（記録タブ）</a></li>
+    <li><a href="#s8">8. 課題・タスクを管理ファイルへ反映する（管理タブ）</a></li>
+    <li><a href="#s9">9. バックアップと復元</a></li>
+    <li><a href="#s10">10. 処理の進み具合を見る（処理状況タブ）</a></li>
+    <li><a href="#s11">11. 設定（設定タブ）</a></li>
+    <li><a href="#s12">12. 困ったとき</a></li>
+    <li><a href="#s13">13. キーボードでの操作</a></li>
+    <li><a href="#s14">付録. ファイルの置き場所</a></li>
+  </ol>
+</section>
+
+<!-- 1 -->
+<section id="s1">
+  <h2>1. はじめに</h2>
+
+  <h3>できること</h3>
+  <ul>
+    <li><b>録音</b>: マイク、PC 内部音声（PC で鳴っている音。オンライン会議の相手の声など）、またはその両方を別々に録ります。</li>
+    <li><b>文字起こし</b>: 録音が終わると、自動で文字起こしをします（whisper.cpp）。誤りは画面で直せ、聞き取りにくい区間だけ高精度のモデルで認識し直せます。</li>
+    <li><b>記録の作成</b>: 文字起こしから、題名・要約・章立ての記録と、課題・タスクの候補を作ります（アプリが起動する推論エンジン llama.cpp）。どの文も、元になった発言（根拠）をクリックで聞けます。</li>
+    <li><b>課題・タスクの管理</b>: 候補を 1 件ずつ確かめ、承認したものだけを管理ファイル（<code>issues.md</code> と <code>tasks.md</code>）に書き込みます。書き込む前に差分を見せ、元の内容をバックアップします。反映した後でも取り消せます。</li>
+  </ul>
+
+  <div class="note">
+    <p><b>インターネットには接続しません。</b>録音・文字起こし・記録の作成は、すべてこの PC の中で行います。外部への送信や自動更新はありません。</p>
+  </div>
+
+  <h3>全体の流れ</h3>
+  <p><span class="tag auto">自動</span>はアプリが続けて行うこと、<span class="tag manual">操作</span>は利用者が押すことです。</p>
+  <div class="flow">
+    <div class="step"><div class="n">1</div><div><span class="tag manual">操作</span><b>録音する</b><div class="d">録音タブで音源を選び、丸い録音ボタンを押します。録音が始まるとウィンドウは最小化され、画面の隅に小さなミニバーが出ます。止めるときはミニバーの■か録音ボタンを押します。</div></div></div>
+    <div class="arrow">▼</div>
+    <div class="step"><div class="n">2</div><div><span class="tag auto">自動</span><b>文字起こし</b><div class="d">保存が終わると順番待ちに入り、文字起こしをします（「保存後に文字起こしする」がオンのとき。既定はオン）。</div></div></div>
+    <div class="arrow">▼</div>
+    <div class="step"><div class="n">3</div><div><span class="tag auto">自動</span><b>記録の作成</b><div class="d">文字起こしが終わると、記録と課題・タスクの候補を作ります（「文字起こしの後に記録を作る」がオンで、まだ記録を作ったことのない録音のとき）。</div></div></div>
+    <div class="arrow">▼</div>
+    <div class="step"><div class="n">4</div><div><span class="tag manual">操作</span><b>記録を確かめて承認する</b><div class="d">ライブラリから記録を開き、内容と根拠を確かめ、必要なら直してから［承認］を押します。承認しても、管理ファイルにはまだ何も書き込みません。</div></div></div>
+    <div class="arrow">▼</div>
+    <div class="step"><div class="n">5</div><div><span class="tag manual">操作</span><b>課題・タスクの候補をレビューする</b><div class="d">管理タブで、候補ごとに「新規」「既存を更新」「関連だけ」「却下」「保留」を選びます。</div></div></div>
+    <div class="arrow">▼</div>
+    <div class="step"><div class="n">6</div><div><span class="tag manual">操作</span><b>変更計画を作って反映する</b><div class="d">［変更計画を作る］で差分を確かめ、［選択した変更を反映］で管理ファイルに書き込みます。</div></div></div>
+  </div>
+  <p class="muted">録音中は、文字起こしと記録の作成を自動で一時停止します（録音の音を途切れさせないため）。録音が終わると続きから再開します。</p>
+
+  <h3>データの置き場所</h3>
+  <table>
+    <tr><th style="width:34%">もの</th><th>場所</th></tr>
+    <tr><td>アプリ本体</td><td><code>%LOCALAPPDATA%\Programs\VoiceJournal</code></td></tr>
+    <tr><td>録音・文字起こし・記録・管理ファイル（ワークスペース）</td><td><code>%LOCALAPPDATA%\VoiceJournal\Workspace</code>（設定タブで変えられます）</td></tr>
+    <tr><td>文字起こしと記録の作成に使うツール・モデル・設定</td><td><code>%LOCALAPPDATA%\VoiceJournal</code> の <code>tools</code>・<code>models</code>・<code>config</code></td></tr>
+  </table>
+  <p>データは OneDrive などの同期フォルダーには置きません。録音や文字起こしは暗号化せずに保存するので、必要なら BitLocker などでドライブを暗号化してください。</p>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <h2>2. インストールとアンインストール</h2>
+
+  <h3>インストール</h3>
+  <ol>
+    <li><code>VoiceJournal-1.0.0-beta.1-x64.msi</code> をダブルクリックします。管理者権限は要りません（自分のユーザーだけに入ります）。</li>
+    <li>「Windows によって PC が保護されました」と出たときは、［詳細情報］→［実行］を押します。このアプリには発行元の署名がないため、この表示が出ることがあります。</li>
+    <li>終わると、スタートメニューに「Voice Journal」が追加されます。</li>
+  </ol>
+
+  <div class="warn">
+    <p><b>文字起こしと記録の作成には、別に用意するツールとモデルが要ります。</b></p>
+    <p>whisper.cpp（文字起こし）、llama.cpp（記録の作成）とそのモデルは、インストーラーには入っていません。<code>%LOCALAPPDATA%\VoiceJournal</code> の <code>tools</code>・<code>models</code> に置き、<code>config</code> に SHA-256 を登録しておく必要があります。開発に使った PC では用意済みです。別の PC に入れるときは、環境構築の手順書に従って先に用意してください。ツールがなくても録音はできます。</p>
+  </div>
+
+  <h3>初めて起動したら</h3>
+  <ol>
+    <li>設定タブの <span class="btn">環境をまとめて確認(W)</span> を押します。保存先に書き込めるか、空き容量、ツールとモデルがそろっているかを確かめます。すべて ✓ なら、インターネットなしで全部の機能が使えます。</li>
+    <li>録音タブで音源とデバイスを選び、<span class="btn">10 秒の録音テスト(E)</span> で音が届くかを確かめます（保存はしません）。</li>
+    <li>マイクを使う場合、Windows の［設定］→［プライバシーとセキュリティ］→［マイク］で、「マイクへのアクセス」と「デスクトップ アプリがマイクにアクセスできるようにする」をオンにしておきます。</li>
+  </ol>
+
+  <h3>新しい版に入れ替える</h3>
+  <p>アプリを閉じてから、新しい MSI をダブルクリックします。古い版は自動で置き換わります（同じ版番号の新しいビルドでも置き換わります）。データはそのまま使えます。</p>
+
+  <h3>版を確かめる</h3>
+  <p>設定タブの一番下「このアプリについて」に、版（例: <code>1.0.0-beta.1（7b7c370）</code>）とアプリの場所が出ます。かっこの中は、ビルドした元のソースの識別子です。不具合を伝えるときは、この版を添えてください。</p>
+
+  <h3>アンインストール</h3>
+  <p>Windows の［設定］→［アプリ］→［インストールされているアプリ］で「Voice Journal」を選び、［アンインストール］を押します。消えるのはアプリ本体とスタートメニューの項目だけです。<b>録音・文字起こし・記録・管理ファイル、ツールとモデル（<code>%LOCALAPPDATA%\VoiceJournal</code>）は消しません。</b>不要なら、このフォルダーを手で削除してください。</p>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <h2>3. 画面の構成</h2>
+  <p>ウィンドウの上部に 7 つのタブがあります。<span class="key">Alt</span> とかっこの中の文字を押すと、そのタブに移ります。</p>
+  <table>
+    <tr><th style="width:24%">タブ</th><th>すること</th></tr>
+    <tr><td>録音 (R)</td><td>録音の開始と停止、音源とデバイスの選択、録音テスト</td></tr>
+    <tr><td>ライブラリ (L)</td><td>録音の一覧と検索、再生、文字起こしのやり直し、書き出し、削除</td></tr>
+    <tr><td>文字起こし (S)</td><td>文字起こしの確認と修正、区間の再認識、版（Revision）の切り替え</td></tr>
+    <tr><td>記録 (Y)</td><td>要約・章・課題とタスクの候補の確認、編集、承認</td></tr>
+    <tr><td>管理 (G)</td><td>課題・タスクの候補のレビュー、管理ファイルへの反映と取り消し、管理一覧、バックアップと復元</td></tr>
+    <tr><td>処理状況 (J)</td><td>文字起こしと記録の作成の進み具合、取り消しとやり直し、診断情報の書き出し</td></tr>
+    <tr><td>設定 (Z)</td><td>文字起こしと記録の作成の設定、ツールの確認、保存先、版の表示</td></tr>
+  </table>
+  <p>録音中は、ウィンドウの右上に「● 録音中 00:12:34」のような表示が出ます（準備中・一部停止・保存中も同じ場所に出ます）。</p>
+  <p>Windows のライト／ダークの設定に合わせて色が変わります。Windows の「テキストのサイズ」を大きくすると、アプリの文字も大きくなります。</p>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <h2>4. 録音する（録音タブ）</h2>
+  <figure><img src="img/01-record.png" alt="録音タブ"><figcaption>図 4-1 録音タブ（上半分）。丸いボタンで録音を始めます。下にレベル表示が並びます。</figcaption></figure>
+
+  <h3>録音の前に設定すること</h3>
+  <figure><img src="img/02-record-bottom.png" alt="録音の設定"><figcaption>図 4-2 録音タブ（下半分）「録音の設定」。録音中は変更できません。</figcaption></figure>
+  <table>
+    <tr><th style="width:26%">項目</th><th>説明</th></tr>
+    <tr><td>タイトル (T)・project (P)</td><td>あとでライブラリで探すときの名前です。空でも録音できます（一覧では「（無題）」）。</td></tr>
+    <tr><td>音源</td><td><b>マイク</b>: 自分の声だけ。<b>PC 内部音声</b>: PC で鳴っている音だけ（オンライン会議の相手の声、動画など）。<b>両方</b>（既定）: 2 つを別々のファイルに録ります。文字起こしでも、どちらの声かを区別して表示します。</td></tr>
+    <tr><td>マイク (C)</td><td>使うマイク。前に選んだものが無ければ、Windows の既定のマイクを選びます。</td></tr>
+    <tr><td>マイクの音声処理を使わずに録音する</td><td>既定はオン（推奨）。ノイズ抑制や自動音量を通さない原音を保存するので、文字起こしの精度が上がります。マイクが対応していないと録音を始められないので、そのときはチェックを外します。</td></tr>
+    <tr><td>出力先 (O)</td><td>PC 内部音声として録る、音の出口（スピーカーやヘッドホン）。選んだ出力先から鳴る通知音なども録音に入ります。</td></tr>
+    <tr><td>保存後に文字起こしする (A)</td><td>既定はオン。録音が終わると自動で文字起こしの順番待ちに入ります。</td></tr>
+    <tr><td>文字起こしの後に記録を作る (K)</td><td>既定はオン。文字起こしが終わると、自動で記録と候補を作ります（まだ記録を作ったことのない録音だけ）。</td></tr>
+  </table>
+  <p>デバイスを抜き差ししたときは、一覧に自動で反映します。反映されないときは <span class="btn">デバイス一覧を更新(U)</span> を押します。2 つのチェックの状態は保存され、次回の起動でも同じです。</p>
+
+  <h3>録音テスト</h3>
+  <p><span class="btn">10 秒の録音テスト(E)</span> を押すと、選んだ音源とデバイスで 10 秒間だけ音を受け取り、音が届いたか・音量はどうかを表示します。保存はしません。マイクなら話しかけ、PC 内部音声なら動画などを再生しながら試します。</p>
+  <table>
+    <tr><th style="width:34%">結果の例</th><th>意味と対処</th></tr>
+    <tr><td>✓ 音が届きました</td><td>問題ありません。</td></tr>
+    <tr><td>⚠ ほぼ無音でした</td><td>マイクのミュート、Windows の入力音量、選んだマイクが正しいかを確かめます。</td></tr>
+    <tr><td>⚠ 音が大きすぎて割れています</td><td>Windows の入力音量を下げます。</td></tr>
+    <tr><td>⚠ PC の音が届きませんでした</td><td>PC で音が鳴っていない間は届きません。動画などを再生しながらもう一度試します。</td></tr>
+  </table>
+
+  <h3>録音を始める・止める</h3>
+  <ol>
+    <li>丸い録音ボタン（赤い丸）を押します。状態が「準備中（音声の取得を待っています）」になり、音声が届いた時点で「録音中」に変わります。</li>
+    <li>録音中になると、ウィンドウは自動で最小化され、画面の右下にミニバーが出ます。</li>
+    <li>止めるときは、ミニバーの■ボタンか、ウィンドウの録音ボタン（録音中は赤い四角）を押します。確認なしで停止し、保存します。</li>
+    <li>保存が終わると「保存しました」と出て、ライブラリの一覧に加わります。<span class="btn">フォルダーを開く(F)</span> で保存先を開けます。</li>
+  </ol>
+  <p>保存先の空き容量が足りないと、録音を始められません（FS-001）。録音中は PC がスリープしないようにします。</p>
+
+  <h3>ミニバー</h3>
+  <p>録音中にウィンドウを最小化すると出る、小さなバーです。常に手前に表示され、ほかのアプリの操作を邪魔しません。</p>
+  <ul>
+    <li>表示: 点滅する赤い点、経過時間、状態（録音中・一部の音源が停止中・保存中…など）、マイクと PC 内部音声の小さなレベル表示</li>
+    <li>■ボタン: 停止して保存します。</li>
+    <li>ウィンドウを元に戻すボタン、またはミニバーのダブルクリック: メインのウィンドウに戻ります。</li>
+    <li>ドラッグで好きな位置に動かせます。位置は次回も使います。</li>
+    <li>最小化したまま録音が終わると、「保存しました」を 3 秒ほど出してから消えます。</li>
+  </ul>
+
+  <h3>録音中のお知らせ</h3>
+  <p>録音中に問題が起きると、録音タブの「お知らせ」に出ます。</p>
+  <table>
+    <tr><th style="width:30%">お知らせ</th><th>アプリの動きと対処</th></tr>
+    <tr><td>マイクなどが切断された（CAP-002）</td><td>ほかの音源は録音を続けます。接続し直したら <span class="btn">再接続(N)</span> を押すと、そこから録音を続けます。切断中の音声は欠損として記録されます。</td></tr>
+    <tr><td>マイクの音が 10 秒間届いていない</td><td>録音は続いています。ミュートやマイクの接続を確かめます（1 回の録音で 1 度だけ出ます）。</td></tr>
+    <tr><td>書き込みが追いつかず音声の一部が欠けた（CAP-003）・保存のエラー</td><td>安全のため録音を止め、それまでの音声を保存します。</td></tr>
+    <tr><td>空き容量が不足した（FS-001）</td><td>録音を止めて保存します。音声は自動では削除しません。</td></tr>
+  </table>
+
+  <h3>録音中に閉じるとき・スリープしたとき</h3>
+  <ul>
+    <li>録音中にウィンドウを閉じようとすると、「録音を停止して保存してから終了しますか？」と聞きます。<span class="btn">停止して保存</span> を押すと、保存が終わってから閉じます。<span class="btn">戻る</span>（既定。<span class="key">Esc</span> も同じ）で録音を続けます。</li>
+    <li>録音中でなければ、確認なしで閉じます。</li>
+    <li>PC がスリープに入ると、録音を止めて保存します。復帰後に「同じ設定で新しい録音を始めますか？」と聞きます。</li>
+    <li>アプリが途中で落ちた録音は、次の起動時に回復し、ライブラリに「中断（回復済み）」と表示します。最後の数分の音声は欠けていることがあります。</li>
+  </ul>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <h2>5. 録音を探す・聞く・書き出す（ライブラリタブ）</h2>
+  <figure><img src="img/03-library.png" alt="ライブラリタブ"><figcaption>図 5-1 ライブラリタブ。行を選ぶと、下のボタンが使えるようになります。</figcaption></figure>
+
+  <h3>一覧の見方</h3>
+  <table>
+    <tr><th style="width:18%">列</th><th>表示</th></tr>
+    <tr><td>状態</td><td>録音の状態。保存済み・録音中・中断（回復済み）・失敗 など</td></tr>
+    <tr><td>欠損</td><td>⚠ 欠損あり（切断などで音声が欠けた）、⚠ 末尾に欠損の可能性（中断から回復した録音）</td></tr>
+    <tr><td>文字起こし</td><td>未処理 → 順番待ち → 音声を変換中 → 文字起こし中 → 文字起こし済み（済み（Rev n））。記録を作る段階では 記録を作成中 → 記録を検証中 → 記録のレビュー待ち。ほかに 失敗・取り消し・記録にする内容なし</td></tr>
+    <tr><td>記録</td><td>記録なし／草稿（未承認）／保留／承認済み／承認済み（古い）（承認した後に文字起こしや記録が変わった）</td></tr>
+  </table>
+
+  <h3>検索</h3>
+  <p>上の検索欄（<span class="key">Alt</span>+<span class="key">K</span>）に入力すると、タイトル・project・日付と、<b>文字起こしの本文</b>から探して絞り込みます。右に件数（例: 3 / 12 件）が出ます。</p>
+
+  <h3>ボタン</h3>
+  <table>
+    <tr><th style="width:30%">ボタン</th><th>すること</th></tr>
+    <tr><td><span class="btn">マイクを再生(M)</span> <span class="btn">PC 内部音声を再生(I)</span></td><td>その音源の原音を最初から再生します。<span class="btn">停止(X)</span> で止めます。</td></tr>
+    <tr><td><span class="btn">フォルダーを開く(F)</span></td><td>録音のフォルダーをエクスプローラーで開きます。</td></tr>
+    <tr><td><span class="btn">文字起こし(A)</span></td><td>今の設定で文字起こしをします。すでに文字起こし済みなら、以前の結果を残したまま新しい原文を作ります（モデルを変えて試すときなど）。</td></tr>
+    <tr><td><span class="btn">文字起こしを開く(E)</span></td><td>文字起こしタブで開きます。行のダブルクリックでも開きます。</td></tr>
+    <tr><td><span class="btn">記録を開く(O)</span></td><td>記録タブで開きます。記録がまだ無ければ、そこで作れます。</td></tr>
+    <tr><td><span class="btn">書き出す(W)</span></td><td>選んだフォルダーの中に「日時 タイトル」のフォルダーを作り、記録（<code>record.md</code>。未承認なら <code>record.draft.md</code>）と文字起こし（<code>transcript.md</code>）を Markdown でコピーします。原音は書き出しません。同じ名前のフォルダーがあれば上書きせずに止まります。</td></tr>
+    <tr><td><span class="btn">削除(D)</span></td><td>消えるもの（原音・文字起こし・記録・候補・検索の索引）と、残るもの（このセッションを根拠にした管理ファイルの項目、バックアップの写し）を一覧で見せてから、確認します（既定は［いいえ］）。すぐには消さず、ワークスペースの <code>trash</code> フォルダーへ移します。フォルダーを戻せば元に戻ります。録音中の録音は削除できません。</td></tr>
+  </table>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <h2>6. 文字起こしを確かめて直す（文字起こしタブ）</h2>
+  <figure><img src="img/05-transcript.png" alt="文字起こしタブ"><figcaption>図 6-1 文字起こしタブ。区間ごとに時刻・音源・本文・目印が並びます。</figcaption></figure>
+
+  <h3>Revision（版）の考え方</h3>
+  <p>文字起こしは書き換えず、直すたびに新しい版（Rev 1、Rev 2…）を作ります。元の原文はいつでも残っています。</p>
+  <ul>
+    <li><b>使用中</b>の版が、修正・再認識・記録の作成に使われます。「Revision (V)」の欄で ［使用中］ と付いている版です。</li>
+    <li>ほかの版を選ぶと、表示だけになります。その版を使うときは <span class="btn">この Revision を使う(U)</span> を押します（ほかの版は消えません）。</li>
+    <li>修正した後に全体の文字起こしをやり直しても、新しい原文は自動では使用中になりません。直した内容を守るためです。新しい原文を使うときは、選んで［この Revision を使う］を押します。</li>
+  </ul>
+
+  <h3>一覧の見方</h3>
+  <table>
+    <tr><th style="width:20%">列</th><th>意味</th></tr>
+    <tr><td>▶</td><td>その区間を再生します。</td></tr>
+    <tr><td>音源</td><td>マイク／PC 内部音声。上の切り替え（両方・マイク・PC 内部音声）で、片方だけ表示できます。</td></tr>
+    <tr><td>品質の目印</td><td>無音・反復・短い・境界・欠損。認識が怪しい区間の目安です。</td></tr>
+    <tr><td>要確認</td><td>数字・期日・否定・人名を含む区間。聞き間違えると意味が変わりやすいので、音声で確かめることをおすすめします。「要確認だけ表示 (Q)」で絞り込めます。</td></tr>
+    <tr><td>修正</td><td>手で直した区間に「修正」と出ます。</td></tr>
+  </table>
+
+  <h3>直す・戻す・認識し直す</h3>
+  <ul>
+    <li><b>直す</b>: 本文をダブルクリックして書き換え、ほかの場所をクリックすると保存します（新しい版になります）。</li>
+    <li><b>原文に戻す</b>: 修正した区間を選んで <span class="btn">原文に戻す(H)</span> を押します。</li>
+    <li><b>認識し直す</b>: 区間を選び（<span class="key">Shift</span>／<span class="key">Ctrl</span> で複数選べます）、「再認識のモデル (D)」で <b>medium（高精度・約 3 倍の時間）</b> などを選んで <span class="btn">選んだ区間を再認識(N)</span> を押します。終わると新しい版で表示します。一度に選べるのは 1 つの音源で、10 分までです。</li>
+    <li><span class="btn">区間を再生(P)</span> で選んだ区間を聞き、<span class="btn">停止(X)</span> で止めます。</li>
+  </ul>
+  <p>直せるのは使用中の版だけです。「認識されなかった範囲（STT-003）」が出ている場合、その時間は文字になっていません。</p>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <h2>7. 記録を確かめて承認する（記録タブ）</h2>
+  <figure><img src="img/07-record-review.png" alt="記録タブ"><figcaption>図 7-1 記録タブ。左が元の文字起こし、右が記録です。上の枠に状態と注意が出ます。</figcaption></figure>
+
+  <h3>記録を作る</h3>
+  <p>通常は文字起こしの後に自動で作られます。自動で作らなかったとき、または作り直すときは、<span class="btn">記録を作る(W)</span>（記録があるときは <span class="btn">記録を作り直す(W)</span>）を押します。今の記録は前の版として残ります。</p>
+  <ul>
+    <li>録音中と文字起こし中は、記録の作成を待たせます。</li>
+    <li>30 分の録音なら、記録ができるまでの目安は 8 分以内です（PC が熱いと少し延びることがあります）。進み具合は下の行と処理状況タブに出ます。</li>
+    <li>推論エンジンは記録を作るときだけ起動し、使わなければ 1 分ほどで終了してメモリを返します。</li>
+  </ul>
+
+  <h3>確かめる</h3>
+  <ul>
+    <li>右の記録には、題名・要約・章が並びます。各文の下に、由来（AI／修正／手入力。案・未確定、不明確 などの印）と<b>根拠</b>のボタン（例: <span class="btn">00:00:23 PC 内部音声</span>）があります。</li>
+    <li>根拠のボタンを押すと、左の元の発言を選んで再生します。数字・日付・人名は、音声で確かめてください。</li>
+    <li>上の枠の注意の例:
+      <ul>
+        <li>「部分生成: N 区間を整理できませんでした」— その範囲は記録に入っていません。</li>
+        <li>「根拠確認が必要: 文字起こしと結び付けられなかった N 件を記録から外しました」</li>
+        <li>「承認後に元の文字起こしが変わりました」— 直した文字起こしで作り直すときは［記録を作り直す］を押します。</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h3>直す</h3>
+  <ul>
+    <li>題名・見出し・文は、その場で書き換えられます。ほかの場所をクリックすると保存します（新しい版になります）。</li>
+    <li>文の右のごみ箱で削除、章の末尾の「＋ 追加する文」で追加（手入力の文には根拠が付きません）。</li>
+    <li>章の見出しの右のボタンで、章の作り直し（その章の根拠の区間だけを推論エンジンに渡します）、上下の移動、削除ができます。一番下の「章を追加」で章を足せます。</li>
+    <li>直せるのは最新の版だけです。古い版を選ぶと表示だけになり、最新との違いが「→ 最新: …」と出ます。</li>
+  </ul>
+
+  <h3>承認する</h3>
+  <p><span class="btn">承認(A)</span> を押すと、最新の版を承認し、録音のフォルダーの <code>record.md</code> に保存します。<span class="btn">保留／解除(H)</span> で保留にもできます。</p>
+  <div class="note"><p>記録を承認しても、課題・タスクの候補は<b>承認されません</b>。管理ファイルにも書き込みません。候補は <span class="btn">課題・タスクのレビューへ(T)</span>（記録の下のほか）から管理タブで確かめます。</p></div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+  <h2>8. 課題・タスクを管理ファイルへ反映する（管理タブ）</h2>
+  <figure><img src="img/09-manage.png" alt="管理タブ"><figcaption>図 8-1 管理タブ。左上が候補のカード、右上が最終確認、左下が管理一覧、右下が変更計画の履歴とバックアップです。</figcaption></figure>
+
+  <h3>管理ファイル</h3>
+  <p>課題は <code>Workspace\management\issues.md</code>、タスクは <code>tasks.md</code> です。アプリが ID（ISS-000001、TSK-000001…）を付けて、<code>vj:item</code> の囲みの中に書きます。<b>囲みの外</b>には自由にメモを書けます（アプリは書き換えません）。</p>
+
+  <h3>候補をレビューする</h3>
+  <ol>
+    <li>「セッション (N)」で録音を選びます（記録のある録音だけが並びます）。</li>
+    <li>候補のカードごとに、根拠・担当・期限・要確認の印を確かめ、次のどれかを選びます。タイトルはその場で直せます。
+      <table>
+        <tr><th style="width:20%">選択肢</th><th>意味</th></tr>
+        <tr><td>新規</td><td>新しい項目として追加します。</td></tr>
+        <tr><td>既存を更新</td><td>「対象の既存項目」で選んだ項目の状態・担当・期限などを更新します。</td></tr>
+        <tr><td>関連だけ</td><td>既存の項目に、この録音を根拠として結び付けるだけです。</td></tr>
+        <tr><td>却下・保留</td><td>計画に入れません。</td></tr>
+      </table>
+    </li>
+    <li>完了・取消・再開・期限や担当の変更・値の消去・要確認の印がある候補には「個別に確認しました（…）」のチェックが出ます。チェックしないと計画に入りません。</li>
+  </ol>
+  <p><span class="btn">通常の新規候補をすべて選択(A)</span> は、AI が新規と提案し、要確認の印のない候補だけを「新規」にします。気をつけるべき候補は 1 件ずつ選びます。選んだ内容はすぐ保存されます。</p>
+  <p>「似た既存の項目: …」と出たときは、同じものなら「既存を更新」か「関連だけ」を選びます。タイトルが似ていても、アプリが自動でまとめることはありません。</p>
+
+  <h3>変更計画を作って反映する</h3>
+  <ol>
+    <li><span class="btn">変更計画を作る(P)</span> を押すと、件数とファイルごとの差分が出ます。</li>
+    <li>差分を確かめて <span class="btn">選択した変更を反映(R)</span> を押すと、元の内容をバックアップしてから管理ファイルを書き換えます（確認のダイアログはありません）。</li>
+    <li>すぐに反映しないときは <span class="btn">計画だけ保存(K)</span> を押します。あとで右下の履歴の［反映］で反映できます。</li>
+    <li>反映すると、記録の候補に「反映済み（TSK-000001）」の印が付きます。</li>
+  </ol>
+  <p>候補の選択を変えると、作った計画は消えます（作り直します）。反映の前に管理ファイルが外で編集されていたときは、反映を中止し、外の編集はそのまま残します。</p>
+
+  <h3>反映を取り消す</h3>
+  <p>右下「変更計画（反映待ち・履歴）」の反映済みの行で <span class="btn">取り消す</span> を押すと、元に戻す計画を作ります。差分を確かめて［選択した変更を反映］を押すと戻ります。新しく作った項目は削除せず、取消（クローズ）にします。</p>
+  <table>
+    <tr><th style="width:20%">履歴の状態</th><th>押せるボタン</th></tr>
+    <tr><td>反映待ち</td><td>［反映］［破棄］</td></tr>
+    <tr><td>反映済み</td><td>［取り消す］</td></tr>
+    <tr><td>復旧が必要</td><td>［もう一度確かめる］［破棄］。反映の途中でアプリが止まったときなどに出ます。起動時にも自動で確かめて続きを処理します。</td></tr>
+  </table>
+
+  <h3>そのほかの操作</h3>
+  <ul>
+    <li><b>既存の管理ファイルを取り込む…</b>: 今使っている Markdown（チェックリストか、タイトルの列のある表）を読み込み、取込みの計画を作ります。反映するまで何も登録しません。元のファイルは変えません。文字コードは UTF-8 か UTF-16LE（BOM 付き）だけです（Shift_JIS のファイルは、エディターで UTF-8 にして保存した写しを選びます）。</li>
+    <li><b>課題（タスク）のファイルは追記だけ</b>: オンにすると、新しい項目を追記するだけになり、既存の項目の更新はファイルを書き換えずに提案として保存します。</li>
+    <li><b>手で編集された項目</b>: 管理ファイルの囲みの中を手で直すと、上部に知らせが出ます。項目ごとに［取り込む］か［アプリの内容に戻す］を選び、計画を反映します。それまでその項目は更新しません。</li>
+    <li><b>管理一覧</b>: 左下に全項目を表示します。検索欄で ID・タイトル・内容・担当・プロジェクトの一部から探し、右の欄で状態（未対応・未着手・対応中・停滞・解決・終了・完了・中止）を絞り込みます。</li>
+  </ul>
+  <p>反映前のバックアップは、既定で 90 日残します（直近 10 回は期限なしで残します）。日数は設定タブで変えられます。</p>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+  <h2>9. バックアップと復元</h2>
+  <p>管理タブの右下で操作します。週に 1 回ほど、ワークスペース全体のバックアップを作ることをおすすめします。</p>
+  <h3>バックアップを作る</h3>
+  <ol>
+    <li>録音を止めます（録音中は作りません）。</li>
+    <li><span class="btn">ワークスペースのバックアップ</span> を押します。原音が多いと時間がかかります。</li>
+    <li>「バックアップを作りました（N ファイル、… MB、ハッシュを確認済み）」と出たら完了です。保存先は <code>Workspace\backups\snapshot-…</code> です。</li>
+  </ol>
+  <p class="warn">バックアップはワークスペースの中に作られるので、ドライブの故障には備えられません。大切なデータは、<code>backups</code> の中のフォルダーを別のドライブにもコピーしてください。</p>
+  <h3>復元する</h3>
+  <ol>
+    <li>バックアップを選び、<span class="btn">新しいフォルダーに復元</span> を押します。今のワークスペースは変えず、隣に <code>Workspace-restored-日時</code> を作って中身を検査します。</li>
+    <li>表示されたコマンド（<code>VoiceJournal.App.exe --workspace "…"</code>）で起動すると、復元したほうを開けます。</li>
+    <li>復元したほうを普段使いにするときは、設定タブの <span class="btn">保存先を変更…(F)</span> でそのフォルダーを選び、アプリを起動し直します。</li>
+  </ol>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+  <h2>10. 処理の進み具合を見る（処理状況タブ）</h2>
+  <figure><img src="img/12-processing.png" alt="処理状況タブ"><figcaption>図 10-1 処理状況タブ。上が実行中の処理、下が最近の処理（最大 50 件）です。</figcaption></figure>
+  <ul>
+    <li>上のカードに、実行中の処理と進み具合（例: 文字起こし中（マイク 区間 2/5） 40%）、順番待ちの件数が出ます。</li>
+    <li>一覧の「状態」が失敗のときは、「内容」に理由が出ます（12 章の表も見てください）。</li>
+  </ul>
+  <table>
+    <tr><th style="width:30%">ボタン</th><th>すること</th></tr>
+    <tr><td><span class="btn">取り消す(C)</span></td><td>順番待ちか実行中の処理を止めます。終わった区間と録音は残ります。</td></tr>
+    <tr><td><span class="btn">続きからやり直す(T)</span></td><td>失敗・取り消しの処理を順番待ちに戻します。終わった区間はそのまま使い、残りだけを実行します。</td></tr>
+    <tr><td><span class="btn">順番待ちを保留(H)</span></td><td>順番待ちの処理を始めずに待たせます（PC を重くしたくないときなど）。実行中の処理は最後まで続けます。［保留を解除］で再開します。アプリを起動し直しても解けます。</td></tr>
+    <tr><td><span class="btn">診断情報を書き出す(D)</span></td><td>不具合を調べるための情報を <code>%LOCALAPPDATA%\VoiceJournal\logs</code> に JSON で保存します。含めるもの・含めないものを見せてから確認します。原音や文字起こし・記録の本文、タイトルは含めません。どこにも送信しません。</td></tr>
+  </table>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+  <h2>11. 設定（設定タブ）</h2>
+  <figure><img src="img/13-settings.png" alt="設定タブ"><figcaption>図 11-1 設定タブ（上部）。変更はすぐに保存され、次に始める処理から使われます。</figcaption></figure>
+
+  <h3>文字起こし</h3>
+  <table>
+    <tr><th style="width:28%">項目</th><th>説明</th></tr>
+    <tr><td>モデル (M)</td><td><b>small（既定・速い）</b>か <b>medium（高精度・約 3 倍の時間）</b>。普段は small で、聞き取りにくい区間だけ文字起こしタブで medium で再認識するのがおすすめです。</td></tr>
+    <tr><td>無音の部分を飛ばして認識する（VAD）</td><td>推奨（オン）。無音から文が作られる誤りを防ぎます。</td></tr>
+    <tr><td>小さい音声の音量をそろえてから認識する</td><td>認識用の写しだけ音量をそろえます。原音は変えません。</td></tr>
+    <tr><td>CPU のスレッド数 (H)</td><td>文字起こしに使う CPU の数。</td></tr>
+  </table>
+  <p>順番待ちに入っている処理は、入れたときの設定のままです。</p>
+
+  <h3>記録の作成</h3>
+  <table>
+    <tr><th style="width:28%">項目</th><th>説明</th></tr>
+    <tr><td>モデル ID・コンテキスト長・出力の予約・区間の大きさ</td><td>推論エンジンの設定です。通常は変えません。使えない値は直して保存します（コンテキスト長は 4096 以上、出力の予約はその半分以下、区間は 500〜32768）。</td></tr>
+    <tr><td>推論中も空きメモリ 4 GB 以上を保つ (E)</td><td>既定はオフ。オンにすると、空きメモリが足りないときは記録の作成を始めません。オフのときは始めて、空きが少なかったことを記録の警告に出します。</td></tr>
+    <tr><td><span class="btn">接続を確認(T)</span></td><td>推論エンジンを実際に起動して確かめます。記録の作成が失敗する（LLM-001）ときに使います。</td></tr>
+  </table>
+
+  <figure><img src="img/15-settings-bottom.png" alt="設定タブの下部"><figcaption>図 11-2 設定タブ（下部）。ツールの確認、保存先、版の表示です。</figcaption></figure>
+
+  <h3>管理ファイル・保持・プライバシー</h3>
+  <p>管理ファイルの場所と、反映前のバックアップを残す日数 (Q)（7〜3650 日、既定 90 日）を設定します。</p>
+
+  <h3>文字起こしのツール</h3>
+  <p><span class="btn">ツールを確認(K)</span> で、whisper-cli と登録済みのモデルの SHA-256 を照合します（数秒かかります）。アプリは登録したファイルだけを、照合してから使います。</p>
+
+  <h3>保存先と環境の確認</h3>
+  <ul>
+    <li><span class="btn">保存先を変更…(F)</span>: 空のフォルダーか、既存のワークスペースを選びます。次に起動したときから使います。今のデータは移しません。OneDrive などの同期フォルダー、ネットワーク上の場所、USB メモリ、NTFS 以外のドライブは選べません。</li>
+    <li><span class="btn">既定の保存先に戻す(B)</span>: 次の起動から <code>%LOCALAPPDATA%\VoiceJournal\Workspace</code> に戻します。</li>
+    <li><span class="btn">環境をまとめて確認(W)</span>: 保存先への書き込み、空き容量、文字起こしと記録の作成のツールを確かめます（ネットワークは使いません）。</li>
+  </ul>
+
+  <h3>このアプリについて</h3>
+  <p>版とアプリの場所を表示します。</p>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+  <h2>12. 困ったとき</h2>
+  <table>
+    <tr><th style="width:30%">表示・症状</th><th>原因と対処</th></tr>
+    <tr><td>録音を開始できません（マイクへのアクセス、CAP-001）</td><td>Windows の［設定］→［プライバシーとセキュリティ］→［マイク］で、「マイクへのアクセス」と「デスクトップ アプリがマイクにアクセスできるようにする」をオンにします。</td></tr>
+    <tr><td>このマイクは「音声処理を使わない録音（raw）」に対応していません</td><td>録音タブの「マイクの音声処理（…）を使わずに録音する」のチェックを外します。</td></tr>
+    <tr><td>ほかのアプリがこのデバイスを専有しています（CAP-002）</td><td>そのデバイスを使っているアプリを閉じるか、別のデバイスを選びます。</td></tr>
+    <tr><td>選択したデバイスが見つかりません</td><td>接続を確かめてから <span class="btn">デバイス一覧を更新(U)</span> を押します。</td></tr>
+    <tr><td>空き容量が足りない（FS-001）</td><td>不要なファイルを整理します。録音済みの音声は自動では削除しません。</td></tr>
+    <tr><td>STT-001: whisper-cli またはモデルが見つからない・SHA-256 が一致しない</td><td>設定タブの［ツールを確認］で確かめます。ツールとモデルを置き直し、登録をやり直します。録音は残っています。</td></tr>
+    <tr><td>STT-002: 文字起こしが異常終了した／時間内に終わらなかった／空きメモリが足りない</td><td>ほかのアプリを閉じてから、処理状況タブの［続きからやり直す］を押します。終わった区間は残っています。</td></tr>
+    <tr><td>LLM-001: 推論エンジンを使えませんでした</td><td>空きメモリが足りないか、ファイルが登録と違います。ほかのアプリ（エミュレーターや Docker など、メモリを多く使うもの）を閉じ、設定タブの［接続を確認］で原因を確かめてから［続きからやり直す］を押します。文字起こしは残っています。</td></tr>
+    <tr><td>LLM-002／003: 記録を作れませんでした</td><td>［続きからやり直す］で、残りの区間だけを実行します。</td></tr>
+    <tr><td>文字起こしに記録にする内容がありませんでした</td><td>無音や認識なしの録音です。記録は作られません。</td></tr>
+    <tr><td>再認識している間に同じ範囲が修正されたため、結果を反映しませんでした</td><td>もう一度、再認識を実行します。</td></tr>
+    <tr><td>管理ファイルが承認の後に変更されています（外部での編集）</td><td>反映を中止し、外の編集はそのまま残しています。最新の内容で計画を作り直します。</td></tr>
+    <tr><td>管理ファイルに書き込めませんでした</td><td>エディターなどほかのアプリで開いていないか確かめます。何も変更していません。</td></tr>
+    <tr><td>Voice Journal はすでに起動しています</td><td>同じ保存先では 1 つしか起動できません。タスクバーのアプリを探します。</td></tr>
+    <tr><td>前回の録音を回復しました</td><td>アプリが落ちた録音を回復しました。ライブラリに「中断（回復済み）」と出ます。元のファイルは残っています。</td></tr>
+    <tr><td>保存先またはデータベースを開けませんでした</td><td>設定で選んだ保存先が使えないときは、既定に戻すかを聞きます。録音済みのファイルは変更していません。</td></tr>
+    <tr><td>文字起こしや記録の作成が進まない</td><td>録音中は一時停止します。処理状況タブで「保留」になっていないかも確かめます。</td></tr>
+  </table>
+  <p>原因がわからないときは、処理状況タブの <span class="btn">診断情報を書き出す(D)</span> で情報を保存し、設定タブの版と一緒に伝えてください。</p>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+  <h2>13. キーボードでの操作</h2>
+  <ul>
+    <li>ボタンや欄の名前の後ろのかっこの文字（例: 承認(A)）は、<span class="key">Alt</span> と一緒に押すとその操作をします。</li>
+    <li>タブ: <span class="key">Alt</span>+ R 録音、L ライブラリ、S 文字起こし、Y 記録、G 管理、J 処理状況、Z 設定</li>
+    <li>ライブラリの検索欄: <span class="key">Alt</span>+<span class="key">K</span></li>
+    <li><span class="key">Tab</span> で、画面の操作できるものを順に移動します。</li>
+    <li>確認のダイアログでは、<span class="key">Enter</span> と <span class="key">Esc</span> はどちらも安全な側（［戻る］［閉じる］［いいえ］）になります。</li>
+    <li>文字起こしの区間は <span class="key">Shift</span>／<span class="key">Ctrl</span> を押しながら複数選べます。</li>
+  </ul>
+  <p class="muted">丸い録音ボタン、ミニバーのボタン、記録の章と文の小さなアイコンボタン、管理タブの一部のボタンには、<span class="key">Alt</span> の文字がありません。<span class="key">Tab</span> で移動して <span class="key">Space</span> で押します。</p>
+</section>
+
+<!-- 付録 -->
+<section id="s14">
+  <h2>付録. ファイルの置き場所</h2>
+  <table>
+    <tr><th style="width:44%">場所</th><th>中身</th></tr>
+    <tr><td><code>%LOCALAPPDATA%\Programs\VoiceJournal</code></td><td>アプリ本体（アンインストールで消えます）。第三者のライセンス一覧 <code>third-party-notices.md</code> もここにあります。</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\VoiceJournal\Workspace</code></td><td>ワークスペース（既定の保存先）</td></tr>
+    <tr><td>　<code>sessions\年\月\&lt;ID&gt;\</code></td><td>録音ごとのフォルダー。<code>audio\</code>（原音）、<code>transcripts\</code>（文字起こしの各版）、<code>records\</code>（記録の各版）、承認した記録 <code>record.md</code>（未承認なら <code>record.draft.md</code>）、文字起こし <code>transcript.md</code></td></tr>
+    <tr><td>　<code>management\issues.md</code>・<code>tasks.md</code></td><td>管理ファイル</td></tr>
+    <tr><td>　<code>transactions\</code></td><td>変更計画と、反映前のバックアップ</td></tr>
+    <tr><td>　<code>backups\</code></td><td>ワークスペースのバックアップ</td></tr>
+    <tr><td>　<code>imports\</code></td><td>取り込んだ管理ファイルの写し</td></tr>
+    <tr><td>　<code>trash\</code></td><td>削除した録音（ここから戻せます）</td></tr>
+    <tr><td>　<code>db\</code></td><td>検索用の索引。録音や文字起こしのファイルから作り直せます。</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\VoiceJournal\tools</code>・<code>models</code></td><td>whisper.cpp・llama.cpp とモデル</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\VoiceJournal\config</code></td><td>設定と、ツール・モデルの登録（SHA-256）</td></tr>
+    <tr><td><code>%LOCALAPPDATA%\VoiceJournal\logs</code></td><td>ログと診断情報</td></tr>
+  </table>
+  <p class="muted"><code>%LOCALAPPDATA%</code> は、エクスプローラーのアドレス欄にそのまま入力すると開けます（通常は <code>C:\Users\&lt;ユーザー名&gt;\AppData\Local</code>）。</p>
+</section>
+
+</body>
+</html>

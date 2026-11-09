@@ -1,0 +1,23 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <!--
+    Per-user MSI of the self-contained app (detail spec 4: x64 self-contained folder; the whisper / llama-server
+    executables and the models stay in %LOCALAPPDATA%\VoiceJournal and are not part of it).
+    Build with scripts/New-Installer.ps1, which publishes the app first and passes PublishDir.
+    Not in VoiceJournal.slnx: it needs a publish, and `dotnet build VoiceJournal.slnx` stays quick.
+  -->
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <OutputName>VoiceJournal-$(VersionPrefix)$(VersionSuffix.Insert(0, '-').TrimEnd('-'))-x64</OutputName>
+    <DefineConstants>ProductVersion=$(VersionPrefix);PublishDir=$(PublishDir);RepoRoot=$(MSBuildThisFileDirectory)..</DefineConstants>
+    <!-- ICE38/64/91: per-user files under %LOCALAPPDATA%; the ICEs expect an HKCU key path for each component and
+         roaming-profile cleanup, which do not apply to a per-user install of an app folder.
+         ICE60: native .NET runtime DLLs carry a version but no language; file replacement still goes by version.
+         ICE61: AllowSameVersionUpgrades (Package.wxs) makes the upgrade range include the current version, on purpose. -->
+    <SuppressIces>ICE38;ICE60;ICE61;ICE64;ICE91</SuppressIces>
+  </PropertyGroup>
+  <Target Name="RequirePublishDir" BeforeTargets="CoreCompile;Compile">
+    <Error Condition="'$(PublishDir)' == '' or !Exists('$(PublishDir)VoiceJournal.App.exe')"
+           Text="PublishDir に発行したアプリのフォルダー（末尾に \）を渡してください。scripts\New-Installer.ps1 を使います。" />
+  </Target>
+</Project>

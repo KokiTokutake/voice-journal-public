@@ -25,6 +25,8 @@
 | IDE | Visual Studio Community 2026（.NET デスクトップ開発・C++ ツールあり）、VS Code |
 | git | 2.56.0.windows.4 |
 | FFmpeg（任意） | 9.0.2 full_build（winget `Gyan.FFmpeg`） |
+| WiX Toolset（インストーラー） | `WixToolset.Sdk` **6.0.2**（MSBuild SDK。`installer/VoiceJournal.Installer.wixproj` の `Sdk` 属性で固定し、NuGet から取る。PC への導入は無い）。7.0.x はビルドに OSMF の EULA への同意（`AcceptEula`）が要るため使わない（2026-11-09、利用者の判断） |
+| アプリの版 | `Directory.Build.props` の `VersionPrefix` / `VersionSuffix`（2026-11-09 に `1.0.0-beta.1` から開始）。MSI の版は `VersionPrefix`（数字だけ）で、同じ版の新しいビルドは古いビルドを置き換える。ビルドした commit は .NET SDK が情報版に付け（`1.0.0-beta.1+<sha>`）、設定画面と診断情報に出る |
 
 ## 3. NuGet（`Directory.Packages.props` が正本）
 

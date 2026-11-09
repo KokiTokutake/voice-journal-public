@@ -61,6 +61,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         ShowNextWorkspace();
     }
 
+    /// <summary>"このアプリについて": the version and the commit it was built from.</summary>
+    public static string AppVersionText => $"版 {AppInfo.DisplayText}";
+
+    /// <summary>Where the app's files are (the installer puts them in %LOCALAPPDATA%\Programs\VoiceJournal). The data is elsewhere.</summary>
+    public static string AppFolderText => $"アプリの場所: {AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)}";
+
     /// <summary>UI-12 管理パス: the management files the app writes (fixed in v1).</summary>
     public string ManagementFilesText =>
         $"課題: {Path.Combine(WorkspaceRoot, Infrastructure.Storage.ManagementStore.IssuesPath.Replace('/', Path.DirectorySeparatorChar))}\n" +

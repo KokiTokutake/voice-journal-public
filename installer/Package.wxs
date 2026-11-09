@@ -1,0 +1,49 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!--
+    UpgradeCode stays the same for every version. AllowSameVersionUpgrades: the prerelease builds share the MSI
+    version (VersionPrefix, numbers only), and a newer build of the same version still replaces the older one.
+    Uninstalling removes only the app folder and the shortcut: the data, tools and models in
+    %LOCALAPPDATA%\VoiceJournal are not the installer's.
+  -->
+  <Package Name="Voice Journal" Manufacturer="KokiTokutake" Version="$(ProductVersion)"
+           UpgradeCode="6FF0AA32-4165-4E28-9C3B-8655B8FBB726" Scope="perUser" Language="1041" Codepage="932">
+    <SummaryInformation Description="Voice Journal $(ProductVersion)" Codepage="932" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="新しい版の Voice Journal がすでに入っています。先にアンインストールしてください。" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="VoiceJournal.ico" SourceFile="$(RepoRoot)\src\VoiceJournal.App\Assets\VoiceJournal.ico" />
+    <Property Id="ARPPRODUCTICON" Value="VoiceJournal.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="VoiceJournal" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Voice Journal">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(PublishDir)**" />
+      <Component Id="ThirdPartyNotices">
+        <File Id="ThirdPartyNotices" Source="$(RepoRoot)\docs\third-party-notices.md" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="AppShortcut" Name="Voice Journal" Description="音声を録って文字起こしし、記録と課題・タスクを整理します"
+                  Target="[INSTALLFOLDER]VoiceJournal.App.exe" WorkingDirectory="INSTALLFOLDER" Icon="VoiceJournal.ico" />
+        <RegistryValue Root="HKCU" Key="Software\VoiceJournal\Installer" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Fragment>
+</Wix>

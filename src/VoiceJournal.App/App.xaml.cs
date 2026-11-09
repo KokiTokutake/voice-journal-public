@@ -34,6 +34,12 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandledException;
 
         var options = StartupOptions.Parse(e.Args);
+        if (options.SelfTestReport is { } selfTest)
+        {
+            // Before the single-instance check and the workspace: runs beside an open app and touches no data.
+            Shutdown(SelfTest.Run(selfTest));
+            return;
+        }
         if (options.Theme is { } theme) ThemeMode = theme;
         TextScaling.Follow(this, options.TextScale); // AT-25: the Windows text size, which WPF does not apply itself
         // 15.1: --workspace first, then the folder chosen in 設定, then the default
@@ -109,7 +115,7 @@ public partial class App : Application
         library.ItemReferences = managementStore.ItemsWithEvidenceFrom;
         _services.GetRequiredService<RecordReviewViewModel>().Renderer = (dir, record, approved) => RecordLinks.Render(managementStore, dir, record, approved);
         var processing = _services.GetRequiredService<ProcessingViewModel>();
-        var appVersion = typeof(App).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+        var appVersion = AppInfo.InformationalVersion;
         processing.WriteDiagnostics = () => DiagnosticsReport.Write(workspace, database, AppDataRoot, appVersion);
         processing.ShowFolder = _services.GetRequiredService<IShellService>().OpenFolder;
         processing.Confirm = _services.GetRequiredService<IDialogService>().Confirm;
