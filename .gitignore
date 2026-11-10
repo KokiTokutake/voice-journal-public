@@ -24,3 +24,6 @@ appsettings.Local.json
 *.db
 *.db-wal
 *.db-shm
+
+# Copies of the installer output (MSI, PDF, publish folder) kept beside the source
+/インストーラー/
