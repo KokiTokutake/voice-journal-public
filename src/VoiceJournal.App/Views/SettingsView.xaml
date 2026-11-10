@@ -23,9 +23,14 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Label Grid.Row="0" Content="モデル(_M)" Target="{Binding ElementName=ModelBox}" VerticalAlignment="Center" Padding="0" />
-                    <ComboBox x:Name="ModelBox" Grid.Row="0" Grid.Column="1" Margin="0,4" MaxWidth="360" HorizontalAlignment="Left" MinWidth="260"
-                              ItemsSource="{Binding ModelOptions}" SelectedValuePath="Name" DisplayMemberPath="Label" SelectedValue="{Binding ModelName}"
-                              AutomationProperties.Name="文字起こしのモデル" />
+                    <StackPanel Grid.Row="0" Grid.Column="1">
+                        <ComboBox x:Name="ModelBox" Margin="0,4" MaxWidth="360" HorizontalAlignment="Left" MinWidth="260"
+                                  ItemsSource="{Binding ModelOptions}" SelectedValuePath="Name" DisplayMemberPath="Label" SelectedValue="{Binding ModelName}"
+                                  AutomationProperties.Name="文字起こしのモデル" />
+                        <TextBlock Text="{Binding ModelNote}" Foreground="{StaticResource CautionBorderBrush}" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="560"
+                                   HorizontalAlignment="Left" Margin="0,2,0,4" Visibility="{Binding ModelNote, Converter={StaticResource TextToVisibility}}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
                     <CheckBox Grid.Row="1" Grid.Column="1" Margin="0,8,0,0" IsChecked="{Binding UseVad}"
                               AutomationProperties.Name="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(V)">
                     <AccessText Text="無音の部分を飛ばして認識する（VAD、推奨。無音から文が作られる誤りを防ぎます）(_V)" TextWrapping="Wrap" />

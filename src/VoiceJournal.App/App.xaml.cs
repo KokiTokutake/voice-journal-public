@@ -205,6 +205,7 @@ public partial class App : Application
             sp.GetRequiredService<RecordingViewModel>(), sp.GetRequiredService<TranscriptionCoordinator>(), sp.GetRequiredService<RecordJobProcessor>(),
             sp.GetRequiredService<InferenceGate>(), sp.GetRequiredService<RecordIndex>(), sp.GetRequiredService<IUiSettingsStore>(),
             () => sp.GetRequiredService<ILlmSettingsStore>().Load().ToGeneration(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<IRecordService>(sp => sp.GetRequiredService<RecordCoordinator>()); // the completion notice (MainViewModel)
         services.AddSingleton<ISttSettingsStore>(new JsonSttSettingsStore(JsonSttSettingsStore.DefaultPath));
         services.AddSingleton<TranscriptViewModel>();
         services.AddSingleton(sp => new RecordReviewViewModel(sp.GetRequiredService<RecordCoordinator>(), sp.GetRequiredService<IAudioPlayer>(),

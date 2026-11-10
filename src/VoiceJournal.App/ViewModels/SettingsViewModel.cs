@@ -312,7 +312,11 @@ public sealed partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<int> ThreadOptions { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModelNote))]
     public partial string ModelName { get; set; } = JsonSttSettingsStore.Defaults.ModelName;
+
+    /// <summary>A caution under the model choice when a discouraged model (small) is chosen.</summary>
+    public string? ModelNote => UserMessages.IsDiscouragedModel(ModelName) ? UserMessages.DiscouragedModelNote : null;
 
     [ObservableProperty]
     public partial bool UseVad { get; set; } = true;

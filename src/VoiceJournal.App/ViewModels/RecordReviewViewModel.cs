@@ -183,6 +183,8 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     private TranscriptDocument? _transcript;
     private Guid? _activeJob;
     private bool _switching;
+    private int? _latestTranscriptRevision;
+    private (string Directory, int Source, int Current)? _staleFor;
 
     /// <summary>Set by the window: makes a lookup of where candidates stand on the 「管理」 page (null: not applied).</summary>
     public Func<Func<Core.Management.CandidateKey, string?>>? CandidateStates { get; set; }
@@ -315,6 +317,20 @@ public sealed partial class RecordReviewViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsDeferred { get; set; }
 
+    /// <summary>
+    /// The latest record was built on an older transcript than the one in use (e.g. re-transcribed with a better model):
+    /// shown as a caution band with a button to rebuild. Null when they match.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsStaleBand))]
+    public partial string? StaleText { get; set; }
+
+    [ObservableProperty]
+    public partial string? StaleActionLabel { get; set; }
+
+    /// <summary>Hidden while a generation is queued or running (the job line says what happens).</summary>
+    public bool ShowsStaleBand => StaleText is not null && !IsGenerating;
+
     [ObservableProperty]
     public partial string? WarningsText { get; set; }
 
@@ -326,6 +342,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(RegenerateSectionCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowsStaleBand))]
     public partial bool IsGenerating { get; set; }
 
     [ObservableProperty]
@@ -356,6 +373,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         ArgumentException.ThrowIfNullOrEmpty(sessionDirectory);
         _directory = sessionDirectory;
         _store = new RecordStore(sessionDirectory);
+        _staleFor = null; // the transcripts may have been corrected since the page last showed this session
         SessionTitle = title;
         Message = null;
         JobText = null;
@@ -399,6 +417,8 @@ public sealed partial class RecordReviewViewModel : ObservableObject
         if (revisions.Count == 0)
         {
             _document = null;
+            _latestTranscriptRevision = null;
+            StaleText = null;
             HasRecord = false;
             IsLatest = false;
             Blocks.Clear();
@@ -443,6 +463,7 @@ public sealed partial class RecordReviewViewModel : ObservableObject
             var latestRevision = _store.Revisions()[^1];
             var latest = revision == latestRevision ? doc : _store.Load(latestRevision);
             _document = doc;
+            _latestTranscriptRevision = latest.TranscriptRevision;
             HasRecord = true;
             IsLatest = revision == latestRevision;
             _switching = true;
@@ -568,13 +589,47 @@ public sealed partial class RecordReviewViewModel : ObservableObject
                     (status.NewerDraft ? $"それより新しい草稿 Rev {status.LatestRevision} があります。" : string.Empty),
                 _ => null,
             };
-            if (_document is not null && inUse is { } t && _document.TranscriptRevision != t && status.State != RecordReviewState.ApprovedOutdated)
-                text += $"　この記録は文字起こし Rev {_document.TranscriptRevision} から作りました（使用中は Rev {t}）。直した文字起こしで作り直すときは「記録を作り直す」を押してください。";
             StatusText = text;
+            UpdateStale(inUse);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             StatusText = $"承認の状態を読み込めませんでした（{ex.Message}）。";
+        }
+    }
+
+    /// <summary>
+    /// The band for a record built on an older transcript than the one in use. It looks at the latest record revision,
+    /// so browsing an older record revision does not raise it when the latest is up to date.
+    /// </summary>
+    private void UpdateStale(int? inUse)
+    {
+        if (_directory is null || inUse is not { } current || _latestTranscriptRevision is not { } source || source == current)
+        {
+            _staleFor = null;
+            StaleText = null;
+            StaleActionLabel = null;
+            return;
+        }
+        // Called after every edit: read the two transcripts (for the model names) only when the pair changes.
+        if (_staleFor == (_directory, source, current)) return;
+        _staleFor = (_directory, source, current);
+        var store = new TranscriptStore(_directory);
+        StaleText = $"この記録は、古い文字起こし（Rev {source}{ModelSuffix(store, source)}）から作りました。いま使っている文字起こしは Rev {current}{ModelSuffix(store, current)} です。" +
+            "記録には、古い文字起こしの誤りや抜けが残っていることがあります。";
+        StaleActionLabel = $"Rev {current} の文字起こしで作り直す";
+    }
+
+    /// <summary>"・medium" when the revision is a recognition result; nothing for a manual correction or when unreadable.</summary>
+    private static string ModelSuffix(TranscriptStore store, int revision)
+    {
+        try
+        {
+            return store.Load(revision).Provenance?.ModelName is { } model ? "・" + UserMessages.ModelShortName(model) : string.Empty;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 

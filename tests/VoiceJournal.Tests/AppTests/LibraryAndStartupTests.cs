@@ -1,8 +1,10 @@
 using VoiceJournal.App.Services;
 using VoiceJournal.App.ViewModels;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Core.Audio;
 using VoiceJournal.Core.Capture;
 using VoiceJournal.Core.Sessions;
+using VoiceJournal.Core.Transcription;
 using VoiceJournal.Infrastructure.Storage;
 using VoiceJournal.Tests.TestSupport;
 using CaptureState = VoiceJournal.Core.Capture.CaptureState;
@@ -194,6 +196,73 @@ public sealed class LibraryAndStartupTests : IDisposable
 
         Assert.Contains("1 件", _library.Message, StringComparison.Ordinal);
         Assert.Empty(_dialogs.Errors);
+    }
+
+    [Fact]
+    public async Task AFinishedRecord_ShowsANotice_ThatOpensIt_AndAFailureOpensTheProcessingPage()
+    {
+        var dir = await Record("週次定例", null, CaptureMode.Mic, TimeSpan.FromSeconds(3));
+        _index.Rebuild();
+        await _library.RefreshAsync();
+        var records = new FakeRecordService();
+        var recording = new RecordingViewModel(new FakeDeviceCatalog(), _index, new FakeFreeSpace(long.MaxValue), new FakePower(), _dialogs, _shell, _ui, _clock,
+            new RecordingEnvironment(_workspace.Root, 0));
+        var record = new RecordReviewViewModel(records, _player, _ui);
+        var main = new MainViewModel(recording, _library, _dialogs, record: record, records: records, ui: _ui);
+        var finished = 0;
+        main.RecordFinished += (_, _) => finished++;
+
+        RecordJob Job(ProcessingState state, Guid? section = null) => new()
+        {
+            JobId = Guid.CreateVersion7(),
+            SessionId = Guid.Empty,
+            Settings = new GenerationSettings { ModelId = "m", ContextLength = 8192, OutputReserve = 2048 },
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            State = state,
+            SectionId = section,
+        };
+
+        // Running, or a section regenerated from the record page: no notice.
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.Organizing)));
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.ReadyForReview, Guid.NewGuid())));
+        _ui.Drain();
+        Assert.False(main.HasNotice);
+        Assert.Equal(0, finished);
+
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.ReadyForReview)));
+        _ui.Drain();
+
+        Assert.Equal(1, finished);
+        Assert.True(main.HasNotice);
+        Assert.False(main.NoticeIsProblem);
+        Assert.StartsWith("記録ができました: 「週次定例」（", main.NoticeText, StringComparison.Ordinal);
+        Assert.Equal("記録を開く", main.NoticeActionLabel);
+
+        main.OpenNoticeCommand.Execute(null);
+        Assert.Equal(AppPage.Record, main.CurrentPage);
+        Assert.Equal(dir, record.SessionDirectory);
+        Assert.False(main.HasNotice);
+
+        // The record page already shows this session: it reports the result itself (the taskbar still flashes).
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.ReadyForReview)));
+        _ui.Drain();
+        Assert.Equal(2, finished);
+        Assert.False(main.HasNotice);
+
+        main.CurrentPage = AppPage.Library;
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.Failed)));
+        _ui.Drain();
+        Assert.True(main.NoticeIsProblem);
+        Assert.StartsWith("記録を作れませんでした: 「週次定例」", main.NoticeText, StringComparison.Ordinal);
+        Assert.Equal("処理状況を開く", main.NoticeActionLabel);
+        main.OpenNoticeCommand.Execute(null);
+        Assert.Equal(AppPage.Processing, main.CurrentPage);
+
+        records.Raise(new RecordJobChange(dir, Job(ProcessingState.NotAnalyzable)));
+        _ui.Drain();
+        Assert.Contains("記録にする内容がありませんでした", main.NoticeText, StringComparison.Ordinal);
+        main.DismissNoticeCommand.Execute(null);
+        Assert.False(main.HasNotice);
     }
 
     // ---- helpers ------------------------------------------------------------------------

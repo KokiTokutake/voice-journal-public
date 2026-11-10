@@ -286,6 +286,68 @@ public sealed class RecordReviewViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ARecordBuiltOnAnOlderTranscript_ShowsTheBand_UntilItIsRebuiltOnTheOneInUse()
+    {
+        _vm.Open(_session, "会議");
+        Assert.Null(_vm.StaleText);
+        Assert.False(_vm.ShowsStaleBand);
+
+        // Re-transcribed with medium: revision 2 is in use, the record still rests on revision 1 (small).
+        new TranscriptStore(_session).Save(new TranscriptDocument
+        {
+            SessionId = _transcript.SessionId,
+            Revision = 2,
+            Kind = TranscriptRevisionKind.Raw,
+            RawRevision = 2,
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            Provenance = T.Provenance("ggml-medium.bin"),
+            Segments = _transcript.Segments,
+        });
+        _vm.Open(_session, "会議");
+
+        Assert.True(_vm.ShowsStaleBand);
+        Assert.Contains("古い文字起こし（Rev 1・small）", _vm.StaleText, StringComparison.Ordinal);
+        Assert.Contains("Rev 2・medium です", _vm.StaleText, StringComparison.Ordinal);
+        Assert.Equal("Rev 2 の文字起こしで作り直す", _vm.StaleActionLabel);
+        Assert.DoesNotContain("から作りました", _vm.StatusText, StringComparison.Ordinal); // no longer buried in the status line
+        Assert.Contains("記録の元の文字起こし Rev 1（使用中は Rev 2", _vm.TranscriptCaption, StringComparison.Ordinal);
+
+        // An edit keeps the band (the record is still built on revision 1).
+        Statement(1).Text = "保存先はローカル PC";
+        Assert.True(_vm.ShowsStaleBand);
+
+        _vm.GenerateCommand.Execute(null);
+        Assert.Equal([_session], _records.Enqueued);
+        Assert.False(_vm.ShowsStaleBand); // the job line says what happens now
+
+        var job = new RecordJob
+        {
+            JobId = Guid.CreateVersion7(),
+            SessionId = _transcript.SessionId,
+            Settings = new GenerationSettings { ModelId = "m", ContextLength = 8192, OutputReserve = 2048 },
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            State = ProcessingState.Organizing,
+        };
+        _records.Raise(new RecordJobChange(_session, job));
+        _ui.Drain();
+        var (t, a) = R.Analysis("作り直した記録");
+        Store.Save(RecordFactory.FromAnalysis(t.SessionId, a with { Analysis = a.Analysis with { SessionId = _transcript.SessionId, TranscriptRevision = 2 } }, 3, R.Now),
+            d => RecordMarkdown.RenderFor(_session, d, approved: false));
+        job.State = ProcessingState.ReadyForReview;
+        job.RecordRevision = 3;
+        _records.Raise(new RecordJobChange(_session, job));
+        _ui.Drain();
+
+        Assert.Null(_vm.StaleText);
+        Assert.False(_vm.ShowsStaleBand);
+
+        // Looking back at a revision built on revision 1 does not raise the band: the latest is up to date.
+        _vm.SelectedRevision = _vm.Revisions.Single(r => r.Revision == 1);
+        Assert.False(_vm.IsLatest);
+        Assert.Null(_vm.StaleText);
+    }
+
+    [Fact]
     public void RegeneratingASection_QueuesItsId_AndASectionWithoutEvidenceIsRefused()
     {
         _vm.Open(_session, "会議");

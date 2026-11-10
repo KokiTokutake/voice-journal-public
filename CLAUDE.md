@@ -20,7 +20,7 @@ Windows ローカル完結の音声記録アプリ。録音 → whisper.cpp で�
 - LLM の試験の前に、エミュレーター・Docker・WSL・Gradle が動いていないか確かめ、動いていれば閉じてよいか利用者に聞く（メモリ不足と PC の発熱のため）
 - 管理ファイルは既存なし。アプリが `Workspace\management\issues.md` / `tasks.md` を新規作成する（11.5 の管理ブロック。反映は `ApplyEngine`、変更計画と backup は `Workspace\transactions\<batch-id>\`）。管理項目の表（`items` ほか、マイグレーション 4）は索引ではなく正本で、作り直さない
 - 録音の時刻はデバイス位置ではなく、パケットの取得時刻（QPC）で決める。デバイスの時計のずれは原音を補正せず、チャンクの `clock_start_ms` / `clock_end_ms` に時刻写像として残す（`docs/environment-lock.md` 11 章）
-- 版は `Directory.Build.props` の `VersionPrefix` / `VersionSuffix` だけで決める（2026-11-09 に `1.0.0-beta.1`、同日に既定 medium などで `beta.2`）。配布は WiX 6.0.2 の自分のユーザーだけの MSI（`installer/`、入れ先は `%LOCALAPPDATA%\Programs\VoiceJournal`）。whisper・llama-server・モデル・データは MSI に入れず、アンインストールでも消さない。WiX 7 はビルドに OSMF の EULA への同意が要るので使わない（利用者の判断）。タスクトレーへの常駐はしない（2026-11-09、利用者の判断）
+- 版は `Directory.Build.props` の `VersionPrefix` / `VersionSuffix` だけで決める（2026-11-09 に `1.0.0-beta.1`、同日に既定 medium などで `beta.2`、2026-11-10 に記録の完成の通知・古い文字起こしから作った記録の帯・small の非推奨で `beta.3`）。配布は WiX 6.0.2 の自分のユーザーだけの MSI（`installer/`、入れ先は `%LOCALAPPDATA%\Programs\VoiceJournal`）。whisper・llama-server・モデル・データは MSI に入れず、アンインストールでも消さない。WiX 7 はビルドに OSMF の EULA への同意が要るので使わない（利用者の判断）。タスクトレーへの常駐はしない（2026-11-09、利用者の判断）
 - 録音は NAudio 3.x の `WasapiRecorder` を使う（`WasapiCapture` は非推奨）。マイクは raw モードで原音を保存し、STT 用の派生ファイルだけ正規化する方針（`docs/environment-lock.md` 9 章）
 
 ## コマンド

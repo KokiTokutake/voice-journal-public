@@ -36,6 +36,12 @@ public partial class MainWindow : Window
         };
         // Once audio flows, get out of the way: minimize, which brings up the mini bar.
         _viewModel.Recording.RecordingStarted += (_, _) => WindowState = WindowState.Minimized;
+        // A record finished while the window is behind or minimized: flash the taskbar button until it is brought up
+        // (no tray icon or toast: the app does not stay in the tray, the user's choice of 2026-11-09).
+        _viewModel.RecordFinished += (_, _) =>
+        {
+            if (!IsActive) TaskbarFlash.Start(this);
+        };
         if (System.Environment.GetEnvironmentVariable("VJ_UI_TIMING") is { Length: > 0 } timing) MeasurePageSwitches(timing);
     }
 

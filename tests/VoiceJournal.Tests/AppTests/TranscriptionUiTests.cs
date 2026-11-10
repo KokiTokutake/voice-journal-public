@@ -148,7 +148,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal("修正", row.EditedText);
         Assert.Equal("数字・期日・人名", row.HintText);
         Assert.Equal(2, vm.SelectedRevision!.Revision);
-        Assert.Equal(["Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（速い・固有名詞に弱い））"], vm.Revisions.Select(r => r.Label));
+        Assert.Equal(["Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（非推奨・言葉や名前を取り違えやすい））"], vm.Revisions.Select(r => r.Label));
 
         vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 1);
         Assert.False(vm.IsCurrent);
@@ -217,7 +217,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.Equal(2, vm.SelectedRevision!.Revision);
         Assert.True(vm.IsCurrent);
         Assert.Equal("利用者の修正", vm.Segments.Single(s => s.SegmentId == id).Text);
-        Assert.Equal(["Rev 3  原文（small（速い・固有名詞に弱い））", "Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（速い・固有名詞に弱い））"], vm.Revisions.Select(r => r.Label));
+        Assert.Equal(["Rev 3  原文（small（非推奨・言葉や名前を取り違えやすい））", "Rev 2  修正（本文）　［使用中］", "Rev 1  原文（small（非推奨・言葉や名前を取り違えやすい））"], vm.Revisions.Select(r => r.Label));
 
         vm.SelectedRevision = vm.Revisions.Single(r => r.Revision == 3);
         Assert.False(vm.IsCurrent);
@@ -227,7 +227,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
         Assert.True(vm.IsCurrent);
         Assert.Contains("Rev 3 を使用中にしました", vm.Message, StringComparison.Ordinal);
         Assert.Equal(3, new TranscriptStore(dir).CurrentRevision());
-        Assert.Equal("Rev 3  原文（small（速い・固有名詞に弱い））　［使用中］", vm.Revisions.Single(r => r.Revision == 3).Label);
+        Assert.Equal("Rev 3  原文（small（非推奨・言葉や名前を取り違えやすい））　［使用中］", vm.Revisions.Single(r => r.Revision == 3).Label);
         vm.Segments[0].Text = "新しい原文への修正";
         Assert.Equal(3, new TranscriptStore(dir).Load(4).ParentRevision);
     }
@@ -334,8 +334,10 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
     {
         var settings = new SettingsViewModel(_settings, _engine, _tools, new RecordingEnvironment(_workspace.Root, 0));
         Assert.Equal("ggml-small.bin", settings.ModelName);
+        Assert.Contains("small は非推奨です", settings.ModelNote, StringComparison.Ordinal);
 
         settings.ModelName = "ggml-medium.bin";
+        Assert.Null(settings.ModelNote);
         settings.UseVad = false;
         settings.Threads = 2;
 
@@ -357,7 +359,7 @@ public sealed class TranscriptionUiTests : IAsyncDisposable
 
         Assert.Equal("✓ whisper-cli（whisper.cpp 1.9.5）", settings.ToolStatus[0]);
         Assert.Contains("✓ medium（既定・高精度）", settings.ToolStatus);
-        Assert.Contains("✓ small（速い・固有名詞に弱い）", settings.ToolStatus);
+        Assert.Contains("✓ small（非推奨・言葉や名前を取り違えやすい）", settings.ToolStatus);
     }
 
     [Fact]

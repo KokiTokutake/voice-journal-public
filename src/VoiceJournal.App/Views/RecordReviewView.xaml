@@ -79,6 +79,19 @@
                     </Border.Style>
                     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
                 </Border>
+                <!-- The latest record rests on an older transcript than the one in use (e.g. re-transcribed with medium) -->
+                <Border BorderThickness="2" BorderBrush="{StaticResource CautionBorderBrush}" CornerRadius="8" Padding="14,10" Margin="0,8,0,0"
+                        Visibility="{Binding ShowsStaleBand, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource CautionBorderBrush}"
+                                   VerticalAlignment="Top" Margin="0,2,10,0" />
+                        <Button DockPanel.Dock="Right" Content="{Binding StaleActionLabel}" Tag="&#xE72C;" Command="{Binding GenerateCommand}"
+                                Style="{StaticResource AccentActionButton}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                ToolTip="使用中の文字起こしから、推論エンジンで記録を作り直します。今の記録は前の Revision として残ります" />
+                        <TextBlock Text="{Binding StaleText}" TextWrapping="Wrap" VerticalAlignment="Center" FontWeight="SemiBold"
+                                   AutomationProperties.LiveSetting="Polite" services:LiveText.Announce="True" />
+                    </DockPanel>
+                </Border>
                 <Border BorderThickness="1" BorderBrush="{StaticResource CautionBorderBrush}" CornerRadius="8" Padding="14,8" Margin="0,8,0,0"
                         Visibility="{Binding WarningsText, Converter={StaticResource TextToVisibility}}">
                     <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

@@ -157,10 +157,24 @@ internal static class UserMessages
 
     public static string ModelLabel(string modelName) => modelName switch
     {
-        "ggml-small.bin" => "small（速い・固有名詞に弱い）",
+        // small dropped words and confused names in a real meeting (phase-c-report 8): kept only as a fallback.
+        "ggml-small.bin" => "small（非推奨・言葉や名前を取り違えやすい）",
         "ggml-medium.bin" => "medium（既定・高精度）",
         _ => modelName,
     };
+
+    /// <summary>True for a model that should not be used for meetings (shown with a caution where it can be chosen).</summary>
+    public static bool IsDiscouragedModel(string? modelName) => modelName == "ggml-small.bin";
+
+    /// <summary>The caution shown under a model choice when <see cref="IsDiscouragedModel"/> is true.</summary>
+    public const string DiscouragedModelNote =
+        "small は非推奨です。実際の会議では、人の名前や言葉の取り違え、同じ言葉の繰り返しによる発言の抜けが多く、記録の元には足りませんでした。medium を使ってください。";
+
+    /// <summary>"small" / "medium" for "ggml-small.bin" / "ggml-medium.bin"; other names as they are.</summary>
+    public static string ModelShortName(string modelName) =>
+        modelName.StartsWith("ggml-", StringComparison.Ordinal) && modelName.EndsWith(".bin", StringComparison.Ordinal)
+            ? modelName["ggml-".Length..^".bin".Length]
+            : modelName;
 
     public static string StatusText(RecorderStatus status) => status switch
     {

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VoiceJournal.App.Services;
+using VoiceJournal.Core.Analysis;
 using VoiceJournal.Infrastructure.Storage;
 
 namespace VoiceJournal.App.ViewModels;
@@ -24,7 +25,8 @@ public sealed partial class MainViewModel : ObservableObject
     public MainViewModel(
         RecordingViewModel recording, LibraryViewModel library, IDialogService dialogs,
         TranscriptViewModel? transcript = null, ProcessingViewModel? processing = null, SettingsViewModel? settings = null,
-        RecordReviewViewModel? record = null, ManagementViewModel? management = null)
+        RecordReviewViewModel? record = null, ManagementViewModel? management = null,
+        IRecordService? records = null, IUiDispatcher? ui = null)
     {
         Recording = recording;
         Library = library;
@@ -41,6 +43,91 @@ public sealed partial class MainViewModel : ObservableObject
         if (Record is not null) Record.OpenManagementRequested += (_, sessionId) => OpenManagement(sessionId);
         if (Management is not null) Management.IsRecording = () => Recording.IsActive;
         if (Management is not null && Record is not null) Record.CandidateStates = Management.StateLookup;
+        if (records is not null && ui is not null) records.JobChanged += (_, change) => ui.Post(() => OnRecordJobChanged(change));
+    }
+
+    // ---- completion notice (a record job of a whole session finished) ---------------------------------------------
+
+    /// <summary>
+    /// A whole-session record job finished (made, nothing to record, or failed). The window flashes the taskbar
+    /// button when it is not in front: the record is often made 30–60 minutes after the recording, minimized.
+    /// </summary>
+    public event EventHandler? RecordFinished;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    public partial string? NoticeText { get; set; }
+
+    /// <summary>True for a failure (caution colour, and the button opens 「処理状況」).</summary>
+    [ObservableProperty]
+    public partial bool NoticeIsProblem { get; set; }
+
+    [ObservableProperty]
+    public partial string NoticeActionLabel { get; set; } = "記録を開く";
+
+    public bool HasNotice => NoticeText is not null;
+
+    private string? _noticeDirectory;
+
+    internal void OnRecordJobChanged(RecordJobChange change)
+    {
+        var job = change.Job;
+        // Section regenerations are asked for on the record page itself, which reports them.
+        if (job.SectionId is not null) return;
+        if (job.State is not (Core.Transcription.ProcessingState.ReadyForReview or Core.Transcription.ProcessingState.NotAnalyzable or Core.Transcription.ProcessingState.Failed)) return;
+        RecordFinished?.Invoke(this, EventArgs.Empty);
+        var directory = change.SessionDirectory;
+        // The record page already showing this session reports the result itself.
+        if (CurrentPage == AppPage.Record && Record?.SessionDirectory is { } shown && string.Equals(shown, directory, StringComparison.OrdinalIgnoreCase))
+            return;
+        var name = SessionName(directory);
+        _noticeDirectory = directory;
+        NoticeIsProblem = job.State == Core.Transcription.ProcessingState.Failed;
+        (NoticeText, NoticeActionLabel) = job.State switch
+        {
+            Core.Transcription.ProcessingState.ReadyForReview when job.FailedPieces.Count > 0 =>
+                ($"記録ができました: {name}（{job.FailedPieces.Count} 区間は整理できず、記録に入っていません）。内容と根拠を確かめてください。", "記録を開く"),
+            Core.Transcription.ProcessingState.ReadyForReview => ($"記録ができました: {name}。内容と根拠を確かめてください。", "記録を開く"),
+            Core.Transcription.ProcessingState.NotAnalyzable => ($"{name} の文字起こしには、記録にする内容がありませんでした（無音や認識なし）。", "記録を開く"),
+            _ => ($"記録を作れませんでした: {name}。理由は「処理状況」で確かめられます。", "処理状況を開く"),
+        };
+    }
+
+    /// <summary>"題名（開始日時）" from the library, or the folder name when the library does not list the session.</summary>
+    private string SessionName(string directory)
+    {
+        var row = Library.Sessions.FirstOrDefault(r => string.Equals(r.Directory, directory, StringComparison.OrdinalIgnoreCase));
+        return row is null ? $"「{Path.GetFileName(directory)}」" : $"「{row.TitleText}」（{row.StartedText}）";
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void OpenNotice()
+    {
+        var directory = _noticeDirectory;
+        var problem = NoticeIsProblem;
+        DismissNotice();
+        if (directory is null) return;
+        if (problem)
+        {
+            CurrentPage = AppPage.Processing;
+            return;
+        }
+        if (Record is null) return;
+        var row = Library.Sessions.FirstOrDefault(r => string.Equals(r.Directory, directory, StringComparison.OrdinalIgnoreCase));
+        if (row is not null)
+        {
+            OpenRecord(row);
+            return;
+        }
+        Record.Open(directory, Path.GetFileName(directory));
+        CurrentPage = AppPage.Record;
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void DismissNotice()
+    {
+        NoticeText = null;
+        _noticeDirectory = null;
     }
 
     public RecordingViewModel Recording { get; }
