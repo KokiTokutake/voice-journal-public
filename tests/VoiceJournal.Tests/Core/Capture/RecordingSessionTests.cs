@@ -291,6 +291,102 @@ public sealed class RecordingSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Reconnect_WhenStartingFails_RemainsDisconnectedAndCanRetry()
+    {
+        var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        await using var session = Create(CaptureMode.Mic, mic);
+        session.Start();
+        mic.PushFor(_clock, TimeSpan.FromSeconds(1));
+        mic.Fail(new IOException("device removed"));
+        await WaitUntil(() => File.Exists(SessionPaths.Resolve(session.Directory, SessionPaths.ChunkFile(AudioSource.Mic, 1))));
+
+        using var unavailable = new FakeCaptureSource(AudioSource.Mic, MicFormat)
+        {
+            ThrowOnStart = new AudioDeviceException(AudioDeviceErrorKind.DeviceInUse, "device in use"),
+        };
+        Assert.Throws<AudioDeviceException>(() => session.Reconnect(unavailable));
+        Assert.Equal(TrackState.Disconnected, Assert.Single(session.GetTracks()).State);
+        Assert.Equal(CaptureState.Partial, session.State);
+        Assert.DoesNotContain(SessionManifest.Load(session.Directory).Tracks[0].Events, e => e.Kind == AudioEventKind.DeviceReconnected);
+
+        using var replacement = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        Throttle(session, replacement);
+        session.Reconnect(replacement);
+        replacement.PushFor(_clock, TimeSpan.FromSeconds(1));
+        await session.StopAsync();
+        var track = Assert.Single(SessionManifest.Load(session.Directory).Tracks);
+        Assert.Equal(CaptureState.Finalized, session.State);
+        Assert.Single(track.Events, e => e.Kind == AudioEventKind.DeviceReconnected);
+        Assert.Equal(16000, track.Chunks.Sum(c => c.FrameCount));
+    }
+
+    [Fact]
+    public async Task SidecarWriteFailure_StopsWithoutCrashing_AndLeavesAudioForRecovery()
+    {
+        var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        await using var session = Create(CaptureMode.Mic, mic);
+        session.Start();
+        mic.PushFor(_clock, TimeSpan.FromSeconds(1));
+        await WaitUntil(() => ChunkSidecar.TryLoad(SidecarOf(session))?.FramesWritten >= 8000);
+
+        using (var sidecarLock = new FileStream(SidecarOf(session), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            mic.PushFor(_clock, TimeSpan.FromSeconds(1));
+            await WaitUntil(() => session.State == CaptureState.Failed);
+        }
+        await session.StopAsync();
+        var manifest = SessionManifest.Load(session.Directory);
+        Assert.Contains(manifest.Tracks[0].Events, e => e.Kind == AudioEventKind.WriteFailed);
+        Assert.Equal(ChunkState.Partial, Assert.Single(manifest.Tracks[0].Chunks).State);
+        Assert.True(SessionRecovery.NeedsRecovery(manifest));
+        Assert.Equal(1, SessionRecovery.Recover(session.Directory, _clock).RecoveredChunks);
+        Assert.Equal(16000, Assert.Single(SessionManifest.Load(session.Directory).Tracks[0].Chunks).FrameCount);
+    }
+
+    [Theory]
+    [InlineData(CaptureState.Finalized)]
+    [InlineData(CaptureState.Failed)]
+    public async Task TerminalSession_WithFailedPartialChunk_IsRecoveredAtNextStartup(CaptureState terminalState)
+    {
+        var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);
+        await using var session = Create(CaptureMode.Mic, mic);
+        session.Start();
+        mic.PushFor(_clock, TimeSpan.FromSeconds(1));
+        await session.StopAsync();
+
+        // A failed final write can leave a valid partial with the session already finalized.
+        var manifest = SessionManifest.Load(session.Directory);
+        var track = Assert.Single(manifest.Tracks);
+        var chunk = Assert.Single(track.Chunks);
+        var partialRelative = SessionPaths.PartialChunkFile(AudioSource.Mic, chunk.Sequence);
+        var partialPath = SessionPaths.Resolve(session.Directory, partialRelative);
+        File.Move(SessionPaths.Resolve(session.Directory, chunk.File), partialPath);
+        var originalHash = SHA256.HashData(File.ReadAllBytes(partialPath));
+        chunk.File = partialRelative;
+        chunk.State = ChunkState.Partial;
+        chunk.FrameCount = 0;
+        track.State = TrackState.Failed;
+        manifest.CaptureState = terminalState;
+        manifest.Save(session.Directory);
+        Assert.True(SessionRecovery.NeedsRecovery(manifest));
+
+        // A transient failure of recovery must leave both the state and original audio retryable.
+        using (var locked = new FileStream(partialPath, FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.Throws<IOException>(() => SessionRecovery.Recover(session.Directory, _clock));
+        Assert.True(SessionRecovery.NeedsRecovery(SessionManifest.Load(session.Directory)));
+        Assert.Equal(originalHash, SHA256.HashData(File.ReadAllBytes(partialPath)));
+
+        var recovered = SessionRecovery.Recover(session.Directory, _clock);
+        Assert.Equal(1, recovered.RecoveredChunks);
+        manifest = SessionManifest.Load(session.Directory);
+        chunk = Assert.Single(Assert.Single(manifest.Tracks).Chunks);
+        Assert.Equal(ChunkState.Recovered, chunk.State);
+        Assert.Equal(8000, chunk.FrameCount);
+        Assert.False(SessionRecovery.NeedsRecovery(manifest));
+        Assert.Equal(originalHash, SHA256.HashData(File.ReadAllBytes(partialPath)));
+    }
+
+    [Fact]
     public async Task Crash_IsRecoveredIntoNewFile_AndSessionBecomesInterrupted() // REC-001 / AT-19
     {
         var mic = new FakeCaptureSource(AudioSource.Mic, MicFormat);

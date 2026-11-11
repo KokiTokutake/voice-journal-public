@@ -70,6 +70,114 @@ public sealed class ApplyEngineTests : IDisposable
 
     private string State(Guid batch) => _store.Batches().Single(b => b.BatchId == batch).State;
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MultipleChangesOfTheSameItem_ApplyInOrder_AlsoAfterACrash(bool crash)
+    {
+        var first = Plan(M.R(M.C("C0001", "task"), ReviewChoice.Create));
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(first.BatchId).Outcome);
+        var item = _store.Items().Single();
+        var saved = Plan(
+            M.R(M.C("C0002", "task", action: CandidateAction.Update, target: item.Id, description: "updated", changed: [ItemField.Description]), ReviewChoice.Update, item.Id, item.Revision),
+            M.R(M.C("C0003", "task", action: CandidateAction.Mention, target: item.Id), ReviewChoice.Mention, item.Id, item.Revision));
+
+        if (crash)
+        {
+            Assert.Throws<SimulatedCrashException>(() => Engine(new CrashAt(ApplyStep.AfterReplace, 1)).Apply(saved.BatchId));
+            Assert.Equal(RecoveryAction.CommittedDatabase, Assert.Single(new ApplyRecovery(_db, _store, Engine()).RecoverAll()).Action);
+        }
+        else Assert.Equal(ApplyOutcome.Committed, Engine().Apply(saved.BatchId).Outcome);
+
+        var after = _store.Items().Single();
+        Assert.Equal((3, "updated", 3), (after.Revision, after.Description, after.Evidence.Count));
+        Assert.Equal(2, _store.AppliedChanges(saved.BatchId).Count);
+        Assert.Equal(3, _store.Applied().Keys.Count);
+        Assert.Contains("revision=3", File.ReadAllText(Tasks), StringComparison.Ordinal);
+        Assert.Equal(ApplyOutcome.AlreadyCommitted, Engine().Apply(saved.BatchId).Outcome);
+        Assert.Equal(RecoveryAction.CommittedDatabase, new ApplyRecovery(_db, _store, Engine()).Recover(saved.BatchId).Action);
+        Assert.Equal("committed", State(saved.BatchId));
+        Assert.Equal(3, _store.Items().Single().Revision);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AMissingApprovedPlan_StopsApplyAndRecovery_WithoutConfirmingItems(bool crash)
+    {
+        var saved = Plan(M.R(M.C("C0001", "task"), ReviewChoice.Create));
+        if (crash) Assert.Throws<SimulatedCrashException>(() => Engine(new CrashAt(ApplyStep.AfterReplace, 1)).Apply(saved.BatchId));
+        var before = File.Exists(Tasks) ? File.ReadAllBytes(Tasks) : null;
+        File.Delete(Path.Combine(saved.Directory, "plan.json"));
+
+        if (crash)
+        {
+            var report = Assert.Single(new ApplyRecovery(_db, _store, Engine()).RecoverAll());
+            Assert.Equal(RecoveryAction.RecoveryRequired, report.Action);
+            Assert.Contains(report.Notes, p => p.Contains("変更計画のファイルがありません", StringComparison.Ordinal));
+            Assert.Equal("recovery_required", State(saved.BatchId));
+        }
+        else
+        {
+            var result = Engine().Apply(saved.BatchId);
+            Assert.Equal(ApplyOutcome.Conflict, result.Outcome);
+            Assert.Contains(result.Problems, p => p.Contains("変更計画のファイルがありません", StringComparison.Ordinal));
+            Assert.Equal("planned", State(saved.BatchId));
+        }
+        Assert.Empty(_store.Items());
+        Assert.Empty(_store.Applied().Keys);
+        Assert.Equal(before, File.Exists(Tasks) ? File.ReadAllBytes(Tasks) : null);
+    }
+
+    [Fact]
+    public void AnImportedItem_CanBeUndone_WithoutInventingAudioEvidence()
+    {
+        var imported = MarkdownImport.Reviews(MarkdownImport.Scan("- [ ] imported task"), Guid.NewGuid(), "tasks.md", null);
+        var first = Plan(imported.ToArray());
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(first.BatchId).Outcome);
+        Assert.Empty(_store.Items().Single().Evidence);
+
+        var conflicts = new List<string>();
+        var undo = Revert(first.BatchId, conflicts);
+        Assert.NotNull(undo);
+        Assert.Empty(conflicts);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(undo.BatchId).Outcome);
+        var after = _store.Items().Single();
+        Assert.Equal((ItemStatus.Cancelled, 2), (after.Status, after.Revision));
+        Assert.Empty(after.Evidence);
+        Assert.Contains("- 状態: cancelled", File.ReadAllText(Tasks), StringComparison.Ordinal);
+        Assert.Null(Revert(first.BatchId, []));
+    }
+
+    [Fact]
+    public void AnEmptyEvidenceCandidate_CannotBorrowAnExistingItemsProvenance()
+    {
+        var item = M.Item("TSK-000001", "imported task");
+        var candidate = M.C("C0001", "task", action: CandidateAction.Update, target: item.Id,
+            description: "untrusted update", changed: [ItemField.Description]) with { Evidence = [] };
+        var review = M.R(candidate, ReviewChoice.Update, item.Id, item.Revision, confirmed: true) with { ItemEvidence = [] };
+        Assert.False(CandidateRules.IsReadyForPlan(review, item, out var reason));
+        Assert.Contains("根拠がない", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnImportedItemsHandEdit_CanBeTakenIn_AndUndoneWithoutAudioEvidence()
+    {
+        var imported = MarkdownImport.Reviews(MarkdownImport.Scan("- [ ] imported task"), Guid.NewGuid(), "tasks.md", null);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(Plan(imported.ToArray()).BatchId).Outcome);
+        var item = _store.Items().Single();
+        File.WriteAllText(Tasks, File.ReadAllText(Tasks).Replace("- 担当: 未設定", "- 担当: 佐藤", StringComparison.Ordinal));
+        var text = ManagedText.Decode(File.ReadAllBytes(Tasks))!;
+        var block = Assert.Single(ManagementMarkdown.EditedBlocks(text.Text, ManagementMarkdown.Parse(text.Text, _workspace.Info.WorkspaceId),
+            _store.Items().ToDictionary(i => i.Id), text.LineEnd));
+        var edit = PlanEdit(item, block.Block, takeIn: true);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(edit.BatchId).Outcome);
+        Assert.Equal("佐藤", _store.Items().Single().Assignee);
+        Assert.Equal(ApplyOutcome.Committed, Engine().Apply(Revert(edit.BatchId, []).BatchId).Outcome);
+        Assert.Null(_store.Items().Single().Assignee);
+        Assert.Empty(_store.Items().Single().Evidence);
+    }
+
     [Fact]
     public void ANewPlan_CreatesTheFiles_ConfirmsTheItems_AndIsAppliedOnce() // AT-12
     {

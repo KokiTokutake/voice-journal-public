@@ -255,14 +255,18 @@ public sealed class ApplyEngine
         });
     }
 
-    private List<string> Verify(BatchLedger batch)
+    internal List<string> Verify(BatchLedger batch)
     {
         var problems = new List<string>();
-        if (batch.PlanHash is { } expected && batch.PlanJson is { } json)
+        if (batch.PlanHash is { } expected)
         {
-            var copy = JsonNode.Parse(json.ToJsonString())!.AsObject();
-            copy.Remove("plan_hash");
-            if (CanonicalJson.Sha256(copy) != expected) problems.Add("変更計画のファイルが承認の後に変わっています。");
+            if (batch.PlanJson is not { } json) problems.Add("承認した変更計画のファイルがありません。反映を中止しました。");
+            else
+            {
+                var copy = JsonNode.Parse(json.ToJsonString())!.AsObject();
+                copy.Remove("plan_hash");
+                if (CanonicalJson.Sha256(copy) != expected) problems.Add("変更計画のファイルが承認の後に変わっています。");
+            }
         }
         var items = _store.Items().ToDictionary(i => i.Id);
         var (applied, _) = _store.Applied();
@@ -273,6 +277,8 @@ public sealed class ApplyEngine
             if (change.ExpectedRevision == 0 && current is not null) problems.Add($"{change.After.DisplayId} はすでにあります。");
             if (change.ExpectedRevision > 0 && current?.Revision != change.ExpectedRevision)
                 problems.Add($"{change.After.DisplayId} が計画の後に変わっています（Revision {change.ExpectedRevision} → {current?.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "なし"}）。");
+            // Later changes in this batch see the revision produced by earlier changes of the same item.
+            items[change.After.Id] = change.After;
         }
         return problems;
     }
@@ -515,6 +521,14 @@ public sealed class ApplyRecovery
     public RecoveryReport Recover(Guid batchId)
     {
         var batch = BatchLedger.Load(_db, _store, batchId);
+        if (batch.State == "committed")
+            return new RecoveryReport(batchId, RecoveryAction.CommittedDatabase, ["この変更計画はすでに反映済みです。変更はありません。"]);
+        var problems = _engine.Verify(batch);
+        if (problems.Count > 0)
+        {
+            SetState(batchId, "recovery_required", problems);
+            return new RecoveryReport(batchId, RecoveryAction.RecoveryRequired, problems);
+        }
         var states = batch.Files.Select(op =>
         {
             var path = _store.FullPath(op.RelativePath);

@@ -154,7 +154,7 @@ public sealed class WavChunkWriter : IDisposable
         {
             WriteSidecarUnchecked();
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Disk full / device gone: the last good sidecar still describes what is safely on disk.
         }

@@ -334,6 +334,66 @@ public sealed class TranscriptRevisionTests : IDisposable
     }
 
     [Fact]
+    public void EditingAnEcho_RejudgesItAgainstThePcAudio_AndIncludesTheCorrectedSpeechInAnalysis()
+    {
+        var mic = T.Seg(1_000, 4_000, "明日までに提出します").WithFlag(SegmentQuality.Echo);
+        var pc = T.Seg(1_000, 4_000, "明日までに提出します", AudioSource.Loopback);
+        var raw = T.Raw(_session, 1, mic, pc);
+        var changed = TranscriptEditing.EditText(raw, 2, mic.SegmentId, "別の案件は担当者に確認して折り返す", Now);
+
+        Assert.False(changed.Find(mic.SegmentId)!.Has(SegmentQuality.Echo));
+        Assert.True(changed.Find(mic.SegmentId)!.Has(SegmentQuality.UserEdited));
+        var plan = VoiceJournal.Core.Analysis.AnalysisPlanner.Plan(changed, 1_000, new VoiceJournal.Core.Analysis.TokenEstimator());
+        Assert.DoesNotContain(plan.Skipped, s => s.SegmentId == mic.SegmentId);
+        var unchanged = TranscriptEditing.EditText(raw, 2, mic.SegmentId, mic.Text, Now);
+        Assert.True(unchanged.Find(mic.SegmentId)!.Has(SegmentQuality.Echo));
+    }
+
+    [Fact]
+    public void CorrectingPcAudio_RejudgesExistingMicrophoneEcho()
+    {
+        var mic = T.Seg(1_000, 4_000, "明日までに提出します").WithFlag(SegmentQuality.Echo);
+        var pc = T.Seg(1_000, 4_000, "明日までに提出します", AudioSource.Loopback);
+        var raw = T.Raw(_session, 1, mic, pc);
+
+        var changed = TranscriptEditing.EditText(raw, 2, pc.SegmentId, "別の案件は担当者に確認して折り返す", Now);
+
+        Assert.False(changed.Find(mic.SegmentId)!.Has(SegmentQuality.Echo));
+        Assert.DoesNotContain(changed.Find(mic.SegmentId)!.QualityFlags, f => f == SegmentQuality.UserEdited);
+    }
+
+    [Fact]
+    public void CompletingARawSave_WithoutAPointer_RetainsLegacyEditsAndRepairsMarkdown()
+    {
+        var (store, raw) = SavedRaw();
+        store.Save(TranscriptEditing.EditText(raw, 2, raw.Segments[0].SegmentId, "残すべき修正", Now));
+        var pointer = Path.Combine(store.RootDirectory, TranscriptStore.CurrentFileName);
+        File.Delete(pointer); // a legacy session uses its latest edited revision
+        store.Save(T.Raw(_session, 3, T.Seg(0, 1_000, "後から終わった原文")));
+        // Simulate the raw JSON reaching disk before Save wrote down the retained legacy revision.
+        File.Delete(pointer);
+        File.WriteAllText(Path.Combine(_dir.Path, TranscriptStore.MarkdownFileName), "古い本文");
+
+        store.CompleteRawSave(3);
+
+        Assert.Equal(2, store.CurrentRevision());
+        Assert.Equal(TranscriptAdoptedBy.User, store.ReadAdoption()!.By);
+        Assert.Equal(TranscriptRendering.ToMarkdown(store.Load(2)), File.ReadAllText(Path.Combine(_dir.Path, TranscriptStore.MarkdownFileName)));
+    }
+
+    [Fact]
+    public void ConcurrentRawSaves_AllocateDistinctConsecutiveRevisions()
+    {
+        var (store, _) = SavedRaw();
+
+        Parallel.For(0, 16, _ => store.SaveNextRaw(revision => T.Raw(_session, revision, T.Seg(0, 1_000, "認識した本文"))));
+
+        Assert.Equal(Enumerable.Range(1, 17), store.Revisions());
+        Assert.Equal(17, store.CurrentRevision());
+        Assert.Equal(TranscriptRendering.ToMarkdown(store.Load(17)), File.ReadAllText(Path.Combine(_dir.Path, TranscriptStore.MarkdownFileName)));
+    }
+
+    [Fact]
     public void ReplaceRange_SwapsTheOverlappingSegmentsOfThatSource_ForNewOnes_RecordingWhatRecognizedThem()
     {
         var (store, raw) = SavedRaw();

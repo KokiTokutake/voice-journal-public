@@ -461,7 +461,7 @@ internal sealed class TrackRecorder : IDisposable
     {
         _accepting = false;
         try { _writer?.Dispose(); } // keeps the .partial and its last good sidecar
-        catch (IOException) { }
+        catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException) { }
         _writer = null;
         while (_queue.TryDequeue(out var packet)) ArrayPool<byte>.Shared.Return(packet.Buffer);
         _session.OnTrackWriteFailed(this, ex, FramesToMs(_positionFrames));

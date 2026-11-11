@@ -12,6 +12,8 @@ internal sealed class FakeSttInputBuilder : ISttInputBuilder
 
     public int Builds { get; private set; }
 
+    public Func<AudioSource, long, long, double?> LevelDbfs { get; set; } = (_, _, _) => null;
+
     public List<(AudioSource Source, TimeRange Range)> Extracts { get; } = [];
 
     public Task<SttInput> BuildAsync(string sessionDirectory, SttConfiguration configuration, IProgress<double>? progress, CancellationToken cancellationToken, SttPauseGate? pause = null)
@@ -27,7 +29,7 @@ internal sealed class FakeSttInputBuilder : ISttInputBuilder
             DurationMs = DurationMs,
             Pieces = [.. new[] { AudioSource.Mic, AudioSource.Loopback }.SelectMany(s => plan.Select(p => new SttInputPiece(s, p, $"{s}-{p.Index}.wav", "x")))],
             GainDb = new Dictionary<AudioSource, double>(),
-            LevelDbfs = (_, _, _) => null,
+            LevelDbfs = LevelDbfs,
         });
     }
 
@@ -249,6 +251,62 @@ public sealed class SttJobProcessorTests : IDisposable
         Assert.Equal(1, job.ResultRevision);
         Assert.Equal([1], new TranscriptStore(_session).Revisions());
         Assert.Equal(6, _engine.Runs.Count); // every piece verified, none run again
+    }
+
+    [Fact]
+    public async Task FullJob_SavesAfterAnEditDuringQualityChecks_WithoutLosingTheEdit()
+    {
+        await Run(JobSession.NewJob(_sessionId));
+        var store = new TranscriptStore(_session);
+        var edited = false;
+        _builder.LevelDbfs = (_, _, _) =>
+        {
+            if (!edited)
+            {
+                edited = true;
+                var parent = store.LoadCurrent()!;
+                store.Save(TranscriptEditing.EditText(parent, store.NextRevision(), parent.Segments[0].SegmentId,
+                    "利用者が残した修正", DateTimeOffset.UnixEpoch));
+            }
+            return null;
+        };
+
+        var job = await Run(JobSession.NewJob(_sessionId));
+
+        Assert.True(edited);
+        Assert.Equal(ProcessingState.Transcribed, job.State);
+        Assert.Equal(3, job.ResultRevision);
+        Assert.Equal(2, store.CurrentRevision());
+        Assert.Contains(store.LoadCurrent()!.Segments, s => s.Text == "利用者が残した修正");
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Resume_CompletesAdoptionAndMarkdown_WithoutOverwritingAUserChoice(bool userChoice, bool pointerWritten)
+    {
+        await Run(JobSession.NewJob(_sessionId));
+        var store = new TranscriptStore(_session);
+        if (userChoice) store.Adopt(1, DateTimeOffset.UnixEpoch);
+        var previousPointer = File.ReadAllBytes(Path.Combine(store.RootDirectory, TranscriptStore.CurrentFileName));
+        _engine.OnRun = r => FakeSttEngine.Utterance(r, 1_000, 3_000, "新しい原文");
+        var job = await Run(JobSession.NewJob(_sessionId));
+        // Simulate a crash after JSON, before either the pointer or Markdown was replaced.
+        if (!pointerWritten) File.WriteAllBytes(Path.Combine(store.RootDirectory, TranscriptStore.CurrentFileName), previousPointer);
+        File.WriteAllText(Path.Combine(_session, TranscriptStore.MarkdownFileName), "途中の古い Markdown");
+        job.State = ProcessingState.Queued;
+        job.ResultRevision = null;
+
+        await _processor.RunAsync(_session, job, new SttPauseGate(), null, CancellationToken.None);
+
+        Assert.Equal(ProcessingState.Transcribed, job.State);
+        Assert.Equal(2, job.ResultRevision);
+        Assert.Equal(userChoice ? 1 : 2, store.CurrentRevision());
+        Assert.Equal(userChoice ? TranscriptAdoptedBy.User : TranscriptAdoptedBy.Automatic, store.ReadAdoption()!.By);
+        Assert.Equal(TranscriptRendering.ToMarkdown(store.LoadCurrent()!), File.ReadAllText(Path.Combine(_session, TranscriptStore.MarkdownFileName)));
+        Assert.Equal([1, 2], store.Revisions());
     }
 
     [Fact]

@@ -113,7 +113,9 @@ public static class QualityFlagger
     {
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(pcAudio);
-        var result = segments.ToList();
+        var result = segments.Select(s => s.Source == AudioSource.Mic
+            ? s with { QualityFlags = [.. s.QualityFlags.Where(f => f != SegmentQuality.Echo)] }
+            : s).ToList();
         FlagEcho(result, pcAudio);
         return result;
     }

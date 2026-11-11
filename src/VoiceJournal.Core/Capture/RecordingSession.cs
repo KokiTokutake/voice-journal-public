@@ -267,6 +267,8 @@ public sealed class RecordingSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(source);
         TrackRecorder recorder;
         TrackManifest track;
+        TrackRecorder? old;
+        IAudioCaptureSource previousSource;
         lock (_gate)
         {
             if (_stopTask is not null) throw new InvalidOperationException("Recording is stopping.");
@@ -277,15 +279,38 @@ public sealed class RecordingSession : IAsyncDisposable
             var now = _time.GetTimestamp();
             var position = (long)(_time.GetElapsedTime(_originTimestamp, now).TotalSeconds * track.Format.SampleRate);
             recorder = new TrackRecorder(this, source, track, _options, _time, _originTimestamp, position) { WriterGate = WriterGate };
-            if (_recorders.Remove(source.Source, out var old)) _retired.Add(old);
+            previousSource = _sources[source.Source];
+            if (_recorders.Remove(source.Source, out old)) _retired.Add(old);
             _recorders[source.Source] = recorder;
             _sources[source.Source] = source;
             track.State = TrackState.Recording;
-            track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.DeviceReconnected, StartMs = position * 1000 / track.Format.SampleRate, Detail = source.DeviceName });
         }
-        recorder.Start();
+        try
+        {
+            recorder.Start();
+        }
+        catch
+        {
+            // Start may already have launched the writer. Drain it before releasing its resources.
+            recorder.WriterCompletion.GetAwaiter().GetResult();
+            recorder.Dispose();
+            lock (_gate)
+            {
+                _recorders.Remove(source.Source);
+                if (old is not null)
+                {
+                    _retired.Remove(old);
+                    _recorders[source.Source] = old;
+                }
+                _sources[source.Source] = previousSource;
+                track.State = TrackState.Disconnected;
+                TrySaveLocked();
+            }
+            throw;
+        }
         lock (_gate)
         {
+            track.Events.Add(new AudioEventManifest { Kind = AudioEventKind.DeviceReconnected, StartMs = (long)_time.GetElapsedTime(_originTimestamp).TotalMilliseconds, Detail = source.DeviceName });
             if (Manifest.CaptureState == CaptureState.Partial && Manifest.Tracks.All(t => t.State == TrackState.Recording))
                 SetStateLocked(CaptureState.Recording);
             else
@@ -380,7 +405,8 @@ public sealed class RecordingSession : IAsyncDisposable
         {
             foreach (var track in Manifest.Tracks.Where(t => t.State == TrackState.Recording)) track.State = TrackState.Stopped;
             Manifest.EndedAtUtc = _time.GetUtcNow();
-            if (Manifest.CaptureState == CaptureState.Stopping) SetStateLocked(CaptureState.Finalized);
+            if (Manifest.CaptureState == CaptureState.Stopping)
+                SetStateLocked(Manifest.Tracks.Any(t => t.State == TrackState.Failed) ? CaptureState.Failed : CaptureState.Finalized);
             else TrySaveLocked();
         }
     }

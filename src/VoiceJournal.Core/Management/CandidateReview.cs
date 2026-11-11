@@ -94,6 +94,9 @@ public sealed record CandidateReview
     /// </summary>
     public bool FromImport { get; init; }
 
+    /// <summary>An undo or hand edit built by the core from an already confirmed item, rather than an AI candidate.</summary>
+    internal bool UsesExistingItemProvenance { get; init; }
+
     /// <summary>The user confirmed this one individually (required when <see cref="CandidateRules.Checks"/> is not empty).</summary>
     public bool ConfirmedIndividually { get; init; }
 
@@ -166,7 +169,10 @@ public static class CandidateRules
             reason = "新規・更新・関連のどれも選ばれていません";
             return false;
         }
-        if (review.Candidate.Evidence.Count == 0 && !review.FromImport)
+        var existingProvenance = review.UsesExistingItemProvenance && review.ConfirmedIndividually
+            && target is not null && review.TargetItemId == target.Id && review.TargetRevision == target.Revision
+            && review.ItemEvidence is { } evidence && evidence.SequenceEqual(target.Evidence);
+        if (review.Candidate.Evidence.Count == 0 && !review.FromImport && !existingProvenance)
         {
             reason = "根拠がないので承認できません（根拠確認が必要）";
             return false;

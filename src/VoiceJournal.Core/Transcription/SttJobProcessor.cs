@@ -143,6 +143,7 @@ public sealed class SttJobProcessor
         // A crash after the revision was written but before the ledger said so: adopt it instead of writing a duplicate.
         if (store.LoadLatest() is { Kind: TranscriptRevisionKind.Raw } latest && latest.Provenance?.JobId == job.JobId)
         {
+            store.CompleteRawSave(latest.Revision);
             job.ResultRevision = latest.Revision;
             return;
         }
@@ -159,8 +160,8 @@ public sealed class SttJobProcessor
             sources.Add(new TranscriptSourceResult { Source = group.Key, UnrecognizedRanges = JoinRanges(unrecognized) });
         }
 
-        var revision = store.NextRevision();
-        store.Save(new TranscriptDocument
+        var flaggedSegments = TranscriptDocument.Order(QualityFlagger.Apply(TranscriptDocument.Order(merged), Contexts(sessionDirectory, input)));
+        var saved = store.SaveNextRaw(revision => new TranscriptDocument
         {
             SessionId = job.SessionId,
             Revision = revision,
@@ -169,9 +170,9 @@ public sealed class SttJobProcessor
             CreatedAtUtc = _time.GetUtcNow(),
             Provenance = Provenance(job),
             Sources = sources,
-            Segments = TranscriptDocument.Order(QualityFlagger.Apply(TranscriptDocument.Order(merged), Contexts(sessionDirectory, input))),
+            Segments = flaggedSegments,
         }, input.DurationMs);
-        job.ResultRevision = revision;
+        job.ResultRevision = saved.Revision;
     }
 
     private async Task RunRangeAsync(string sessionDirectory, SttJob job, SttInput input, SttPauseGate pause, IProgress<SttJobProgress>? progress, CancellationToken cancellationToken)

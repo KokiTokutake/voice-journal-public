@@ -557,6 +557,7 @@ public static class RevertBuilder
                 TargetRevision = now.Revision,
                 ConfirmedIndividually = true, // the user asked for this undo item by item in the final check
                 ItemEvidence = now.Evidence, // the item's own evidence, never the batch id as a session
+                UsesExistingItemProvenance = true,
             });
         }
         return reviews;
@@ -616,22 +617,18 @@ public static class ExternalEditBuilder
             Evidence = [.. item.Evidence.Select(e => new Evidence { SegmentId = e.SegmentId, Quote = e.Quote })],
             Rationale = takeIn ? "手編集の取込み" : "手編集を戻す",
         };
-        if (candidate.Evidence.Count == 0)
-        {
-            problem = "この項目には根拠がないので、計画にできません";
-            return null;
-        }
         return new CandidateReview
         {
             Key = new CandidateKey(operationId, 0, candidate.CandidateId),
             Candidate = candidate,
-            TranscriptRevision = item.Evidence[0].TranscriptRevision,
+            TranscriptRevision = item.Evidence.Count > 0 ? item.Evidence[0].TranscriptRevision : 1,
             Project = item.Project,
             Choice = changed.Count > 0 ? ReviewChoice.Update : ReviewChoice.Mention,
             TargetItemId = item.Id,
             TargetRevision = item.Revision,
             ConfirmedIndividually = true, // the user picked this block and saw its diff
             ItemEvidence = item.Evidence, // the item's own evidence, never the batch id as a session
+            UsesExistingItemProvenance = true,
         };
     }
 }

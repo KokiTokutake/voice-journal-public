@@ -17,11 +17,12 @@ public sealed record SessionRecoveryResult(Guid SessionId, CaptureState NewState
 /// </summary>
 public static class SessionRecovery
 {
-    /// <summary>True when the manifest says recording was still in progress.</summary>
+    /// <summary>True when recording was still in progress, or a failed write left an unfinished chunk.</summary>
     public static bool NeedsRecovery(SessionManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.CaptureState is CaptureState.Ready or CaptureState.Recording or CaptureState.Partial or CaptureState.Stopping;
+        return manifest.CaptureState is CaptureState.Ready or CaptureState.Recording or CaptureState.Partial or CaptureState.Stopping
+            || manifest.Tracks.Any(t => t.Chunks.Any(c => c.State == ChunkState.Partial));
     }
 
     public static SessionRecoveryResult Recover(string sessionDirectory, TimeProvider? time = null)

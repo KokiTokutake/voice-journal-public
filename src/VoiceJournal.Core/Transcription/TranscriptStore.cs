@@ -138,6 +138,47 @@ public sealed class TranscriptStore
         }
     }
 
+    /// <summary>Allocates and saves a raw revision under the same writer lock as UI edits and adoption.</summary>
+    public TranscriptDocument SaveNextRaw(Func<int, TranscriptDocument> create, long? durationMs = null)
+    {
+        ArgumentNullException.ThrowIfNull(create);
+        lock (Gates.GetOrAdd(_sessionDirectory, _ => new object()))
+        {
+            var document = create(NextRevision());
+            if (document.Kind != TranscriptRevisionKind.Raw) throw new ArgumentException("A raw revision is required.", nameof(create));
+            Save(document, durationMs);
+            return document;
+        }
+    }
+
+    /// <summary>
+    /// Finishes a raw save interrupted after its immutable JSON was written. A user choice or edit stays in use;
+    /// an automatic pointer advances to the completed raw revision. Also repairs an interrupted Markdown write.
+    /// </summary>
+    public void CompleteRawSave(int revision)
+    {
+        lock (Gates.GetOrAdd(_sessionDirectory, _ => new object()))
+        {
+            var document = Load(revision);
+            if (document.Kind != TranscriptRevisionKind.Raw) throw new ArgumentException("A raw revision is required.", nameof(revision));
+            var adoption = ReadAdoption();
+            if (adoption is not null)
+            {
+                if (adoption.By == TranscriptAdoptedBy.User || adoption.Revision > revision)
+                    WriteAdoption(Load(adoption.Revision), adoption.By, adoption.AdoptedAtUtc);
+                else WriteAdoption(document, TranscriptAdoptedBy.Automatic, document.CreatedAtUtc);
+                return;
+            }
+            // Legacy sessions can have edits without a pointer. Save would have retained the previous edited
+            // revision, so recover that choice rather than treating the newly written raw file as the choice.
+            var previous = Revisions().LastOrDefault(r => r < revision);
+            var kept = previous > 0 ? Load(previous) : null;
+            if (kept?.Kind == TranscriptRevisionKind.Edited)
+                WriteAdoption(kept, TranscriptAdoptedBy.User, document.CreatedAtUtc);
+            else WriteAdoption(document, TranscriptAdoptedBy.Automatic, document.CreatedAtUtc);
+        }
+    }
+
     /// <summary>
     /// Writes a new revision. Fails when the revision already exists (revisions are immutable), when it is not the
     /// next number, when the segments are invalid, or when an edited revision does not start from the revision in use.

@@ -21,7 +21,16 @@ public static class TranscriptEditing
             OriginSegmentIds = target.Origins,
         };
         var change = new TranscriptChange { Kind = TranscriptChangeKind.TextEdited, SegmentIds = [segmentId], NewSegmentIds = [segmentId] };
-        return Next(parent, revision, now, parent.Segments.Select(s => s.SegmentId == segmentId ? edited : s), change);
+        var segments = parent.Segments.Select(s => s.SegmentId == segmentId ? edited : s).ToList();
+        // Echo depends on the text of both sources. A corrected microphone utterance can be real speech;
+        // a corrected PC utterance can also invalidate echo flags on the microphone.
+        if (target.Source == AudioSource.Mic)
+        {
+            var checkedEdit = QualityFlagger.WithEcho([edited], segments)[0];
+            segments = [.. segments.Select(s => s.SegmentId == segmentId ? checkedEdit : s)];
+        }
+        else segments = [.. QualityFlagger.WithEcho(segments, segments)];
+        return Next(parent, revision, now, segments, change);
     }
 
     /// <summary>

@@ -77,6 +77,25 @@ public sealed class WavChunkWriterTests : IDisposable
     }
 
     [Fact]
+    public void Dispose_WhenSidecarCannotBeReplaced_KeepsAudioAndReleasesFile()
+    {
+        var partial = _dir.File("000001.partial");
+        var writer = WavChunkWriter.Create(partial, Format, startMs: 0);
+        writer.Append(Sine(Format, seconds: 0.25));
+        using (var sidecarLock = new FileStream(writer.SidecarPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var error = Record.Exception(writer.Dispose);
+            Assert.Null(error);
+        }
+
+        // Even if the last sidecar update fails, the flushed audio remains readable and no handle leaks.
+        using var audio = new FileStream(partial, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var header = WavFile.ReadHeader(audio);
+        Assert.Equal(12000 * Format.BlockAlign, audio.Length - header.DataOffset);
+        Assert.NotNull(ChunkSidecar.TryLoad(writer.SidecarPath));
+    }
+
+    [Fact]
     public void AppendSilence_WritesZeroFrames()
     {
         var partial = _dir.File("000001.partial");
